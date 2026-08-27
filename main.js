@@ -2,6 +2,7 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const actionButton = document.getElementById("actionButton");
 const useButton = document.getElementById("useButton");
+const restButton = document.getElementById("restButton");
 const pocketButtons = [...document.querySelectorAll(".pocket-slot")];
 const turnStatus = document.getElementById("turnStatus");
 const vitalityPips = document.getElementById("vitalityPips");
@@ -34,18 +35,20 @@ const scene = {
 
   player: {
     id: PLAYER_ID,
-    x: 5,
-    y: 10,
-    renderX: 5,
-    renderY: 10,
-    startX: 5,
-    startY: 10,
-    targetX: 5,
-    targetY: 10,
+    x: 2,
+    y: 13,
+    renderX: 2,
+    renderY: 13,
+    startX: 2,
+    startY: 13,
+    targetX: 2,
+    targetY: 13,
     moving: false,
     moveStartedAt: 0,
     moveDuration: 190
   },
+
+  firepit: { x: 2, y: 14 },
 
   tree: { x: 8, y: 4 },
   bushes: [
@@ -98,8 +101,12 @@ function gridKey(x, y) {
 function makeRandomMushrooms(count) {
   const blocked = new Set([
     gridKey(scene.player.x, scene.player.y),
+    gridKey(scene.firepit.x, scene.firepit.y),
     gridKey(scene.tree.x, scene.tree.y),
-    ...scene.bushes.map((bush) => gridKey(bush.x, bush.y))
+    ...scene.bushes.map((bush) => gridKey(bush.x, bush.y)),
+    ...scene.bramblePatches.flatMap((patch) =>
+      patch.tiles.map((tile) => gridKey(tile.x, tile.y))
+    )
   ]);
 
   const mushrooms = [];
@@ -199,6 +206,38 @@ function useHeldItem() {
   updateStatusUI();
   updateActionButton();
   setMomentStatus("Ate a mushroom. +1 Vitality.");
+}
+
+
+function isPlayerAtFire() {
+  return (
+    scene.player.x === scene.firepit.x &&
+    scene.player.y === scene.firepit.y
+  );
+}
+
+function canRestAtFire() {
+  return isPlayerAtFire() && !scene.player.moving;
+}
+
+function restAtFire() {
+  if (!canRestAtFire()) {
+    return;
+  }
+
+  const wasTired = gameState.vitality < gameState.maxVitality;
+
+  gameState.vitality = gameState.maxVitality;
+  gameState.turn += 4;
+
+  updateStatusUI();
+  updateActionButton();
+
+  setMomentStatus(
+    wasTired
+      ? "You rest by the fire. Vitality restored. +4 turns."
+      : "You sit by the fire awhile. +4 turns."
+  );
 }
 
 function getBramblePatchAt(x, y) {
@@ -479,6 +518,7 @@ function updateActionButton() {
     }
 
     useButton.disabled = !canUseHeldItem();
+    restButton.disabled = !canRestAtFire();
     updatePocketButtons();
     return;
   }
@@ -488,6 +528,7 @@ function updateActionButton() {
     action.type === "pickup" ? "Pick Up" : "Drop";
 
   useButton.disabled = !canUseHeldItem();
+  restButton.disabled = !canRestAtFire();
   updatePocketButtons();
 }
 
@@ -553,6 +594,7 @@ function draw(now) {
   ctx.fillRect(offsetX, offsetY, mapWidth, mapHeight);
 
   drawGrid(tileSize, offsetX, offsetY);
+  drawFirepit(scene.firepit, now, tileSize, offsetX, offsetY);
   drawBrambles(tileSize, offsetX, offsetY);
   drawBushes(tileSize, offsetX, offsetY);
   drawTree(scene.tree, tileSize, offsetX, offsetY);
@@ -602,6 +644,17 @@ function drawGrid(tileSize, offsetX, offsetY) {
 }
 
 
+
+function hash01(x, y, salt = 0) {
+  const value = Math.sin(
+    x * 12.9898 +
+    y * 78.233 +
+    salt * 37.719
+  ) * 43758.5453;
+
+  return value - Math.floor(value);
+}
+
 function drawBrambles(tileSize, offsetX, offsetY) {
   for (const patch of scene.bramblePatches) {
     for (const tile of patch.tiles) {
@@ -612,12 +665,18 @@ function drawBrambles(tileSize, offsetX, offsetY) {
 
 function drawBrambleTile(x, y, tileSize, offsetX, offsetY) {
   const p = gridToPixel(x, y, tileSize, offsetX, offsetY);
-  const centerX = p.x + tileSize * 0.5;
-  const groundY = p.y + tileSize * 0.79;
+
+  const tileOffsetX = (hash01(x, y, 1) - 0.5) * tileSize * 0.12;
+  const tileOffsetY = (hash01(x, y, 2) - 0.5) * tileSize * 0.10;
+  const tileRotation = (hash01(x, y, 3) - 0.5) * 0.24;
+
+  const centerX = p.x + tileSize * 0.5 + tileOffsetX;
+  const centerY = p.y + tileSize * 0.62 + tileOffsetY;
+  const groundY = p.y + tileSize * 0.84 + tileOffsetY * 0.35;
 
   drawShadow(
     centerX,
-    groundY + tileSize * 0.05,
+    groundY,
     tileSize * 0.38,
     tileSize * 0.095
   );
@@ -629,31 +688,38 @@ function drawBrambleTile(x, y, tileSize, offsetX, offsetY) {
     "#684b58"
   ];
 
-  // Deterministic little offsets keep every tile scrappy without flickering.
-  const shift = ((x * 17 + y * 11) % 7) * 0.008;
-
   const crosses = [
-    { cx: 0.28, cy: 0.61, size: 0.24, angle: -0.08 },
-    { cx: 0.50, cy: 0.55, size: 0.30, angle: 0.10 },
-    { cx: 0.70, cy: 0.64, size: 0.23, angle: -0.14 },
-    { cx: 0.39, cy: 0.73, size: 0.22, angle: 0.16 },
-    { cx: 0.61, cy: 0.74, size: 0.25, angle: -0.04 }
+    { cx: -0.22, cy: -0.01, size: 0.24, angle: -0.08 },
+    { cx:  0.00, cy: -0.07, size: 0.30, angle:  0.10 },
+    { cx:  0.20, cy:  0.02, size: 0.23, angle: -0.14 },
+    { cx: -0.11, cy:  0.12, size: 0.22, angle:  0.16 },
+    { cx:  0.11, cy:  0.13, size: 0.25, angle: -0.04 }
   ];
 
   ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate(tileRotation);
   ctx.lineCap = "round";
   ctx.lineWidth = Math.max(2, tileSize * 0.055);
 
   crosses.forEach((cross, index) => {
-    const cx = p.x + tileSize * (cross.cx + shift);
-    const cy = p.y + tileSize * cross.cy;
+    const jitterX =
+      (hash01(x, y, 10 + index) - 0.5) * tileSize * 0.055;
+    const jitterY =
+      (hash01(x, y, 20 + index) - 0.5) * tileSize * 0.045;
+    const jitterAngle =
+      (hash01(x, y, 30 + index) - 0.5) * 0.18;
+
+    const cx = tileSize * cross.cx + jitterX;
+    const cy = tileSize * cross.cy + jitterY;
     const half = tileSize * cross.size * 0.5;
 
-    ctx.strokeStyle = twigColors[(index + x + y) % twigColors.length];
+    ctx.strokeStyle =
+      twigColors[(index + x * 2 + y) % twigColors.length];
 
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(cross.angle);
+    ctx.rotate(cross.angle + jitterAngle);
 
     ctx.beginPath();
     ctx.moveTo(-half, -half * 0.72);
@@ -667,6 +733,123 @@ function drawBrambleTile(x, y, tileSize, offsetX, offsetY) {
 
     ctx.restore();
   });
+
+  ctx.restore();
+}
+
+
+function drawFirepit(firepit, now, tileSize, offsetX, offsetY) {
+  const p = gridToPixel(
+    firepit.x,
+    firepit.y,
+    tileSize,
+    offsetX,
+    offsetY
+  );
+
+  const centerX = p.x + tileSize * 0.5;
+  const baseY = p.y + tileSize * 0.79;
+
+  drawShadow(
+    centerX,
+    baseY + tileSize * 0.07,
+    tileSize * 0.36,
+    tileSize * 0.105
+  );
+
+  ctx.save();
+
+  // A few chunky stones make the fire read as a place, not a loose flame.
+  const stones = [
+    [-0.22,  0.03],
+    [-0.11,  0.12],
+    [ 0.05,  0.14],
+    [ 0.21,  0.05],
+    [ 0.15, -0.08],
+    [-0.05, -0.10]
+  ];
+
+  stones.forEach(([sx, sy], index) => {
+    ctx.fillStyle = index % 2 === 0 ? "#877962" : "#766b59";
+    ctx.beginPath();
+    ctx.ellipse(
+      centerX + tileSize * sx,
+      baseY + tileSize * sy,
+      tileSize * 0.105,
+      tileSize * 0.065,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  });
+
+  // Crossed little logs.
+  ctx.strokeStyle = "#75513b";
+  ctx.lineWidth = Math.max(3, tileSize * 0.07);
+  ctx.lineCap = "round";
+
+  ctx.save();
+  ctx.translate(centerX, baseY - tileSize * 0.01);
+  ctx.rotate(-0.55);
+  ctx.beginPath();
+  ctx.moveTo(-tileSize * 0.16, 0);
+  ctx.lineTo(tileSize * 0.16, 0);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(centerX, baseY - tileSize * 0.01);
+  ctx.rotate(0.55);
+  ctx.beginPath();
+  ctx.moveTo(-tileSize * 0.16, 0);
+  ctx.lineTo(tileSize * 0.16, 0);
+  ctx.stroke();
+  ctx.restore();
+
+  // Tiny animated flame. The geometry changes subtly, never its ground position.
+  const flicker = Math.sin(now * 0.014) * tileSize * 0.018;
+  const flameBaseY = baseY - tileSize * 0.08;
+
+  ctx.fillStyle = "#dc6b3e";
+  ctx.beginPath();
+  ctx.moveTo(centerX, flameBaseY - tileSize * 0.34 - flicker);
+  ctx.quadraticCurveTo(
+    centerX - tileSize * 0.18,
+    flameBaseY - tileSize * 0.10,
+    centerX - tileSize * 0.10,
+    flameBaseY + tileSize * 0.07
+  );
+  ctx.quadraticCurveTo(
+    centerX,
+    flameBaseY + tileSize * 0.13,
+    centerX + tileSize * 0.10,
+    flameBaseY + tileSize * 0.07
+  );
+  ctx.quadraticCurveTo(
+    centerX + tileSize * 0.18,
+    flameBaseY - tileSize * 0.10,
+    centerX,
+    flameBaseY - tileSize * 0.34 - flicker
+  );
+  ctx.fill();
+
+  ctx.fillStyle = "#e7b84f";
+  ctx.beginPath();
+  ctx.moveTo(centerX, flameBaseY - tileSize * 0.23 + flicker * 0.4);
+  ctx.quadraticCurveTo(
+    centerX - tileSize * 0.09,
+    flameBaseY - tileSize * 0.05,
+    centerX,
+    flameBaseY + tileSize * 0.06
+  );
+  ctx.quadraticCurveTo(
+    centerX + tileSize * 0.09,
+    flameBaseY - tileSize * 0.05,
+    centerX,
+    flameBaseY - tileSize * 0.23 + flicker * 0.4
+  );
+  ctx.fill();
 
   ctx.restore();
 }
@@ -1003,6 +1186,16 @@ function handleKeyDown(event) {
     if (!event.repeat) {
       useHeldItem();
     }
+
+    return;
+  }
+
+  if (event.key === "r" || event.key === "R") {
+    event.preventDefault();
+
+    if (!event.repeat) {
+      restAtFire();
+    }
   }
 }
 
@@ -1114,6 +1307,7 @@ pocketButtons.forEach((button) => {
 
 bindPress(actionButton, performAction);
 bindPress(useButton, useHeldItem);
+bindPress(restButton, restAtFire);
 
 window.addEventListener("keydown", handleKeyDown, { passive: false });
 window.addEventListener("keyup", handleKeyUp, { passive: false });
