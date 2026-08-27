@@ -1,10 +1,26 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const actionButton = document.getElementById("actionButton");
+const useButton = document.getElementById("useButton");
 const pocketButtons = [...document.querySelectorAll(".pocket-slot")];
+const turnStatus = document.getElementById("turnStatus");
+const foodStatus = document.getElementById("foodStatus");
+const vitalityPips = document.getElementById("vitalityPips");
 
 const PLAYER_ID = "player";
 const POCKET_COUNT = 2;
+
+const FOOD_STATES = [
+  "Stuffed",
+  "Well Fed",
+  "Fed",
+  "Peckish",
+  "Hungry",
+  "Famished",
+  "Starving"
+];
+
+const HUNGER_INTERVAL_TURNS = 12;
 
 const heldMovement = {
   active: false,
@@ -12,6 +28,14 @@ const heldMovement = {
   dy: 0,
   source: null,
   key: null
+};
+
+
+const gameState = {
+  turn: 0,
+  foodStateIndex: FOOD_STATES.indexOf("Fed"),
+  vitality: 3,
+  maxVitality: 3
 };
 
 const scene = {
@@ -101,6 +125,73 @@ function makeRandomMushrooms(count) {
 }
 
 scene.mushrooms = makeRandomMushrooms(3);
+
+
+function advanceTurn() {
+  gameState.turn += 1;
+
+  if (gameState.turn % HUNGER_INTERVAL_TURNS === 0) {
+    gameState.foodStateIndex = Math.min(
+      gameState.foodStateIndex + 1,
+      FOOD_STATES.length - 1
+    );
+  }
+
+  updateStatusUI();
+}
+
+function improveFoodState(steps = 1) {
+  gameState.foodStateIndex = Math.max(
+    0,
+    gameState.foodStateIndex - steps
+  );
+
+  updateStatusUI();
+}
+
+function updateStatusUI() {
+  turnStatus.textContent = `Turn ${gameState.turn}`;
+  foodStatus.textContent = FOOD_STATES[gameState.foodStateIndex];
+
+  vitalityPips.innerHTML = "";
+
+  for (let i = 0; i < gameState.maxVitality; i++) {
+    const pip = document.createElement("span");
+    pip.className = "vitality-pip";
+
+    if (i < gameState.vitality) {
+      pip.classList.add("filled");
+    }
+
+    vitalityPips.appendChild(pip);
+  }
+
+  vitalityPips.setAttribute(
+    "aria-label",
+    `Vitality ${gameState.vitality} of ${gameState.maxVitality}`
+  );
+}
+
+function canUseHeldItem() {
+  return Boolean(getHeldMushroom()) && !scene.player.moving;
+}
+
+function useHeldItem() {
+  if (!canUseHeldItem()) {
+    return;
+  }
+
+  const mushroom = getHeldMushroom();
+
+  // For now mushrooms are food: one mushroom improves the food
+  // condition by one step and is physically consumed.
+  scene.mushrooms = scene.mushrooms.filter(
+    (candidate) => candidate.id !== mushroom.id
+  );
+
+  improveFoodState(1);
+  updateActionButton();
+}
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
@@ -270,6 +361,9 @@ function updatePlayer(now) {
     player.renderY = player.y;
     player.moving = false;
 
+    // One completed tile-hop = one turn.
+    advanceTurn();
+
     // Holding a direction does not create continuous motion.
     // It simply starts the next one-tile hop after this hop lands.
     if (heldMovement.active) {
@@ -351,6 +445,7 @@ function updateActionButton() {
       actionButton.textContent = held ? "Drop" : "Pick Up";
     }
 
+    useButton.disabled = !canUseHeldItem();
     updatePocketButtons();
     return;
   }
@@ -359,6 +454,7 @@ function updateActionButton() {
   actionButton.textContent =
     action.type === "pickup" ? "Pick Up" : "Drop";
 
+  useButton.disabled = !canUseHeldItem();
   updatePocketButtons();
 }
 
@@ -793,6 +889,16 @@ function handleKeyDown(event) {
     if (!event.repeat) {
       performAction();
     }
+
+    return;
+  }
+
+  if (event.key === "f" || event.key === "F") {
+    event.preventDefault();
+
+    if (!event.repeat) {
+      useHeldItem();
+    }
   }
 }
 
@@ -903,6 +1009,7 @@ pocketButtons.forEach((button) => {
 });
 
 bindPress(actionButton, performAction);
+bindPress(useButton, useHeldItem);
 
 window.addEventListener("keydown", handleKeyDown, { passive: false });
 window.addEventListener("keyup", handleKeyUp, { passive: false });
@@ -916,5 +1023,6 @@ window.addEventListener("blur", () => {
 window.addEventListener("resize", resizeCanvas);
 
 resizeCanvas();
+updateStatusUI();
 updateActionButton();
 requestAnimationFrame(animate);

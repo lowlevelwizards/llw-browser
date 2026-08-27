@@ -132,10 +132,15 @@ button {
   gap: 8px;
 }
 
+.action-row {
+  display: flex;
+  gap: 7px;
+}
+
 .action-button {
   align-self: center;
-  width: 72px;
-  height: 72px;
+  width: 64px;
+  height: 64px;
   appearance: none;
   border: 2px solid #7c6d52;
   border-radius: 50%;
@@ -284,9 +289,9 @@ button {
   }
 
   .action-button {
-    width: 62px;
-    height: 62px;
-    font-size: 0.72rem;
+    width: 56px;
+    height: 56px;
+    font-size: 0.68rem;
   }
 
   .pocket-slot {
@@ -297,4 +302,49 @@ button {
   .control-hint {
     font-size: 0.78rem;
   }
+}
+
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1.5px solid rgba(124, 109, 82, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.vitality-pips {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.vitality-pip {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid #6b5b3f;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.vitality-pip.filled {
+  background: #d9b96e;
+}
+
+
+.use-button {
+  background: #d4c28f;
 }

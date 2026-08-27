@@ -18,7 +18,18 @@
     <section class="info-panel">
       <div class="info-copy">
         <h1>Low Level Wizards</h1>
-        <p>Fifth brick: pockets can hold the little things you gather.</p>
+        <p>Sixth brick: time passes, bodies have reserves, and food matters.</p>
+
+        <div class="status-row" aria-label="Player status">
+          <span id="turnStatus" class="status-chip">Turn 0</span>
+
+          <span class="status-chip vitality-chip">
+            <span>Vitality</span>
+            <span id="vitalityPips" class="vitality-pips" aria-label="Vitality 3 of 3"></span>
+          </span>
+
+          <span id="foodStatus" class="status-chip">Fed</span>
+        </div>
       </div>
 
       <div class="dpad" aria-label="Movement controls">
@@ -29,15 +40,27 @@
       </div>
 
       <div class="carry-controls">
-        <button
-          id="actionButton"
-          class="action-button"
-          type="button"
-          aria-label="Pick up or drop"
-          disabled
-        >
-          Pick Up
-        </button>
+        <div class="action-row">
+          <button
+            id="actionButton"
+            class="action-button"
+            type="button"
+            aria-label="Pick up or drop"
+            disabled
+          >
+            Pick Up
+          </button>
+
+          <button
+            id="useButton"
+            class="action-button use-button"
+            type="button"
+            aria-label="Use held item"
+            disabled
+          >
+            Use
+          </button>
+        </div>
 
         <div class="pockets" aria-label="Pockets">
           <button
@@ -55,7 +78,7 @@
         </div>
       </div>
 
-      <p class="control-hint">Move: arrows / WASD · Act: E / Space</p>
+      <p class="control-hint">Move: arrows / WASD · Act: E / Space · Use: F</p>
     </section>
   </main>
 
