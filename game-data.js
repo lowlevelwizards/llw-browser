@@ -18,7 +18,7 @@
     treeForageStickChance: 0.5,
 
     restTurnCost: 4,
-    pocketCount: 2
+    pocketCount: 4
   };
 
   LLW.ITEM_DEFS = {
@@ -29,7 +29,7 @@
 
     stick: {
       name: "Stick",
-      pocketable: false
+      pocketable: true
     }
   };
 

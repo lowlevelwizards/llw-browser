@@ -53,15 +53,17 @@
     return -1;
   };
 
-  LLW.getWorldItemAt = function (x, y) {
-    return (
-      state.items.find(
-        (item) =>
-          item.location.kind === "world" &&
-          item.location.x === x &&
-          item.location.y === y
-      ) || null
+  LLW.getWorldItemsAt = function (x, y) {
+    return state.items.filter(
+      (item) =>
+        item.location.kind === "world" &&
+        item.location.x === x &&
+        item.location.y === y
     );
+  };
+
+  LLW.getWorldItemAt = function (x, y) {
+    return LLW.getWorldItemsAt(x, y)[0] || null;
   };
 
   LLW.getTreeAt = function (x, y) {
@@ -335,84 +337,106 @@
     );
   }
 
-  LLW.getContextAction = function () {
+  LLW.getPickupAction = function () {
     if (state.player.moving) {
       return null;
     }
 
-    const itemHere = LLW.getWorldItemAt(
+    const itemHere = LLW.getWorldItemsAt(
       state.player.x,
       state.player.y
-    );
+    ).find(canPickUp);
 
-    if (itemHere && canPickUp(itemHere)) {
-      return {
-        type: "pickup",
-        item: itemHere,
-        label: "Pick Up"
-      };
+    if (!itemHere) {
+      return null;
+    }
+
+    return {
+      type: "pickup",
+      item: itemHere,
+      label: "Pick Up"
+    };
+  };
+
+  LLW.getDropAction = function () {
+    if (state.player.moving) {
+      return null;
     }
 
     const held = LLW.getHeldItem();
 
-    if (held && !itemHere) {
-      return {
-        type: "drop",
-        item: held,
-        label: "Drop"
-      };
+    if (!held) {
+      return null;
     }
 
-    return null;
+    return {
+      type: "drop",
+      item: held,
+      label: "Drop"
+    };
   };
 
-  LLW.performContextAction = function () {
-    const action = LLW.getContextAction();
+  LLW.performPickupAction = function () {
+    const action = LLW.getPickupAction();
 
     if (!action) {
       return;
     }
 
-    if (action.type === "pickup") {
-      const held = LLW.getHeldItem();
+    const held = LLW.getHeldItem();
 
-      if (!held) {
-        action.item.location = LLW.heldLocation();
-      } else {
-        const pocketIndex =
-          LLW.getFirstEmptyPocketIndex();
-
-        if (pocketIndex === -1) {
-          return;
-        }
-
-        action.item.location =
-          LLW.pocketLocation(pocketIndex);
-      }
-
+    if (!held) {
+      action.item.location = LLW.heldLocation();
       return;
     }
 
-    if (action.type === "drop") {
-      action.item.location = LLW.worldLocation(
-        state.player.x,
-        state.player.y
-      );
+    const pocketIndex = LLW.getFirstEmptyPocketIndex();
+
+    if (pocketIndex === -1) {
+      return;
     }
+
+    action.item.location = LLW.pocketLocation(pocketIndex);
   };
 
-  LLW.takeFromPocket = function (pocketIndex) {
-    if (state.player.moving || LLW.getHeldItem()) {
+  LLW.performDropAction = function () {
+    const action = LLW.getDropAction();
+
+    if (!action) {
       return;
     }
 
-    const item = LLW.getPocketItem(pocketIndex);
+    // Multiple individual items are allowed to share one world tile.
+    action.item.location = LLW.worldLocation(
+      state.player.x,
+      state.player.y
+    );
+  };
 
-    if (!item) {
+  LLW.handlePocketTap = function (pocketIndex) {
+    if (state.player.moving) {
       return;
     }
 
-    item.location = LLW.heldLocation();
+    const held = LLW.getHeldItem();
+    const pocketItem = LLW.getPocketItem(pocketIndex);
+
+    // Empty hand + filled pocket => pocket -> hand.
+    if (!held && pocketItem) {
+      pocketItem.location = LLW.heldLocation();
+      return;
+    }
+
+    // Filled hand + empty pocket => hand -> pocket.
+    if (held && !pocketItem) {
+      if (!LLW.ITEM_DEFS[held.kind]?.pocketable) {
+        return;
+      }
+
+      held.location = LLW.pocketLocation(pocketIndex);
+    }
+
+    // Filled hand + filled pocket intentionally does nothing for now.
   };
 
   function getHeldUseAction() {

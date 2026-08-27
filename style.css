@@ -227,6 +227,10 @@ button {
   background: #d9b96e;
 }
 
+.drop-action {
+  background: #caa66a;
+}
+
 .use-action {
   background: #d4c28f;
 }
@@ -242,7 +246,7 @@ button {
 
 .pockets {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   padding: 5px;
   border: 1.5px solid rgba(124, 109, 82, 0.50);
   border-radius: 12px;
@@ -307,6 +311,33 @@ button {
   z-index: 2;
 }
 
+
+.pocket-slot.item-stick::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 5px;
+  border-radius: 999px;
+  background: #79553d;
+  transform: translate(-50%, -50%) rotate(-28deg);
+  z-index: 2;
+}
+
+.pocket-slot.item-stick::after {
+  content: "";
+  position: absolute;
+  left: 56%;
+  top: 44%;
+  width: 10px;
+  height: 3px;
+  border-radius: 999px;
+  background: #8a6248;
+  transform: translate(-50%, -50%) rotate(-55deg);
+  z-index: 3;
+}
+
 .pocket-slot.occupied:active {
   transform: translateY(1px);
 }
@@ -363,7 +394,7 @@ button {
   }
 
   .pocket-slot {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
   }
 }

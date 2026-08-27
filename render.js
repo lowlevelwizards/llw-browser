@@ -660,38 +660,211 @@
     ctx.restore();
   }
 
+  function pileOffset(index, kind, tileSize) {
+    if (index === 0) {
+      return { x: 0, y: 0, rotation: 0 };
+    }
+
+    const ring = Math.floor((index - 1) / 6) + 1;
+    const slot = (index - 1) % 6;
+    const angle = (slot / 6) * Math.PI * 2;
+
+    const radius = tileSize * 0.11 * ring;
+
+    return {
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius * 0.65,
+      rotation:
+        (kind === "stick" ? 0.35 : 0.10) *
+        Math.sin(index * 1.91)
+    };
+  }
+
+  function drawMushroomPileItem(
+    x,
+    y,
+    index,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      x,
+      y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const offset = pileOffset(
+      index,
+      "mushroom",
+      tileSize
+    );
+
+    const centerX =
+      p.x + tileSize * 0.5 + offset.x;
+
+    const baseY =
+      p.y + tileSize * 0.85 + offset.y;
+
+    drawShadow(
+      centerX,
+      baseY,
+      tileSize * 0.18,
+      tileSize * 0.07
+    );
+
+    ctx.save();
+    ctx.translate(offset.x, offset.y);
+
+    ctx.fillStyle = "#d8c49a";
+    roundedCapsule(
+      p.x + tileSize * 0.5 - tileSize * 0.055,
+      p.y + tileSize * 0.56,
+      tileSize * 0.11,
+      tileSize * 0.21,
+      tileSize * 0.045
+    );
+    ctx.fill();
+
+    const capY = p.y + tileSize * 0.57;
+    const center = p.x + tileSize * 0.5;
+    const capHalfWidth = tileSize * 0.19;
+    const capHeight = tileSize * 0.12;
+
+    ctx.fillStyle = "#c63c36";
+    ctx.beginPath();
+    ctx.moveTo(center - capHalfWidth, capY);
+    ctx.quadraticCurveTo(
+      center,
+      capY - capHeight * 1.7,
+      center + capHalfWidth,
+      capY
+    );
+    ctx.lineTo(center - capHalfWidth, capY);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawStickPileItem(
+    x,
+    y,
+    index,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      x,
+      y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const offset = pileOffset(
+      index,
+      "stick",
+      tileSize
+    );
+
+    const centerX =
+      p.x + tileSize * 0.5 + offset.x;
+
+    const centerY =
+      p.y + tileSize * 0.68 + offset.y;
+
+    const baseRotation =
+      (hash01(x, y, 88 + index) - 0.5) *
+      1.2;
+
+    drawShadow(
+      centerX,
+      centerY + tileSize * 0.12,
+      tileSize * 0.22,
+      tileSize * 0.065
+    );
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(baseRotation + offset.rotation);
+
+    ctx.strokeStyle = "#79553d";
+    ctx.lineWidth =
+      Math.max(3, tileSize * 0.075);
+    ctx.lineCap = "round";
+
+    ctx.beginPath();
+    ctx.moveTo(-tileSize * 0.24, 0);
+    ctx.lineTo(tileSize * 0.24, 0);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#8a6248";
+    ctx.lineWidth =
+      Math.max(2, tileSize * 0.038);
+
+    ctx.beginPath();
+    ctx.moveTo(tileSize * 0.06, 0);
+    ctx.lineTo(
+      tileSize * 0.17,
+      -tileSize * 0.09
+    );
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
   function drawWorldItems(
     tileSize,
     offsetX,
     offsetY
   ) {
+    const groups = new Map();
+
     for (const item of state.items) {
       if (item.location.kind !== "world") {
         continue;
       }
 
-      const { x, y } = item.location;
+      const key = `${item.location.x},${item.location.y}`;
 
-      if (item.kind === "mushroom") {
-        drawMushroomAt(
-          x,
-          y,
-          1,
-          tileSize,
-          offsetX,
-          offsetY
-        );
+      if (!groups.has(key)) {
+        groups.set(key, []);
       }
 
-      if (item.kind === "stick") {
-        drawGroundStick(
-          x,
-          y,
-          tileSize,
-          offsetX,
-          offsetY
-        );
-      }
+      groups.get(key).push(item);
+    }
+
+    for (const items of groups.values()) {
+      // Preserve stable item order, but draw each with a small visible offset.
+      items.forEach((item, index) => {
+        const { x, y } = item.location;
+
+        if (item.kind === "mushroom") {
+          drawMushroomPileItem(
+            x,
+            y,
+            index,
+            tileSize,
+            offsetX,
+            offsetY
+          );
+        }
+
+        if (item.kind === "stick") {
+          drawStickPileItem(
+            x,
+            y,
+            index,
+            tileSize,
+            offsetX,
+            offsetY
+          );
+        }
+      });
     }
   }
 

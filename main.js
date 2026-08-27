@@ -4,8 +4,11 @@
   const canvas =
     document.getElementById("gameCanvas");
 
-  const actionButton =
-    document.getElementById("actionButton");
+  const pickupButton =
+    document.getElementById("pickupButton");
+
+  const dropButton =
+    document.getElementById("dropButton");
 
   const useButton =
     document.getElementById("useButton");
@@ -77,6 +80,8 @@
   }
 
   function updatePocketButtons() {
+    const held = LLW.getHeldItem();
+
     for (
       let i = 0;
       i < pocketButtons.length;
@@ -91,7 +96,8 @@
       );
 
       button.classList.remove(
-        "item-mushroom"
+        "item-mushroom",
+        "item-stick"
       );
 
       if (item) {
@@ -100,22 +106,42 @@
         );
       }
 
+      const canTakeToHand =
+        !held && Boolean(item);
+
+      const canStashFromHand =
+        Boolean(held) &&
+        !item &&
+        Boolean(
+          LLW.ITEM_DEFS[held.kind]?.pocketable
+        );
+
       button.disabled =
-        !item ||
-        Boolean(LLW.getHeldItem());
+        !(canTakeToHand || canStashFromHand);
+
+      let label = `Pocket ${i + 1}: empty`;
+
+      if (item) {
+        label =
+          `Pocket ${i + 1}: ${LLW.ITEM_DEFS[item.kind].name}`;
+      } else if (canStashFromHand) {
+        label =
+          `Pocket ${i + 1}: empty, tap to stash held ${LLW.ITEM_DEFS[held.kind].name}`;
+      }
 
       button.setAttribute(
         "aria-label",
-        item
-          ? `Pocket ${i + 1}: ${LLW.ITEM_DEFS[item.kind].name}`
-          : `Pocket ${i + 1}: empty`
+        label
       );
     }
   }
 
   function updateContextActions() {
-    const contextAction =
-      LLW.getContextAction();
+    const pickupAction =
+      LLW.getPickupAction();
+
+    const dropAction =
+      LLW.getDropAction();
 
     const useAction =
       LLW.getUseAction();
@@ -123,8 +149,11 @@
     const canRest =
       LLW.canRestAtFire();
 
-    actionButton.hidden =
-      !contextAction;
+    pickupButton.hidden =
+      !pickupAction;
+
+    dropButton.hidden =
+      !dropAction;
 
     useButton.hidden =
       !useAction;
@@ -132,9 +161,14 @@
     restButton.hidden =
       !canRest;
 
-    if (contextAction) {
-      actionButton.textContent =
-        contextAction.label;
+    if (pickupAction) {
+      pickupButton.textContent =
+        pickupAction.label;
+    }
+
+    if (dropAction) {
+      dropButton.textContent =
+        dropAction.label;
     }
 
     if (useAction) {
@@ -282,8 +316,13 @@
     });
 
   bindPress(
-    actionButton,
-    LLW.performContextAction
+    pickupButton,
+    LLW.performPickupAction
+  );
+
+  bindPress(
+    dropButton,
+    LLW.performDropAction
   );
 
   bindPress(
@@ -301,7 +340,7 @@
       Number(button.dataset.pocket);
 
     bindPress(button, () => {
-      LLW.takeFromPocket(pocketIndex);
+      LLW.handlePocketTap(pocketIndex);
     });
   });
 
@@ -352,7 +391,11 @@
       event.preventDefault();
 
       if (!event.repeat) {
-        LLW.performContextAction();
+        if (LLW.getPickupAction()) {
+          LLW.performPickupAction();
+        } else {
+          LLW.performDropAction();
+        }
       }
 
       return;

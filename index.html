@@ -43,13 +43,23 @@
       <div class="carry-hud">
         <div class="context-actions">
           <button
-            id="actionButton"
+            id="pickupButton"
             class="context-action pickup-action"
             type="button"
-            aria-label="Pick up or drop"
+            aria-label="Pick up item"
             hidden
           >
             Pick Up
+          </button>
+
+          <button
+            id="dropButton"
+            class="context-action drop-action"
+            type="button"
+            aria-label="Drop held item"
+            hidden
+          >
+            Drop
           </button>
 
           <button
@@ -74,18 +84,10 @@
         </div>
 
         <div class="pockets" aria-label="Pockets">
-          <button
-            class="pocket-slot"
-            data-pocket="0"
-            type="button"
-            aria-label="Pocket 1"
-          ></button>
-          <button
-            class="pocket-slot"
-            data-pocket="1"
-            type="button"
-            aria-label="Pocket 2"
-          ></button>
+          <button class="pocket-slot" data-pocket="0" type="button" aria-label="Pocket 1"></button>
+          <button class="pocket-slot" data-pocket="1" type="button" aria-label="Pocket 2"></button>
+          <button class="pocket-slot" data-pocket="2" type="button" aria-label="Pocket 3"></button>
+          <button class="pocket-slot" data-pocket="3" type="button" aria-label="Pocket 4"></button>
         </div>
       </div>
     </section>
