@@ -48,10 +48,10 @@ button {
 
 .info-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas:
-    "copy dpad"
-    "hint dpad";
+    "dpad copy"
+    "dpad hint";
   gap: 4px 18px;
   align-items: center;
   padding: 12px 14px;
@@ -94,6 +94,8 @@ button {
   gap: 3px;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
 }
 
 .move-button {
@@ -107,7 +109,11 @@ button {
   line-height: 1;
   padding: 0;
   cursor: pointer;
-  touch-action: manipulation;
+  /* Prevent rapid D-pad taps from becoming iOS double-tap zoom. */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  font-family: Arial, sans-serif;
+  font-variant-emoji: text;
   box-shadow: 0 2px 0 rgba(77, 64, 43, 0.22);
 }
 
@@ -151,8 +157,8 @@ button {
       "dpad"
       "hint";
     align-content: center;
-    justify-items: center;
-    text-align: center;
+    justify-items: start;
+    text-align: left;
     gap: 14px;
     overflow-y: auto;
   }

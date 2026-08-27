@@ -437,11 +437,36 @@ function handleKeyDown(event) {
 }
 
 document.querySelectorAll(".move-button").forEach((button) => {
-  button.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
+  const moveFromButton = () => {
     const dx = Number(button.dataset.dx);
     const dy = Number(button.dataset.dy);
     requestMove(dx, dy);
+  };
+
+  // Touch gets its own non-passive handler so iOS never interprets
+  // rapid D-pad presses as a double-tap zoom gesture.
+  button.addEventListener(
+    "touchstart",
+    (event) => {
+      event.preventDefault();
+      moveFromButton();
+    },
+    { passive: false }
+  );
+
+  // Mouse / trackpad / pen.
+  button.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+
+    event.preventDefault();
+    moveFromButton();
+  });
+
+  // Extra browser fallback.
+  button.addEventListener("dblclick", (event) => {
+    event.preventDefault();
   });
 });
 
