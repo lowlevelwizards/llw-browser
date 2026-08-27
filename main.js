@@ -51,9 +51,10 @@
 
   function updateStatusUI() {
     const game = LLW.state.game;
+    const clock = LLW.time.getClock();
 
     turnStatus.textContent =
-      `Turn ${game.turn}`;
+      `Day ${clock.day} · ${clock.label} · T${game.turn}`;
 
     vitalityPips.innerHTML = "";
 
@@ -74,9 +75,22 @@
       vitalityPips.appendChild(pip);
     }
 
+    if (game.preparedVitality > 0) {
+      const prepared =
+        document.createElement("span");
+
+      prepared.className =
+        "vitality-pip prepared";
+
+      vitalityPips.appendChild(prepared);
+    }
+
     vitalityPips.setAttribute(
       "aria-label",
-      `Vitality ${game.vitality} of ${game.maxVitality}`
+      `Vitality ${game.vitality} of ${game.maxVitality}` +
+      (game.preparedVitality > 0
+        ? ` plus ${game.preparedVitality} prepared`
+        : "")
     );
   }
 
@@ -107,7 +121,8 @@
       button.classList.remove(
         "item-mushroom",
         "item-cooked_mushroom",
-        "item-stick"
+        "item-stick",
+        "item-berries"
       );
 
       if (item) {
@@ -126,12 +141,22 @@
           LLW.ITEM_DEFS[held.kind]?.pocketable
         );
 
+      const canSwap =
+        Boolean(held) &&
+        Boolean(item) &&
+        Boolean(
+          LLW.ITEM_DEFS[held.kind]?.pocketable
+        );
+
       button.disabled =
-        !(canTakeToHand || canStashFromHand);
+        !(canTakeToHand || canStashFromHand || canSwap);
 
       let label = `Pocket ${i + 1}: empty`;
 
-      if (item) {
+      if (canSwap) {
+        label =
+          `Pocket ${i + 1}: ${LLW.ITEM_DEFS[item.kind].name}, tap to swap with held ${LLW.ITEM_DEFS[held.kind].name}`;
+      } else if (item) {
         label =
           `Pocket ${i + 1}: ${LLW.ITEM_DEFS[item.kind].name}`;
       } else if (canStashFromHand) {
@@ -157,7 +182,7 @@
       LLW.getUseAction();
 
     const canRest =
-      LLW.canRestAtFire();
+      LLW.fire.canRest();
 
     pickupButton.hidden =
       !pickupAction;
@@ -342,7 +367,7 @@
 
   bindPress(
     restButton,
-    LLW.restAtFire
+    LLW.fire.rest.bind(LLW.fire)
   );
 
   pocketButtons.forEach((button) => {
@@ -431,7 +456,7 @@
       event.preventDefault();
 
       if (!event.repeat) {
-        LLW.restAtFire();
+        LLW.fire.rest();
       }
     }
   }

@@ -53,6 +53,51 @@
     return -1;
   };
 
+  LLW.getCarryDestinationForKind = function (kind) {
+    if (!LLW.getHeldItem()) {
+      return LLW.heldLocation();
+    }
+
+    if (!LLW.ITEM_DEFS[kind]?.pocketable) {
+      return null;
+    }
+
+    const pocketIndex = LLW.getFirstEmptyPocketIndex();
+
+    if (pocketIndex === -1) {
+      return null;
+    }
+
+    return LLW.pocketLocation(pocketIndex);
+  };
+
+  LLW.canReceiveItem = function (kind) {
+    return Boolean(LLW.getCarryDestinationForKind(kind));
+  };
+
+  LLW.receiveNewItem = function (kind, fromAnchor = { kind: "player" }) {
+    const destination = LLW.getCarryDestinationForKind(kind);
+
+    if (!destination) {
+      return null;
+    }
+
+    const item = LLW.spawnItem(kind, destination);
+
+    LLW.juice.flyItem(
+      item,
+      fromAnchor,
+      { kind: "player" },
+      { bounce: 0.38 }
+    );
+
+    if (destination.kind === "held") {
+      LLW.juice.pulseHeld(360);
+    }
+
+    return item;
+  };
+
   LLW.getWorldItemsAt = function (x, y) {
     return state.items.filter(
       (item) =>
@@ -84,42 +129,10 @@
     );
   };
 
-  LLW.isPlayerOnFire = function () {
-    return (
-      state.player.x === state.firepit.x &&
-      state.player.y === state.firepit.y
-    );
-  };
 
-  LLW.isPlayerBesideFire = function () {
-    const dx = Math.abs(state.player.x - state.firepit.x);
-    const dy = Math.abs(state.player.y - state.firepit.y);
-
-    return Math.max(dx, dy) === 1;
-  };
-
-  LLW.getAdjacentTree = function () {
-    const player = state.player;
-
-    return (
-      state.trees.find((tree) => {
-        const dx = Math.abs(player.x - tree.x);
-        const dy = Math.abs(player.y - tree.y);
-
-        return Math.max(dx, dy) === 1;
-      }) || null
-    );
-  };
-
-  LLW.isTreeForageReady = function (tree) {
-    return (
-      state.game.turn - tree.lastForageTurn >=
-      LLW.CONFIG.treeForageCooldownTurns
-    );
-  };
 
   LLW.advanceTurn = function (amount = 1) {
-    state.game.turn += amount;
+    LLW.time.advanceTurns(amount);
 
     let fireWentOut = false;
 
@@ -190,29 +203,29 @@
       state.firepit.isLit &&
       nextX === state.firepit.x &&
       nextY === state.firepit.y &&
-      !LLW.isPlayerOnFire();
+      !LLW.fire.isPlayerOnFire();
 
     if (enteringBramble) {
-      if (state.game.vitality <= 0) {
+      if (!LLW.vitality.canSpend(1)) {
         LLW.notify(
           "Too worn out to push through the brambles."
         );
         return false;
       }
 
-      state.game.vitality -= 1;
+      LLW.vitality.spend(1);
       LLW.notify("Pushed through brambles. -1 Vitality.");
     }
 
     if (enteringLitFire) {
-      if (state.game.vitality <= 0) {
+      if (!LLW.vitality.canSpend(1)) {
         LLW.notify(
           "You do not have it in you to step into the fire."
         );
         return false;
       }
 
-      state.game.vitality -= 1;
+      LLW.vitality.spend(1);
       LLW.notify("Ow. The fire burns. -1 Vitality.");
     }
 
@@ -454,9 +467,19 @@
       }
 
       held.location = LLW.pocketLocation(pocketIndex);
+      return;
     }
 
-    // Filled hand + filled pocket intentionally does nothing for now.
+    // Filled hand + filled pocket => swap the two physical item instances.
+    if (held && pocketItem) {
+      if (!LLW.ITEM_DEFS[held.kind]?.pocketable) {
+        return;
+      }
+
+      held.location = LLW.pocketLocation(pocketIndex);
+      pocketItem.location = LLW.heldLocation();
+      LLW.juice.pulseHeld();
+    }
   };
 
   function getHeldUseAction() {
@@ -466,37 +489,29 @@
       return null;
     }
 
+    const fireAction = LLW.fire?.getHeldAction(held);
+
+    if (fireAction) {
+      return fireAction;
+    }
+
     if (
-      held.kind === "stick" &&
-      LLW.isPlayerBesideFire() &&
-      !state.firepit.isLit &&
-      state.firepit.sticks < LLW.CONFIG.fireStartSticks
+      (held.kind === "mushroom" || held.kind === "berries") &&
+      LLW.vitality.canRestoreNormal()
     ) {
       return {
-        type: "add_stick",
-        label: "Add",
+        type: "eat_raw_food",
+        label: "Eat",
         item: held
       };
     }
 
     if (
-      held.kind === "mushroom" &&
-      LLW.isPlayerBesideFire() &&
-      state.firepit.isLit
+      held.kind === "cooked_mushroom" &&
+      LLW.vitality.canGainPrepared()
     ) {
       return {
-        type: "cook_mushroom",
-        label: "Cook",
-        item: held
-      };
-    }
-
-    if (
-      held.kind === "mushroom" &&
-      state.game.vitality < state.game.maxVitality
-    ) {
-      return {
-        type: "eat_mushroom",
+        type: "eat_prepared_food",
         label: "Eat",
         item: held
       };
@@ -516,117 +531,27 @@
       return heldAction;
     }
 
-    if (LLW.getHeldItem()) {
-      return null;
-    }
-
-    const tree = LLW.getAdjacentTree();
-
-    if (tree && LLW.isTreeForageReady(tree)) {
-      return {
-        type: "forage_tree",
-        label: "Gather",
-        tree
-      };
-    }
-
-    return null;
+    return LLW.foraging?.getAction() || null;
   };
 
-  function addStickToFire(item) {
+
+  function eatRawFood(item) {
     LLW.removeItem(item.id);
-
-    state.firepit.sticks += 1;
-    LLW.juice.pulseFireStick(state.firepit.sticks - 1);
-
-    if (
-      state.firepit.sticks >=
-      LLW.CONFIG.fireStartSticks
-    ) {
-      state.firepit.sticks =
-        LLW.CONFIG.fireStartSticks;
-
-      state.firepit.isLit = true;
-      state.firepit.burnTurnsRemaining =
-        LLW.CONFIG.fireBurnTurns;
-
-      LLW.notify(
-        `The fire catches. It should burn for about ${LLW.CONFIG.fireBurnTurns} turns.`
-      );
-    } else {
-      LLW.notify(
-        `Added a stick. ${state.firepit.sticks}/${LLW.CONFIG.fireStartSticks}.`
-      );
-    }
-  }
-
-  function eatMushroom(item) {
-    LLW.removeItem(item.id);
-
-    state.game.vitality = Math.min(
-      state.game.maxVitality,
-      state.game.vitality + 1
-    );
-
-    LLW.notify("Ate a mushroom. +1 Vitality.");
-  }
-
-  function cookMushroom(item) {
-    const output = LLW.worldLocation(
-      state.player.x,
-      state.player.y
-    );
-
-    item.kind = "cooked_mushroom";
-    item.location = output;
-
-    const result = LLW.advanceTurn(
-      LLW.CONFIG.cookTurnCost
-    );
-
-    LLW.juice.flyItem(
-      item,
-      { kind: "fire" },
-      { kind: "world", x: output.x, y: output.y },
-      {
-        kind: "cooked_mushroom",
-        delay: 180,
-        duration: 360,
-        bounce: 0.30
-      }
-    );
-
-    LLW.juice.popPile(output.x, output.y, 420);
-
-    if (result.fireWentOut) {
-      LLW.notify(
-        `Cooked a mushroom. +${LLW.CONFIG.cookTurnCost} turns. The fire gutters out.`
-      );
-      return;
-    }
+    LLW.vitality.restore(1);
 
     LLW.notify(
-      `Cooked a mushroom. +${LLW.CONFIG.cookTurnCost} turns.`
+      item.kind === "berries"
+        ? "Ate some berries. +1 Vitality."
+        : "Ate a raw mushroom. +1 Vitality."
     );
   }
 
-  function forageTree(tree) {
-    tree.lastForageTurn = state.game.turn;
-    LLW.juice.wiggleTree(tree.id);
-
-    const foundStick =
-      Math.random() <
-      LLW.CONFIG.treeForageStickChance;
-
-    if (!foundStick) {
-      LLW.notify("Nothing useful has fallen here.");
-      return;
-    }
-
-    LLW.spawnItem("stick", LLW.heldLocation());
-    LLW.juice.pulseHeld();
-    LLW.notify("Found a loose stick.");
+  function eatPreparedFood(item) {
+    LLW.removeItem(item.id);
+    LLW.vitality.grantPrepared(1);
+    LLW.notify("Ate a cooked mushroom. +1 prepared Vitality for today.");
   }
+
 
   LLW.performUseAction = function () {
     const action = LLW.getUseAction();
@@ -635,62 +560,22 @@
       return;
     }
 
-    if (action.type === "add_stick") {
-      addStickToFire(action.item);
+    if (LLW.fire?.perform(action)) {
       return;
     }
 
-    if (action.type === "eat_mushroom") {
-      eatMushroom(action.item);
+    if (action.type === "eat_raw_food") {
+      eatRawFood(action.item);
       return;
     }
 
-    if (action.type === "cook_mushroom") {
-      cookMushroom(action.item);
+    if (action.type === "eat_prepared_food") {
+      eatPreparedFood(action.item);
       return;
     }
 
-    if (action.type === "forage_tree") {
-      forageTree(action.tree);
-    }
+    LLW.foraging?.perform(action);
   };
 
-  LLW.canRestAtFire = function () {
-    return (
-      state.firepit.isLit &&
-      LLW.isPlayerBesideFire() &&
-      !state.player.moving
-    );
-  };
 
-  LLW.restAtFire = function () {
-    if (!LLW.canRestAtFire()) {
-      return;
-    }
-
-    const wasTired =
-      state.game.vitality < state.game.maxVitality;
-
-    state.game.vitality =
-      state.game.maxVitality;
-
-    const result = LLW.advanceTurn(
-      LLW.CONFIG.restTurnCost
-    );
-
-    if (result.fireWentOut) {
-      LLW.notify(
-        wasTired
-          ? "You rest by the fire. Vitality restored, and the fire burns down."
-          : "You sit awhile. The fire burns down."
-      );
-      return;
-    }
-
-    LLW.notify(
-      wasTired
-        ? `You rest by the fire. Vitality restored. +${LLW.CONFIG.restTurnCost} turns.`
-        : `You sit by the fire awhile. +${LLW.CONFIG.restTurnCost} turns.`
-    );
-  };
 })();

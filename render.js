@@ -370,6 +370,7 @@
   }
 
   function drawBushes(
+    now,
     tileSize,
     offsetX,
     offsetY
@@ -396,7 +397,23 @@
         tileSize * 0.12
       );
 
+      const wiggle = LLW.juice.getBushWiggle(
+        bush.id,
+        now
+      );
+
       ctx.save();
+      ctx.translate(
+        centerX + wiggle.shiftX * tileSize,
+        p.y + tileSize * 0.66
+      );
+      ctx.rotate(wiggle.rotation);
+      ctx.scale(wiggle.scale, wiggle.scale);
+      ctx.translate(
+        -centerX,
+        -(p.y + tileSize * 0.66)
+      );
+
       ctx.fillStyle = "#5da24c";
 
       const circles = [
@@ -427,6 +444,29 @@
           Math.PI * 2
         );
         ctx.fill();
+      }
+
+      if (bush.hasBerries) {
+        const berries = [
+          [-0.10, 0.57],
+          [ 0.02, 0.51],
+          [ 0.12, 0.61],
+          [-0.01, 0.66]
+        ];
+
+        ctx.fillStyle = "#7f4055";
+
+        for (const [bx, by] of berries) {
+          ctx.beginPath();
+          ctx.arc(
+            centerX + tileSize * bx,
+            p.y + tileSize * by,
+            tileSize * 0.038,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        }
       }
 
       ctx.restore();
@@ -476,7 +516,10 @@
     );
 
     ctx.save();
-    ctx.translate(centerX, p.y + tileSize * 0.40);
+    ctx.translate(
+      centerX + wiggle.shiftX * tileSize,
+      p.y + tileSize * 0.40
+    );
     ctx.rotate(wiggle.rotation);
     ctx.scale(wiggle.scale, wiggle.scale);
     ctx.translate(-centerX, -(p.y + tileSize * 0.40));
@@ -551,14 +594,14 @@
     const angle =
       hash01(seed, count, 71) * Math.PI * 2;
     const radius =
-      tileSize * (0.10 + hash01(seed, count, 72) * 0.10);
+      tileSize * (0.15 + hash01(seed, count, 72) * 0.14);
 
     return {
       x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius * 0.62,
+      y: Math.sin(angle) * radius * 0.72,
       rotation:
         (hash01(seed, count, 73) - 0.5) *
-        (item.kind === "stick" ? 1.15 : 0.52)
+        (item.kind === "stick" ? 1.45 : 0.92)
     };
   }
 
@@ -649,6 +692,59 @@
     ctx.restore();
   }
 
+  function drawBerryShape(
+    centerX,
+    centerY,
+    tileSize,
+    scale = 1,
+    rotation = 0
+  ) {
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(rotation);
+    ctx.scale(scale, scale);
+
+    ctx.strokeStyle = "#557244";
+    ctx.lineWidth = Math.max(1.5, tileSize * 0.026);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(0, -tileSize * 0.13);
+    ctx.lineTo(tileSize * 0.025, -tileSize * 0.02);
+    ctx.stroke();
+
+    const berryDots = [
+      [-0.075, 0.00],
+      [ 0.075, 0.00],
+      [ 0.000, 0.075]
+    ];
+
+    for (const [x, y] of berryDots) {
+      ctx.fillStyle = "#7f4055";
+      ctx.beginPath();
+      ctx.arc(
+        tileSize * x,
+        tileSize * y,
+        tileSize * 0.085,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(235, 193, 203, 0.45)";
+      ctx.beginPath();
+      ctx.arc(
+        tileSize * (x - 0.022),
+        tileSize * (y - 0.022),
+        tileSize * 0.020,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   function drawWorldItems(
     now,
     tileSize,
@@ -733,6 +829,16 @@
             offset.rotation
           );
         }
+
+        if (item.kind === "berries") {
+          drawBerryShape(
+            centerX,
+            baseY - tileSize * 0.05,
+            tileSize,
+            pileScale,
+            offset.rotation
+          );
+        }
       });
     }
   }
@@ -801,9 +907,17 @@
     // One visible log/stick for each stick currently in the pit.
     const stickAngles = [-0.62, 0.62, 0.05];
 
+    const pendingStickFlights =
+      LLW.juice.countFlightsTo("fire", now, "stick");
+
+    const visibleSticks = Math.max(
+      0,
+      firepit.sticks - pendingStickFlights
+    );
+
     for (
       let i = 0;
-      i < firepit.sticks;
+      i < visibleSticks;
       i++
     ) {
       const stickPulse = LLW.juice.getFireStickPulse(i, now);
@@ -931,6 +1045,16 @@
         tileSize * 0.72,
         heldScale,
         -0.45
+      );
+    }
+
+    if (item.kind === "berries") {
+      drawBerryShape(
+        centerX,
+        baseY - tileSize * 0.03,
+        tileSize * 0.72,
+        heldScale,
+        -0.12
       );
     }
   }
@@ -1126,6 +1250,48 @@
       };
     }
 
+    if (anchor.kind === "tree") {
+      const tree = state.trees.find(
+        (candidate) => candidate.id === anchor.treeId
+      );
+
+      if (tree) {
+        const p = gridToPixel(
+          tree.x,
+          tree.y,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+
+        return {
+          x: p.x + tileSize * 0.5,
+          y: p.y + tileSize * 0.42
+        };
+      }
+    }
+
+    if (anchor.kind === "bush") {
+      const bush = state.bushes.find(
+        (candidate) => candidate.id === anchor.bushId
+      );
+
+      if (bush) {
+        const p = gridToPixel(
+          bush.x,
+          bush.y,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+
+        return {
+          x: p.x + tileSize * 0.5,
+          y: p.y + tileSize * 0.58
+        };
+      }
+    }
+
     if (anchor.kind === "fire") {
       const p = gridToPixel(
         state.firepit.x,
@@ -1184,7 +1350,7 @@
         progress.hop * tileSize;
 
       const rotation =
-        Math.sin(progress.t * Math.PI) * 0.18;
+        Math.sin(progress.t * Math.PI) * 0.34;
 
       if (
         flight.kind === "mushroom" ||
@@ -1209,7 +1375,74 @@
           -0.45 + rotation
         );
       }
+
+      if (flight.kind === "berries") {
+        drawBerryShape(
+          x,
+          y,
+          tileSize,
+          progress.scale,
+          rotation
+        );
+      }
     }
+  }
+
+  function drawDayNightOverlay(
+    width,
+    height,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const lighting = LLW.time.getLighting();
+
+    if (lighting.alpha <= 0) {
+      return;
+    }
+
+    ctx.save();
+    ctx.fillStyle =
+      `rgba(${lighting.color}, ${lighting.alpha})`;
+    ctx.fillRect(0, 0, width, height);
+
+    if (state.firepit.isLit) {
+      const p = gridToPixel(
+        state.firepit.x,
+        state.firepit.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const centerX = p.x + tileSize * 0.5;
+      const centerY = p.y + tileSize * 0.58;
+      const radius = tileSize * 3.0;
+
+      const glow = ctx.createRadialGradient(
+        centerX,
+        centerY,
+        tileSize * 0.25,
+        centerX,
+        centerY,
+        radius
+      );
+
+      glow.addColorStop(0, "rgba(242, 164, 79, 0.30)");
+      glow.addColorStop(0.35, "rgba(231, 136, 66, 0.13)");
+      glow.addColorStop(1, "rgba(231, 136, 66, 0)");
+
+      ctx.globalCompositeOperation = "screen";
+      ctx.fillStyle = glow;
+      ctx.fillRect(
+        centerX - radius,
+        centerY - radius,
+        radius * 2,
+        radius * 2
+      );
+    }
+
+    ctx.restore();
   }
 
   LLW.drawScene = function (now) {
@@ -1262,6 +1495,7 @@
     );
 
     drawBushes(
+      now,
       tileSize,
       offsetX,
       offsetY
@@ -1289,6 +1523,14 @@
 
     drawItemFlights(
       now,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawDayNightOverlay(
+      width,
+      height,
       tileSize,
       offsetX,
       offsetY

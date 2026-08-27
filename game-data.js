@@ -19,7 +19,15 @@
 
     restTurnCost: 4,
     cookTurnCost: 3,
-    pocketCount: 4
+    pocketCount: 4,
+
+    // Prototype clock: 10 turns = 1 hour, 240 turns = one full day cycle.
+    turnsPerHour: 10,
+    hoursPerDay: 24,
+    startHour: 8,
+
+    berryStartChance: 0.5,
+    berryRegrowChancePerDay: 0.4
   };
 
   LLW.ITEM_DEFS = {
@@ -36,6 +44,11 @@
     stick: {
       name: "Stick",
       pocketable: true
+    },
+
+    berries: {
+      name: "Berries",
+      pocketable: true
     }
   };
 
@@ -43,7 +56,9 @@
     game: {
       turn: 0,
       vitality: 3,
-      maxVitality: 3
+      maxVitality: 3,
+      preparedVitality: 0,
+      maxPreparedVitality: 1
     },
 
     player: {
@@ -90,6 +105,7 @@
 
   let nextItemId = 1;
   let nextTreeId = 1;
+  let nextBushId = 1;
 
   LLW.worldLocation = function (x, y) {
     return { kind: "world", x, y };
@@ -226,6 +242,18 @@
     return tree;
   }
 
+  function addBush(x, y) {
+    const bush = {
+      id: `bush_${nextBushId++}`,
+      x,
+      y,
+      hasBerries: Math.random() < LLW.CONFIG.berryStartChance
+    };
+
+    LLW.state.bushes.push(bush);
+    return bush;
+  }
+
   function generateTreesAndBushes() {
     const occupied = buildBaseOccupiedSet();
 
@@ -246,7 +274,7 @@
       const key = LLW.gridKey(bush.x, bush.y);
 
       if (!occupied.has(key)) {
-        LLW.state.bushes.push(bush);
+        addBush(bush.x, bush.y);
         occupied.add(key);
       }
     }
@@ -274,7 +302,7 @@
         break;
       }
 
-      LLW.state.bushes.push(tile);
+      addBush(tile.x, tile.y);
       occupied.add(LLW.gridKey(tile.x, tile.y));
     }
 
@@ -346,9 +374,11 @@
   LLW.createWorld = function () {
     nextItemId = 1;
     nextTreeId = 1;
+    nextBushId = 1;
 
     LLW.state.game.turn = 0;
     LLW.state.game.vitality = LLW.state.game.maxVitality;
+    LLW.state.game.preparedVitality = 0;
 
     const player = LLW.state.player;
     player.x = 2;
