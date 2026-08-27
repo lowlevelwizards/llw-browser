@@ -18,12 +18,18 @@
     treeForageStickChance: 0.5,
 
     restTurnCost: 4,
+    cookTurnCost: 3,
     pocketCount: 4
   };
 
   LLW.ITEM_DEFS = {
     mushroom: {
       name: "Mushroom",
+      pocketable: true
+    },
+
+    cooked_mushroom: {
+      name: "Cooked Mushroom",
       pocketable: true
     },
 

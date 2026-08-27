@@ -32,6 +32,7 @@
     document.getElementById("momentStatus");
 
   let momentStatusTimer = null;
+  const lastPocketItemIds = new Array(LLW.CONFIG.pocketCount).fill(null);
 
   LLW.notify = function (message) {
     if (momentStatusTimer) {
@@ -89,6 +90,14 @@
     ) {
       const button = pocketButtons[i];
       const item = LLW.getPocketItem(i);
+      const itemId = item?.id || null;
+
+      if (lastPocketItemIds[i] !== itemId) {
+        button.classList.remove("slot-pop");
+        void button.offsetWidth;
+        button.classList.add("slot-pop");
+        lastPocketItemIds[i] = itemId;
+      }
 
       button.classList.toggle(
         "occupied",
@@ -97,6 +106,7 @@
 
       button.classList.remove(
         "item-mushroom",
+        "item-cooked_mushroom",
         "item-stick"
       );
 

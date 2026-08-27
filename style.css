@@ -398,3 +398,43 @@ button {
     height: 32px;
   }
 }
+
+
+.pocket-slot.item-cooked_mushroom::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: 7px;
+  height: 12px;
+  transform: translate(-50%, -10%);
+  border-radius: 4px;
+  background: #c39a67;
+  z-index: 1;
+}
+
+.pocket-slot.item-cooked_mushroom::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 43%;
+  width: 22px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  border: none;
+  border-radius: 50% 50% 20% 20%;
+  background: #9f503a;
+  z-index: 2;
+}
+
+@keyframes pocket-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.18) rotate(-2deg); }
+  72% { transform: scale(0.96) rotate(1deg); }
+  100% { transform: scale(1); }
+}
+
+.pocket-slot.slot-pop {
+  animation: pocket-pop 240ms ease-out;
+}
+

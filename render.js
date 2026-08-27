@@ -470,6 +470,17 @@
       tileSize * 0.42
     );
 
+    const wiggle = LLW.juice.getTreeWiggle(
+      tree.id,
+      performance.now()
+    );
+
+    ctx.save();
+    ctx.translate(centerX, p.y + tileSize * 0.40);
+    ctx.rotate(wiggle.rotation);
+    ctx.scale(wiggle.scale, wiggle.scale);
+    ctx.translate(-centerX, -(p.y + tileSize * 0.40));
+
     ctx.fillStyle = "#4f9b4f";
 
     const circles = [
@@ -508,6 +519,7 @@
     }
 
     ctx.restore();
+    ctx.restore();
   }
 
   function drawTrees(
@@ -525,299 +537,120 @@
     }
   }
 
-  function drawMushroomAt(
-    x,
-    y,
-    scale,
-    tileSize,
-    offsetX,
-    offsetY
-  ) {
-    const p = gridToPixel(
-      x,
-      y,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-
-    const centerX =
-      p.x + tileSize * 0.5;
-
-    const baseY =
-      p.y + tileSize * 0.85;
-
-    drawShadow(
-      centerX,
-      baseY,
-      tileSize * 0.2 * scale,
-      tileSize * 0.08 * scale
-    );
-
-    ctx.save();
-
-    ctx.fillStyle = "#d8c49a";
-
-    roundedCapsule(
-      centerX -
-        tileSize * 0.055 * scale,
-      p.y +
-        tileSize * 0.56,
-      tileSize * 0.11 * scale,
-      tileSize * 0.21 * scale,
-      tileSize * 0.045 * scale
-    );
-
-    ctx.fill();
-
-    ctx.fillStyle = "#c63c36";
-
-    const capY =
-      p.y + tileSize * 0.57;
-
-    const capHalfWidth =
-      tileSize * 0.19 * scale;
-
-    const capHeight =
-      tileSize * 0.12 * scale;
-
-    ctx.beginPath();
-    ctx.moveTo(
-      centerX - capHalfWidth,
-      capY
-    );
-    ctx.quadraticCurveTo(
-      centerX,
-      capY - capHeight * 1.7,
-      centerX + capHalfWidth,
-      capY
-    );
-    ctx.lineTo(
-      centerX - capHalfWidth,
-      capY
-    );
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.restore();
+  function itemSeed(item) {
+    const match = String(item.id).match(/(\d+)/);
+    return match ? Number(match[1]) : 1;
   }
 
-  function drawGroundStick(
-    x,
-    y,
-    tileSize,
-    offsetX,
-    offsetY
-  ) {
-    const p = gridToPixel(
-      x,
-      y,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-
-    const centerX =
-      p.x + tileSize * 0.5;
-
-    const centerY =
-      p.y + tileSize * 0.68;
-
-    const rotation =
-      (hash01(x, y, 88) - 0.5) *
-      1.2;
-
-    drawShadow(
-      centerX,
-      centerY + tileSize * 0.12,
-      tileSize * 0.24,
-      tileSize * 0.07
-    );
-
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(rotation);
-    ctx.strokeStyle = "#79553d";
-    ctx.lineWidth =
-      Math.max(3, tileSize * 0.075);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(-tileSize * 0.24, 0);
-    ctx.lineTo(tileSize * 0.24, 0);
-    ctx.stroke();
-
-    ctx.strokeStyle = "#8a6248";
-    ctx.lineWidth =
-      Math.max(2, tileSize * 0.038);
-    ctx.beginPath();
-    ctx.moveTo(tileSize * 0.06, 0);
-    ctx.lineTo(
-      tileSize * 0.17,
-      -tileSize * 0.09
-    );
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  function pileOffset(index, kind, tileSize) {
-    if (index === 0) {
+  function pileOffset(item, index, count, tileSize) {
+    if (count <= 1) {
       return { x: 0, y: 0, rotation: 0 };
     }
 
-    const ring = Math.floor((index - 1) / 6) + 1;
-    const slot = (index - 1) % 6;
-    const angle = (slot / 6) * Math.PI * 2;
-
-    const radius = tileSize * 0.11 * ring;
+    const seed = itemSeed(item);
+    const angle =
+      hash01(seed, count, 71) * Math.PI * 2;
+    const radius =
+      tileSize * (0.10 + hash01(seed, count, 72) * 0.10);
 
     return {
       x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius * 0.65,
+      y: Math.sin(angle) * radius * 0.62,
       rotation:
-        (kind === "stick" ? 0.35 : 0.10) *
-        Math.sin(index * 1.91)
+        (hash01(seed, count, 73) - 0.5) *
+        (item.kind === "stick" ? 1.15 : 0.52)
     };
   }
 
-  function drawMushroomPileItem(
-    x,
-    y,
-    index,
+  function drawMushroomShape(
+    kind,
+    centerX,
+    baseY,
     tileSize,
-    offsetX,
-    offsetY
+    scale = 1,
+    rotation = 0
   ) {
-    const p = gridToPixel(
-      x,
-      y,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-
-    const offset = pileOffset(
-      index,
-      "mushroom",
-      tileSize
-    );
-
-    const centerX =
-      p.x + tileSize * 0.5 + offset.x;
-
-    const baseY =
-      p.y + tileSize * 0.85 + offset.y;
-
-    drawShadow(
-      centerX,
-      baseY,
-      tileSize * 0.18,
-      tileSize * 0.07
-    );
+    const cooked = kind === "cooked_mushroom";
 
     ctx.save();
-    ctx.translate(offset.x, offset.y);
+    ctx.translate(centerX, baseY);
+    ctx.rotate(rotation);
+    ctx.scale(scale, scale);
 
-    ctx.fillStyle = "#d8c49a";
+    const stemWidth = tileSize * 0.11;
+    const stemHeight = tileSize * 0.21;
+
+    ctx.fillStyle = cooked ? "#c39a67" : "#d8c49a";
     roundedCapsule(
-      p.x + tileSize * 0.5 - tileSize * 0.055,
-      p.y + tileSize * 0.56,
-      tileSize * 0.11,
-      tileSize * 0.21,
+      -stemWidth / 2,
+      -stemHeight,
+      stemWidth,
+      stemHeight,
       tileSize * 0.045
     );
     ctx.fill();
 
-    const capY = p.y + tileSize * 0.57;
-    const center = p.x + tileSize * 0.5;
     const capHalfWidth = tileSize * 0.19;
     const capHeight = tileSize * 0.12;
+    const capY = -stemHeight * 0.94;
 
-    ctx.fillStyle = "#c63c36";
+    ctx.fillStyle = cooked ? "#9f503a" : "#c63c36";
     ctx.beginPath();
-    ctx.moveTo(center - capHalfWidth, capY);
+    ctx.moveTo(-capHalfWidth, capY);
     ctx.quadraticCurveTo(
-      center,
+      0,
       capY - capHeight * 1.7,
-      center + capHalfWidth,
+      capHalfWidth,
       capY
     );
-    ctx.lineTo(center - capHalfWidth, capY);
+    ctx.lineTo(-capHalfWidth, capY);
     ctx.closePath();
     ctx.fill();
+
+    if (cooked) {
+      ctx.strokeStyle = "rgba(92, 54, 38, 0.55)";
+      ctx.lineWidth = Math.max(1.5, tileSize * 0.025);
+      ctx.beginPath();
+      ctx.moveTo(-tileSize * 0.08, capY - tileSize * 0.035);
+      ctx.lineTo(tileSize * 0.07, capY - tileSize * 0.055);
+      ctx.stroke();
+    }
 
     ctx.restore();
   }
 
-  function drawStickPileItem(
-    x,
-    y,
-    index,
+  function drawStickShape(
+    centerX,
+    centerY,
     tileSize,
-    offsetX,
-    offsetY
+    scale = 1,
+    rotation = 0
   ) {
-    const p = gridToPixel(
-      x,
-      y,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-
-    const offset = pileOffset(
-      index,
-      "stick",
-      tileSize
-    );
-
-    const centerX =
-      p.x + tileSize * 0.5 + offset.x;
-
-    const centerY =
-      p.y + tileSize * 0.68 + offset.y;
-
-    const baseRotation =
-      (hash01(x, y, 88 + index) - 0.5) *
-      1.2;
-
-    drawShadow(
-      centerX,
-      centerY + tileSize * 0.12,
-      tileSize * 0.22,
-      tileSize * 0.065
-    );
-
     ctx.save();
     ctx.translate(centerX, centerY);
-    ctx.rotate(baseRotation + offset.rotation);
+    ctx.rotate(rotation);
+    ctx.scale(scale, scale);
 
     ctx.strokeStyle = "#79553d";
-    ctx.lineWidth =
-      Math.max(3, tileSize * 0.075);
+    ctx.lineWidth = Math.max(3, tileSize * 0.075);
     ctx.lineCap = "round";
-
     ctx.beginPath();
     ctx.moveTo(-tileSize * 0.24, 0);
     ctx.lineTo(tileSize * 0.24, 0);
     ctx.stroke();
 
     ctx.strokeStyle = "#8a6248";
-    ctx.lineWidth =
-      Math.max(2, tileSize * 0.038);
-
+    ctx.lineWidth = Math.max(2, tileSize * 0.038);
     ctx.beginPath();
     ctx.moveTo(tileSize * 0.06, 0);
-    ctx.lineTo(
-      tileSize * 0.17,
-      -tileSize * 0.09
-    );
+    ctx.lineTo(tileSize * 0.17, -tileSize * 0.09);
     ctx.stroke();
 
     ctx.restore();
   }
 
   function drawWorldItems(
+    now,
     tileSize,
     offsetX,
     offsetY
@@ -839,29 +672,65 @@
     }
 
     for (const items of groups.values()) {
-      // Preserve stable item order, but draw each with a small visible offset.
-      items.forEach((item, index) => {
-        const { x, y } = item.location;
+      if (!items.length) continue;
 
-        if (item.kind === "mushroom") {
-          drawMushroomPileItem(
-            x,
-            y,
-            index,
+      const { x, y } = items[0].location;
+      const p = gridToPixel(
+        x,
+        y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      // A pile owns one shadow, no matter how many individual items occupy it.
+      drawShadow(
+        p.x + tileSize * 0.5,
+        p.y + tileSize * 0.86,
+        tileSize * (0.20 + Math.min(items.length - 1, 4) * 0.035),
+        tileSize * 0.085
+      );
+
+      const pileScale = LLW.juice.getPileScale(x, y, now);
+
+      items.forEach((item, index) => {
+        if (LLW.juice.isItemInFlight(item.id, now)) {
+          return;
+        }
+
+        const offset = pileOffset(
+          item,
+          index,
+          items.length,
+          tileSize
+        );
+
+        const centerX =
+          p.x + tileSize * 0.5 + offset.x;
+        const baseY =
+          p.y + tileSize * 0.77 + offset.y;
+
+        if (
+          item.kind === "mushroom" ||
+          item.kind === "cooked_mushroom"
+        ) {
+          drawMushroomShape(
+            item.kind,
+            centerX,
+            baseY,
             tileSize,
-            offsetX,
-            offsetY
+            pileScale,
+            offset.rotation
           );
         }
 
         if (item.kind === "stick") {
-          drawStickPileItem(
-            x,
-            y,
-            index,
+          drawStickShape(
+            centerX,
+            baseY - tileSize * 0.03,
             tileSize,
-            offsetX,
-            offsetY
+            pileScale,
+            offset.rotation
           );
         }
       });
@@ -937,6 +806,8 @@
       i < firepit.sticks;
       i++
     ) {
+      const stickPulse = LLW.juice.getFireStickPulse(i, now);
+
       ctx.save();
       ctx.translate(
         centerX,
@@ -944,7 +815,8 @@
           tileSize * 0.01 -
           i * tileSize * 0.015
       );
-      ctx.rotate(stickAngles[i] || 0);
+      ctx.rotate((stickAngles[i] || 0) + stickPulse.rotation);
+      ctx.scale(stickPulse.scale, stickPulse.scale);
       ctx.strokeStyle =
         i === 2 ? "#6d4935" : "#79513a";
       ctx.lineWidth =
@@ -1024,85 +896,43 @@
     ctx.restore();
   }
 
-  function drawHeldMushroom(
+  function drawHeldItem(
+    item,
     centerX,
     baseY,
-    tileSize
+    tileSize,
+    now
   ) {
-    ctx.save();
+    if (!item || LLW.juice.isItemInFlight(item.id, now)) {
+      return;
+    }
 
-    const stemWidth =
-      tileSize * 0.07;
+    const heldScale = LLW.juice.getHeldScale(now);
 
-    const stemHeight =
-      tileSize * 0.13;
+    if (
+      item.kind === "mushroom" ||
+      item.kind === "cooked_mushroom"
+    ) {
+      drawMushroomShape(
+        item.kind,
+        centerX,
+        baseY,
+        tileSize * 0.62,
+        heldScale,
+        -0.08
+      );
+      return;
+    }
 
-    ctx.fillStyle = "#d8c49a";
-
-    roundedCapsule(
-      centerX - stemWidth / 2,
-      baseY - stemHeight,
-      stemWidth,
-      stemHeight,
-      stemWidth / 2
-    );
-
-    ctx.fill();
-
-    const capHalfWidth =
-      tileSize * 0.11;
-
-    const capY =
-      baseY - stemHeight * 0.85;
-
-    const capHeight =
-      tileSize * 0.07;
-
-    ctx.fillStyle = "#c63c36";
-    ctx.beginPath();
-    ctx.moveTo(
-      centerX - capHalfWidth,
-      capY
-    );
-    ctx.quadraticCurveTo(
-      centerX,
-      capY - capHeight * 1.7,
-      centerX + capHalfWidth,
-      capY
-    );
-    ctx.lineTo(
-      centerX - capHalfWidth,
-      capY
-    );
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.restore();
-  }
-
-  function drawHeldStick(
-    centerX,
-    baseY,
-    tileSize
-  ) {
-    ctx.save();
-    ctx.translate(centerX, baseY);
-    ctx.rotate(-0.45);
-    ctx.strokeStyle = "#79553d";
-    ctx.lineWidth =
-      Math.max(3, tileSize * 0.065);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(
-      -tileSize * 0.04,
-      tileSize * 0.08
-    );
-    ctx.lineTo(
-      tileSize * 0.30,
-      -tileSize * 0.12
-    );
-    ctx.stroke();
-    ctx.restore();
+    if (item.kind === "stick") {
+      drawStickShape(
+        centerX,
+        baseY - tileSize * 0.03,
+        tileSize * 0.72,
+        heldScale,
+        -0.45
+      );
+    }
   }
 
   function drawPlayer(
@@ -1265,23 +1095,121 @@
 
     const held = LLW.getHeldItem();
 
-    if (held?.kind === "mushroom") {
-      drawHeldMushroom(
-        centerX + tileSize * 0.29,
-        bodyY + tileSize * 0.57,
-        tileSize
-      );
-    }
-
-    if (held?.kind === "stick") {
-      drawHeldStick(
-        centerX + tileSize * 0.24,
-        bodyY + tileSize * 0.58,
-        tileSize
-      );
-    }
+    drawHeldItem(
+      held,
+      centerX + tileSize * 0.29,
+      bodyY + tileSize * 0.58,
+      tileSize,
+      performance.now()
+    );
 
     ctx.restore();
+  }
+
+  function resolveFlightAnchor(
+    anchor,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (anchor.kind === "world") {
+      const p = gridToPixel(
+        anchor.x,
+        anchor.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+      return {
+        x: p.x + tileSize * 0.5,
+        y: p.y + tileSize * 0.77
+      };
+    }
+
+    if (anchor.kind === "fire") {
+      const p = gridToPixel(
+        state.firepit.x,
+        state.firepit.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+      return {
+        x: p.x + tileSize * 0.5,
+        y: p.y + tileSize * 0.53
+      };
+    }
+
+    const p = gridToPixel(
+      state.player.renderX,
+      state.player.renderY,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    return {
+      x: p.x + tileSize * 0.78,
+      y: p.y + tileSize * 0.55
+    };
+  }
+
+  function drawItemFlights(
+    now,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    for (const flight of LLW.juice.getItemFlights(now)) {
+      const progress = LLW.juice.flightProgress(flight, now);
+      if (!progress) continue;
+
+      const from = resolveFlightAnchor(
+        flight.from,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const to = resolveFlightAnchor(
+        flight.to,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const x = LLW.lerp(from.x, to.x, progress.eased);
+      const y =
+        LLW.lerp(from.y, to.y, progress.eased) -
+        progress.hop * tileSize;
+
+      const rotation =
+        Math.sin(progress.t * Math.PI) * 0.18;
+
+      if (
+        flight.kind === "mushroom" ||
+        flight.kind === "cooked_mushroom"
+      ) {
+        drawMushroomShape(
+          flight.kind,
+          x,
+          y,
+          tileSize,
+          progress.scale,
+          rotation
+        );
+      }
+
+      if (flight.kind === "stick") {
+        drawStickShape(
+          x,
+          y,
+          tileSize,
+          progress.scale,
+          -0.45 + rotation
+        );
+      }
+    }
   }
 
   LLW.drawScene = function (now) {
@@ -1346,6 +1274,7 @@
     );
 
     drawWorldItems(
+      now,
       tileSize,
       offsetX,
       offsetY
@@ -1353,6 +1282,13 @@
 
     drawPlayer(
       walkT,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawItemFlights(
+      now,
       tileSize,
       offsetX,
       offsetY

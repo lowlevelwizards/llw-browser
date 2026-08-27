@@ -325,6 +325,10 @@
   }
 
   function canPickUp(item) {
+    if (LLW.juice.isItemInFlight(item.id)) {
+      return false;
+    }
+
     const held = LLW.getHeldItem();
 
     if (!held) {
@@ -384,9 +388,13 @@
     }
 
     const held = LLW.getHeldItem();
+    const from = { ...action.item.location };
 
     if (!held) {
       action.item.location = LLW.heldLocation();
+      LLW.juice.flyItem(action.item, from, { kind: "player" });
+      LLW.juice.popPile(from.x, from.y);
+      LLW.juice.pulseHeld(300);
       return;
     }
 
@@ -397,6 +405,8 @@
     }
 
     action.item.location = LLW.pocketLocation(pocketIndex);
+    LLW.juice.flyItem(action.item, from, { kind: "player" });
+    LLW.juice.popPile(from.x, from.y);
   };
 
   LLW.performDropAction = function () {
@@ -406,11 +416,20 @@
       return;
     }
 
-    // Multiple individual items are allowed to share one world tile.
-    action.item.location = LLW.worldLocation(
+    const to = LLW.worldLocation(
       state.player.x,
       state.player.y
     );
+
+    // Multiple individual items are allowed to share one world tile.
+    action.item.location = to;
+    LLW.juice.flyItem(
+      action.item,
+      { kind: "player" },
+      { kind: "world", x: to.x, y: to.y },
+      { bounce: 0.28 }
+    );
+    LLW.juice.popPile(to.x, to.y, 190);
   };
 
   LLW.handlePocketTap = function (pocketIndex) {
@@ -424,6 +443,7 @@
     // Empty hand + filled pocket => pocket -> hand.
     if (!held && pocketItem) {
       pocketItem.location = LLW.heldLocation();
+      LLW.juice.pulseHeld();
       return;
     }
 
@@ -455,6 +475,18 @@
       return {
         type: "add_stick",
         label: "Add",
+        item: held
+      };
+    }
+
+    if (
+      held.kind === "mushroom" &&
+      LLW.isPlayerBesideFire() &&
+      state.firepit.isLit
+    ) {
+      return {
+        type: "cook_mushroom",
+        label: "Cook",
         item: held
       };
     }
@@ -505,6 +537,7 @@
     LLW.removeItem(item.id);
 
     state.firepit.sticks += 1;
+    LLW.juice.pulseFireStick(state.firepit.sticks - 1);
 
     if (
       state.firepit.sticks >=
@@ -538,8 +571,48 @@
     LLW.notify("Ate a mushroom. +1 Vitality.");
   }
 
+  function cookMushroom(item) {
+    const output = LLW.worldLocation(
+      state.player.x,
+      state.player.y
+    );
+
+    item.kind = "cooked_mushroom";
+    item.location = output;
+
+    const result = LLW.advanceTurn(
+      LLW.CONFIG.cookTurnCost
+    );
+
+    LLW.juice.flyItem(
+      item,
+      { kind: "fire" },
+      { kind: "world", x: output.x, y: output.y },
+      {
+        kind: "cooked_mushroom",
+        delay: 180,
+        duration: 360,
+        bounce: 0.30
+      }
+    );
+
+    LLW.juice.popPile(output.x, output.y, 420);
+
+    if (result.fireWentOut) {
+      LLW.notify(
+        `Cooked a mushroom. +${LLW.CONFIG.cookTurnCost} turns. The fire gutters out.`
+      );
+      return;
+    }
+
+    LLW.notify(
+      `Cooked a mushroom. +${LLW.CONFIG.cookTurnCost} turns.`
+    );
+  }
+
   function forageTree(tree) {
     tree.lastForageTurn = state.game.turn;
+    LLW.juice.wiggleTree(tree.id);
 
     const foundStick =
       Math.random() <
@@ -551,6 +624,7 @@
     }
 
     LLW.spawnItem("stick", LLW.heldLocation());
+    LLW.juice.pulseHeld();
     LLW.notify("Found a loose stick.");
   }
 
@@ -568,6 +642,11 @@
 
     if (action.type === "eat_mushroom") {
       eatMushroom(action.item);
+      return;
+    }
+
+    if (action.type === "cook_mushroom") {
+      cookMushroom(action.item);
       return;
     }
 
