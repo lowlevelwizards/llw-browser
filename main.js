@@ -1,8 +1,18 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const actionButton = document.getElementById("actionButton");
+const pocketButtons = [...document.querySelectorAll(".pocket-slot")];
 
 const PLAYER_ID = "player";
+const POCKET_COUNT = 2;
+
+const heldMovement = {
+  active: false,
+  dx: 0,
+  dy: 0,
+  source: null,
+  key: null
+};
 
 const scene = {
   cols: 12,
@@ -44,6 +54,14 @@ function heldLocation(actorId) {
   return {
     kind: "held",
     actorId
+  };
+}
+
+function pocketLocation(actorId, pocketIndex) {
+  return {
+    kind: "pocket",
+    actorId,
+    pocketIndex
   };
 }
 
@@ -139,6 +157,29 @@ function getHeldMushroom() {
   ) || null;
 }
 
+function getPocketMushroom(pocketIndex) {
+  return scene.mushrooms.find(
+    (mushroom) =>
+      mushroom.location.kind === "pocket" &&
+      mushroom.location.actorId === PLAYER_ID &&
+      mushroom.location.pocketIndex === pocketIndex
+  ) || null;
+}
+
+function getFirstEmptyPocketIndex() {
+  for (let i = 0; i < POCKET_COUNT; i++) {
+    if (!getPocketMushroom(i)) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+function hasCarrySpace() {
+  return !getHeldMushroom() || getFirstEmptyPocketIndex() !== -1;
+}
+
 function getWorldMushroomAt(x, y) {
   return scene.mushrooms.find(
     (mushroom) =>
@@ -148,18 +189,18 @@ function getWorldMushroomAt(x, y) {
   ) || null;
 }
 
-function requestMove(dx, dy) {
+function requestMove(dx, dy, startedAt = performance.now()) {
   const player = scene.player;
 
   if (player.moving) {
-    return;
+    return false;
   }
 
   const nextX = clamp(player.x + dx, 0, scene.cols - 1);
   const nextY = clamp(player.y + dy, 0, scene.rows - 1);
 
   if (nextX === player.x && nextY === player.y) {
-    return;
+    return false;
   }
 
   player.startX = player.renderX;
@@ -167,7 +208,39 @@ function requestMove(dx, dy) {
   player.targetX = nextX;
   player.targetY = nextY;
   player.moving = true;
-  player.moveStartedAt = performance.now();
+  player.moveStartedAt = startedAt;
+
+  return true;
+}
+
+function startHeldMovement(dx, dy, source, key = null) {
+  heldMovement.active = true;
+  heldMovement.dx = dx;
+  heldMovement.dy = dy;
+  heldMovement.source = source;
+  heldMovement.key = key;
+
+  requestMove(dx, dy);
+}
+
+function stopHeldMovement(source, key = null) {
+  if (!heldMovement.active) {
+    return;
+  }
+
+  if (heldMovement.source !== source) {
+    return;
+  }
+
+  if (source === "keyboard" && heldMovement.key !== key) {
+    return;
+  }
+
+  heldMovement.active = false;
+  heldMovement.dx = 0;
+  heldMovement.dy = 0;
+  heldMovement.source = null;
+  heldMovement.key = null;
 }
 
 function updatePlayer(now) {
@@ -196,6 +269,13 @@ function updatePlayer(now) {
     player.renderX = player.x;
     player.renderY = player.y;
     player.moving = false;
+
+    // Holding a direction does not create continuous motion.
+    // It simply starts the next one-tile hop after this hop lands.
+    if (heldMovement.active) {
+      requestMove(heldMovement.dx, heldMovement.dy, now);
+    }
+
     return 0;
   }
 
@@ -209,11 +289,22 @@ function getAvailableAction() {
     return null;
   }
 
+  const mushroomHere = getWorldMushroomAt(player.x, player.y);
+
+  // A mushroom underfoot takes priority. If the hand is occupied,
+  // pickup routes the mushroom into the first empty pocket.
+  if (mushroomHere && hasCarrySpace()) {
+    return {
+      type: "pickup",
+      mushroom: mushroomHere
+    };
+  }
+
   const heldMushroom = getHeldMushroom();
 
   if (heldMushroom) {
-    // Keep individual mushrooms visually distinct: no stacking two on one tile yet.
-    if (getWorldMushroomAt(player.x, player.y)) {
+    // No mushroom stacking on one ground tile yet.
+    if (mushroomHere) {
       return null;
     }
 
@@ -223,29 +314,52 @@ function getAvailableAction() {
     };
   }
 
-  const mushroomHere = getWorldMushroomAt(player.x, player.y);
-
-  if (mushroomHere) {
-    return {
-      type: "pickup",
-      mushroom: mushroomHere
-    };
-  }
-
   return null;
+}
+
+function updatePocketButtons() {
+  for (let i = 0; i < pocketButtons.length; i++) {
+    const button = pocketButtons[i];
+    const mushroom = getPocketMushroom(i);
+
+    button.classList.toggle("occupied", Boolean(mushroom));
+    button.disabled = !mushroom || Boolean(getHeldMushroom());
+
+    button.setAttribute(
+      "aria-label",
+      mushroom
+        ? `Pocket ${i + 1}: mushroom`
+        : `Pocket ${i + 1}: empty`
+    );
+  }
 }
 
 function updateActionButton() {
   const action = getAvailableAction();
+  const held = getHeldMushroom();
+  const mushroomHere = getWorldMushroomAt(
+    scene.player.x,
+    scene.player.y
+  );
 
   if (!action) {
     actionButton.disabled = true;
-    actionButton.textContent = getHeldMushroom() ? "Drop" : "Pick Up";
+
+    if (mushroomHere && !hasCarrySpace()) {
+      actionButton.textContent = "Full";
+    } else {
+      actionButton.textContent = held ? "Drop" : "Pick Up";
+    }
+
+    updatePocketButtons();
     return;
   }
 
   actionButton.disabled = false;
-  actionButton.textContent = action.type === "pickup" ? "Pick Up" : "Drop";
+  actionButton.textContent =
+    action.type === "pickup" ? "Pick Up" : "Drop";
+
+  updatePocketButtons();
 }
 
 function performAction() {
@@ -256,7 +370,20 @@ function performAction() {
   }
 
   if (action.type === "pickup") {
-    action.mushroom.location = heldLocation(PLAYER_ID);
+    if (!getHeldMushroom()) {
+      action.mushroom.location = heldLocation(PLAYER_ID);
+    } else {
+      const pocketIndex = getFirstEmptyPocketIndex();
+
+      if (pocketIndex === -1) {
+        return;
+      }
+
+      action.mushroom.location = pocketLocation(
+        PLAYER_ID,
+        pocketIndex
+      );
+    }
   }
 
   if (action.type === "drop") {
@@ -266,6 +393,21 @@ function performAction() {
     );
   }
 
+  updateActionButton();
+}
+
+function takeFromPocket(pocketIndex) {
+  if (scene.player.moving || getHeldMushroom()) {
+    return;
+  }
+
+  const mushroom = getPocketMushroom(pocketIndex);
+
+  if (!mushroom) {
+    return;
+  }
+
+  mushroom.location = heldLocation(PLAYER_ID);
   updateActionButton();
 }
 
@@ -611,34 +753,56 @@ function drawMushroom(x, y, tileSize, offsetX, offsetY) {
   ctx.restore();
 }
 
-function handleKeyDown(event) {
-  const keyMoves = {
-    ArrowUp: [0, -1],
-    ArrowDown: [0, 1],
-    ArrowLeft: [-1, 0],
-    ArrowRight: [1, 0],
-    w: [0, -1],
-    W: [0, -1],
-    s: [0, 1],
-    S: [0, 1],
-    a: [-1, 0],
-    A: [-1, 0],
-    d: [1, 0],
-    D: [1, 0]
-  };
+const keyMoves = {
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  w: [0, -1],
+  W: [0, -1],
+  s: [0, 1],
+  S: [0, 1],
+  a: [-1, 0],
+  A: [-1, 0],
+  d: [1, 0],
+  D: [1, 0]
+};
 
+function handleKeyDown(event) {
   const move = keyMoves[event.key];
 
   if (move) {
     event.preventDefault();
-    requestMove(move[0], move[1]);
+
+    // Browser key-repeat should not speed the wizard up; the movement
+    // loop itself decides when the next tile-hop begins.
+    if (
+      !event.repeat ||
+      heldMovement.source !== "keyboard" ||
+      heldMovement.key !== event.key
+    ) {
+      startHeldMovement(move[0], move[1], "keyboard", event.key);
+    }
+
     return;
   }
 
   if (event.key === "e" || event.key === "E" || event.code === "Space") {
     event.preventDefault();
-    performAction();
+
+    if (!event.repeat) {
+      performAction();
+    }
   }
+}
+
+function handleKeyUp(event) {
+  if (!keyMoves[event.key]) {
+    return;
+  }
+
+  event.preventDefault();
+  stopHeldMovement("keyboard", event.key);
 }
 
 function bindPress(button, action) {
@@ -666,16 +830,89 @@ function bindPress(button, action) {
 }
 
 document.querySelectorAll(".move-button").forEach((button) => {
-  bindPress(button, () => {
+  const start = () => {
     const dx = Number(button.dataset.dx);
     const dy = Number(button.dataset.dy);
-    requestMove(dx, dy);
+    startHeldMovement(dx, dy, button);
+  };
+
+  const stop = () => {
+    stopHeldMovement(button);
+  };
+
+  button.addEventListener(
+    "touchstart",
+    (event) => {
+      event.preventDefault();
+      start();
+    },
+    { passive: false }
+  );
+
+  button.addEventListener(
+    "touchend",
+    (event) => {
+      event.preventDefault();
+      stop();
+    },
+    { passive: false }
+  );
+
+  button.addEventListener(
+    "touchcancel",
+    (event) => {
+      event.preventDefault();
+      stop();
+    },
+    { passive: false }
+  );
+
+  button.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+
+    event.preventDefault();
+    button.setPointerCapture?.(event.pointerId);
+    start();
+  });
+
+  button.addEventListener("pointerup", (event) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+
+    event.preventDefault();
+    stop();
+  });
+
+  button.addEventListener("pointercancel", stop);
+  button.addEventListener("lostpointercapture", stop);
+
+  button.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+  });
+});
+
+pocketButtons.forEach((button) => {
+  const pocketIndex = Number(button.dataset.pocket);
+
+  bindPress(button, () => {
+    takeFromPocket(pocketIndex);
   });
 });
 
 bindPress(actionButton, performAction);
 
 window.addEventListener("keydown", handleKeyDown, { passive: false });
+window.addEventListener("keyup", handleKeyUp, { passive: false });
+window.addEventListener("blur", () => {
+  heldMovement.active = false;
+  heldMovement.dx = 0;
+  heldMovement.dy = 0;
+  heldMovement.source = null;
+  heldMovement.key = null;
+});
 window.addEventListener("resize", resizeCanvas);
 
 resizeCanvas();
