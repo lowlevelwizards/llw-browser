@@ -111,43 +111,17 @@
     return LLW.getWorldItemsAt(x, y)[0] || null;
   };
 
-  LLW.getTreeAt = function (x, y) {
-    return (
-      state.trees.find(
-        (tree) => tree.x === x && tree.y === y
-      ) || null
-    );
-  };
 
-  LLW.getBramblePatchAt = function (x, y) {
-    return (
-      state.bramblePatches.find((patch) =>
-        patch.tiles.some(
-          (tile) => tile.x === x && tile.y === y
-        )
-      ) || null
-    );
-  };
 
 
 
   LLW.advanceTurn = function (amount = 1) {
     LLW.time.advanceTurns(amount);
 
-    let fireWentOut = false;
-
-    if (state.firepit.isLit) {
-      state.firepit.burnTurnsRemaining -= amount;
-
-      if (state.firepit.burnTurnsRemaining <= 0) {
-        state.firepit.isLit = false;
-        state.firepit.burnTurnsRemaining = 0;
-        state.firepit.sticks = 0;
-        fireWentOut = true;
-      }
-    }
-
-    return { fireWentOut };
+    return (
+      LLW.fire?.advanceTurns(amount) ||
+      { fireWentOut: false, embersWentCold: false }
+    );
   };
 
   LLW.requestMove = function (
@@ -228,6 +202,10 @@
       LLW.vitality.spend(1);
       LLW.notify("Ow. The fire burns. -1 Vitality.");
     }
+
+    // Terrain owns its own physical reaction feedback. Brambles react on
+    // every traversed bramble tile; bushes react whenever walked through.
+    LLW.terrain.reactToTraversal(nextX, nextY);
 
     player.startX = player.renderX;
     player.startY = player.renderY;

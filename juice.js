@@ -4,10 +4,13 @@
   const juice = {
     treeWiggles: new Map(),
     bushWiggles: new Map(),
+    brambleWiggles: new Map(),
     pilePops: new Map(),
     itemFlights: new Map(),
     fireStickPulses: new Map(),
-    heldPulse: null
+    firePulseStartedAt: null,
+    heldPulse: null,
+    nextFlightId: 1
   };
 
   function now() {
@@ -20,7 +23,15 @@
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
   }
 
-  function getVegetationWiggle(map, id, duration, rotationAmount, scaleAmount, at) {
+  function getVegetationWiggle(
+    map,
+    id,
+    duration,
+    rotationAmount,
+    scaleAmount,
+    shiftAmount,
+    at
+  ) {
     const started = map.get(id);
 
     if (started == null || at < started) {
@@ -37,10 +48,27 @@
     const fade = 1 - t;
 
     return {
-      rotation: Math.sin(t * Math.PI * 8) * rotationAmount * fade,
-      scale: 1 + Math.sin(t * Math.PI) * scaleAmount,
-      shiftX: Math.sin(t * Math.PI * 7) * 0.075 * fade
+      rotation:
+        Math.sin(t * Math.PI * 8.5) *
+        rotationAmount *
+        fade,
+      scale:
+        1 +
+        Math.sin(t * Math.PI) *
+        scaleAmount,
+      shiftX:
+        Math.sin(t * Math.PI * 7.5) *
+        shiftAmount *
+        fade
     };
+  }
+
+  function cleanupFlights(at) {
+    for (const [flightId, flight] of juice.itemFlights.entries()) {
+      if (at >= flight.startedAt + flight.duration) {
+        juice.itemFlights.delete(flightId);
+      }
+    }
   }
 
   LLW.juice = {
@@ -52,9 +80,10 @@
       return getVegetationWiggle(
         juice.treeWiggles,
         treeId,
-        540,
-        0.19,
-        0.11,
+        650,
+        0.34,
+        0.20,
+        0.14,
         at
       );
     },
@@ -67,8 +96,25 @@
       return getVegetationWiggle(
         juice.bushWiggles,
         bushId,
-        460,
-        0.16,
+        560,
+        0.28,
+        0.20,
+        0.13,
+        at
+      );
+    },
+
+    wiggleBramble(x, y, delay = 0) {
+      juice.brambleWiggles.set(`${x},${y}`, now() + delay);
+    },
+
+    getBrambleWiggle(x, y, at = now()) {
+      return getVegetationWiggle(
+        juice.brambleWiggles,
+        `${x},${y}`,
+        480,
+        0.32,
+        0.18,
         0.12,
         at
       );
@@ -85,66 +131,60 @@
         return 1;
       }
 
-      const t = (at - started) / 380;
+      const t = (at - started) / 430;
 
       if (t >= 1) {
         juice.pilePops.delete(`${x},${y}`);
         return 1;
       }
 
-      return 1 + Math.sin(t * Math.PI) * 0.28;
+      return 1 + Math.sin(t * Math.PI) * 0.44;
     },
 
     flyItem(item, from, to, options = {}) {
-      juice.itemFlights.set(item.id, {
+      const flightId = `flight_${juice.nextFlightId++}`;
+
+      juice.itemFlights.set(flightId, {
+        flightId,
         itemId: item.id,
         kind: options.kind || item.kind,
         from,
         to,
         startedAt: now() + (options.delay || 0),
-        duration: options.duration || 380,
-        bounce: options.bounce == null ? 0.32 : options.bounce
+        duration: options.duration || 430,
+        bounce:
+          options.bounce == null
+            ? 0.44
+            : options.bounce
       });
+
+      return flightId;
     },
 
     getItemFlights(at = now()) {
-      const active = [];
-
-      for (const [id, flight] of juice.itemFlights.entries()) {
-        const end = flight.startedAt + flight.duration;
-
-        if (at >= end) {
-          juice.itemFlights.delete(id);
-          continue;
-        }
-
-        active.push(flight);
-      }
-
-      return active;
+      cleanupFlights(at);
+      return [...juice.itemFlights.values()];
     },
 
     countFlightsTo(anchorKind, at = now(), itemKind = null) {
-      return this.getItemFlights(at).filter(
+      cleanupFlights(at);
+
+      return [...juice.itemFlights.values()].filter(
         (flight) =>
           flight.to?.kind === anchorKind &&
+          at < flight.startedAt + flight.duration &&
           (!itemKind || flight.kind === itemKind)
       ).length;
     },
 
     isItemInFlight(itemId, at = now()) {
-      const flight = juice.itemFlights.get(itemId);
+      cleanupFlights(at);
 
-      if (!flight) {
-        return false;
-      }
-
-      if (at >= flight.startedAt + flight.duration) {
-        juice.itemFlights.delete(itemId);
-        return false;
-      }
-
-      return true;
+      return [...juice.itemFlights.values()].some(
+        (flight) =>
+          flight.itemId === itemId &&
+          at < flight.startedAt + flight.duration
+      );
     },
 
     flightProgress(flight, at = now()) {
@@ -154,14 +194,17 @@
 
       const t = Math.max(
         0,
-        Math.min(1, (at - flight.startedAt) / flight.duration)
+        Math.min(
+          1,
+          (at - flight.startedAt) / flight.duration
+        )
       );
 
       return {
         t,
         eased: t * t * (3 - 2 * t),
         hop: Math.sin(t * Math.PI) * flight.bounce,
-        scale: 0.84 + easeOutBack(t) * 0.16
+        scale: 0.72 + easeOutBack(t) * 0.28
       };
     },
 
@@ -176,7 +219,7 @@
         return { scale: 1, rotation: 0 };
       }
 
-      const t = (at - startedAt) / 560;
+      const t = (at - startedAt) / 620;
 
       if (t >= 1) {
         juice.fireStickPulses.delete(index);
@@ -186,8 +229,50 @@
       const fade = 1 - t;
 
       return {
-        scale: 1 + Math.sin(t * Math.PI) * 0.34,
-        rotation: Math.sin(t * Math.PI * 7) * 0.24 * fade
+        scale:
+          1 +
+          Math.sin(t * Math.PI) *
+          0.48,
+        rotation:
+          Math.sin(t * Math.PI * 7.5) *
+          0.36 *
+          fade
+      };
+    },
+
+    pulseFire(delay = 0) {
+      juice.firePulseStartedAt = now() + delay;
+    },
+
+    getFirePulse(at = now()) {
+      const startedAt = juice.firePulseStartedAt;
+
+      if (startedAt == null || at < startedAt) {
+        return { scale: 1, rotation: 0, shiftX: 0 };
+      }
+
+      const t = (at - startedAt) / 700;
+
+      if (t >= 1) {
+        juice.firePulseStartedAt = null;
+        return { scale: 1, rotation: 0, shiftX: 0 };
+      }
+
+      const fade = 1 - t;
+
+      return {
+        scale:
+          1 +
+          Math.sin(t * Math.PI) *
+          0.34,
+        rotation:
+          Math.sin(t * Math.PI * 8) *
+          0.10 *
+          fade,
+        shiftX:
+          Math.sin(t * Math.PI * 7) *
+          0.07 *
+          fade
       };
     },
 
@@ -200,14 +285,14 @@
         return 1;
       }
 
-      const t = (at - juice.heldPulse) / 330;
+      const t = (at - juice.heldPulse) / 390;
 
       if (t >= 1) {
         juice.heldPulse = null;
         return 1;
       }
 
-      return 1 + Math.sin(t * Math.PI) * 0.30;
+      return 1 + Math.sin(t * Math.PI) * 0.46;
     }
   };
 })();

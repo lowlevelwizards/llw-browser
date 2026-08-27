@@ -196,6 +196,7 @@
   }
 
   function drawBrambleTile(
+    now,
     x,
     y,
     tileSize,
@@ -261,9 +262,25 @@
       { cx:  0.11, cy:  0.13, size: 0.25, angle: -0.04 }
     ];
 
+    const wiggle =
+      LLW.juice.getBrambleWiggle(
+        x,
+        y,
+        now
+      );
+
     ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(tileRotation);
+    ctx.translate(
+      centerX + wiggle.shiftX * tileSize,
+      centerY
+    );
+    ctx.rotate(
+      tileRotation + wiggle.rotation
+    );
+    ctx.scale(
+      wiggle.scale,
+      wiggle.scale
+    );
     ctx.lineCap = "round";
     ctx.lineWidth =
       Math.max(2, tileSize * 0.055);
@@ -350,6 +367,7 @@
   }
 
   function drawBrambles(
+    now,
     tileSize,
     offsetX,
     offsetY
@@ -359,6 +377,7 @@
     ) {
       for (const tile of patch.tiles) {
         drawBrambleTile(
+          now,
           tile.x,
           tile.y,
           tileSize,
@@ -758,7 +777,8 @@
         continue;
       }
 
-      const key = `${item.location.x},${item.location.y}`;
+      const key =
+        `${item.location.x},${item.location.y}`;
 
       if (!groups.has(key)) {
         groups.set(key, []);
@@ -768,9 +788,22 @@
     }
 
     for (const items of groups.values()) {
-      if (!items.length) continue;
+      const visibleItems =
+        items.filter(
+          (item) =>
+            !LLW.juice.isItemInFlight(
+              item.id,
+              now
+            )
+        );
 
-      const { x, y } = items[0].location;
+      if (!visibleItems.length) {
+        continue;
+      }
+
+      const { x, y } =
+        visibleItems[0].location;
+
       const p = gridToPixel(
         x,
         y,
@@ -779,67 +812,84 @@
         offsetY
       );
 
-      // A pile owns one shadow, no matter how many individual items occupy it.
+      // The pile's shadow arrives with the actual visible pile, never
+      // ahead of a lerping/cooking item.
       drawShadow(
         p.x + tileSize * 0.5,
         p.y + tileSize * 0.86,
-        tileSize * (0.20 + Math.min(items.length - 1, 4) * 0.035),
+        tileSize *
+          (
+            0.20 +
+            Math.min(
+              visibleItems.length - 1,
+              4
+            ) *
+            0.035
+          ),
         tileSize * 0.085
       );
 
-      const pileScale = LLW.juice.getPileScale(x, y, now);
-
-      items.forEach((item, index) => {
-        if (LLW.juice.isItemInFlight(item.id, now)) {
-          return;
-        }
-
-        const offset = pileOffset(
-          item,
-          index,
-          items.length,
-          tileSize
+      const pileScale =
+        LLW.juice.getPileScale(
+          x,
+          y,
+          now
         );
 
-        const centerX =
-          p.x + tileSize * 0.5 + offset.x;
-        const baseY =
-          p.y + tileSize * 0.77 + offset.y;
-
-        if (
-          item.kind === "mushroom" ||
-          item.kind === "cooked_mushroom"
-        ) {
-          drawMushroomShape(
-            item.kind,
-            centerX,
-            baseY,
-            tileSize,
-            pileScale,
-            offset.rotation
+      visibleItems.forEach(
+        (item, index) => {
+          const offset = pileOffset(
+            item,
+            index,
+            visibleItems.length,
+            tileSize
           );
-        }
 
-        if (item.kind === "stick") {
-          drawStickShape(
-            centerX,
-            baseY - tileSize * 0.03,
-            tileSize,
-            pileScale,
-            offset.rotation
-          );
-        }
+          const centerX =
+            p.x +
+            tileSize * 0.5 +
+            offset.x;
 
-        if (item.kind === "berries") {
-          drawBerryShape(
-            centerX,
-            baseY - tileSize * 0.05,
-            tileSize,
-            pileScale,
-            offset.rotation
-          );
+          const baseY =
+            p.y +
+            tileSize * 0.77 +
+            offset.y;
+
+          if (
+            item.kind === "mushroom" ||
+            item.kind === "cooked_mushroom"
+          ) {
+            drawMushroomShape(
+              item.kind,
+              centerX,
+              baseY,
+              tileSize,
+              pileScale,
+              offset.rotation
+            );
+          }
+
+          if (item.kind === "stick") {
+            drawStickShape(
+              centerX,
+              baseY - tileSize * 0.03,
+              tileSize,
+              pileScale,
+              offset.rotation
+            );
+          }
+
+          if (item.kind === "berries") {
+            drawBerryShape(
+              centerX,
+              baseY - tileSize * 0.05,
+              tileSize,
+              pileScale,
+              offset.rotation
+            );
+          }
         }
-      });
+      );
     }
   }
 
@@ -904,15 +954,100 @@
       }
     );
 
-    // One visible log/stick for each stick currently in the pit.
-    const stickAngles = [-0.62, 0.62, 0.05];
+    const emberRatio =
+      LLW.fire.getEmberRatio();
+
+    // Embers sit at the bottom of the pit while burning, then fade slowly
+    // after the flame itself goes out.
+    if (emberRatio > 0) {
+      const emberDots = [
+        [-0.13, 0.00, 0.055],
+        [-0.03, 0.04, 0.060],
+        [ 0.09, 0.01, 0.052],
+        [ 0.15, 0.06, 0.040],
+        [-0.17, 0.07, 0.038]
+      ];
+
+      for (
+        let i = 0;
+        i < emberDots.length;
+        i++
+      ) {
+        const [ex, ey, er] =
+          emberDots[i];
+
+        const twinkle =
+          0.72 +
+          Math.sin(
+            now * 0.013 + i * 1.7
+          ) *
+          0.20;
+
+        ctx.fillStyle =
+          `rgba(238, 91, 33, ${0.35 + emberRatio * 0.55 * twinkle})`;
+
+        ctx.beginPath();
+        ctx.arc(
+          centerX + tileSize * ex,
+          baseY + tileSize * ey,
+          tileSize * er,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+
+        ctx.fillStyle =
+          `rgba(255, 174, 66, ${0.18 + emberRatio * 0.36 * twinkle})`;
+
+        ctx.beginPath();
+        ctx.arc(
+          centerX +
+            tileSize * (ex - 0.012),
+          baseY +
+            tileSize * (ey - 0.012),
+          tileSize * er * 0.48,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+    }
+
+    const firePulse =
+      LLW.juice.getFirePulse(now);
+
+    ctx.save();
+    ctx.translate(
+      centerX +
+        firePulse.shiftX * tileSize,
+      baseY
+    );
+    ctx.rotate(firePulse.rotation);
+    ctx.scale(
+      firePulse.scale,
+      firePulse.scale
+    );
+    ctx.translate(-centerX, -baseY);
+
+    const stickAngles = [
+      -0.68,
+       0.68,
+       0.05,
+      -0.28,
+       0.32
+    ];
 
     const pendingStickFlights =
-      LLW.juice.countFlightsTo("fire", now, "stick");
+      LLW.juice.countFlightsTo(
+        "fire",
+        now,
+        "stick"
+      );
 
     const visibleSticks = Math.max(
       0,
-      firepit.sticks - pendingStickFlights
+      firepit.sticks -
+        pendingStickFlights
     );
 
     for (
@@ -920,93 +1055,135 @@
       i < visibleSticks;
       i++
     ) {
-      const stickPulse = LLW.juice.getFireStickPulse(i, now);
+      const stickPulse =
+        LLW.juice.getFireStickPulse(
+          i,
+          now
+        );
+
+      const row =
+        Math.floor(i / 3);
 
       ctx.save();
       ctx.translate(
         centerX,
         baseY -
           tileSize * 0.01 -
-          i * tileSize * 0.015
+          row * tileSize * 0.04
       );
-      ctx.rotate((stickAngles[i] || 0) + stickPulse.rotation);
-      ctx.scale(stickPulse.scale, stickPulse.scale);
+      ctx.rotate(
+        stickAngles[i] +
+          stickPulse.rotation
+      );
+      ctx.scale(
+        stickPulse.scale,
+        stickPulse.scale
+      );
       ctx.strokeStyle =
-        i === 2 ? "#6d4935" : "#79513a";
+        i % 2 === 0
+          ? "#6d4935"
+          : "#79513a";
       ctx.lineWidth =
-        Math.max(3, tileSize * 0.07);
+        Math.max(
+          3,
+          tileSize * 0.07
+        );
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(-tileSize * 0.17, 0);
-      ctx.lineTo(tileSize * 0.17, 0);
+      ctx.moveTo(
+        -tileSize * 0.17,
+        0
+      );
+      ctx.lineTo(
+        tileSize * 0.17,
+        0
+      );
       ctx.stroke();
       ctx.restore();
     }
 
     if (firepit.isLit) {
-      const flicker =
-        Math.sin(now * 0.014) *
-        tileSize *
-        0.018;
+      const intensity =
+        LLW.fire.getVisualIntensity();
+
+      const sway =
+        Math.sin(now * 0.018) * 0.09 +
+        Math.sin(now * 0.031) * 0.045;
+
+      const flickerScale =
+        1 +
+        Math.sin(now * 0.025) * 0.07 +
+        Math.sin(now * 0.043) * 0.035;
 
       const flameBaseY =
         baseY - tileSize * 0.08;
 
+      ctx.save();
+      ctx.translate(
+        centerX,
+        flameBaseY
+      );
+      ctx.rotate(sway);
+      ctx.scale(
+        intensity * flickerScale,
+        intensity *
+          (
+            0.94 +
+            Math.sin(now * 0.021) *
+            0.07
+          )
+      );
+
       ctx.fillStyle = "#dc6b3e";
       ctx.beginPath();
       ctx.moveTo(
-        centerX,
-        flameBaseY -
-          tileSize * 0.34 -
-          flicker
+        0,
+        -tileSize * 0.30
       );
       ctx.quadraticCurveTo(
-        centerX - tileSize * 0.18,
-        flameBaseY - tileSize * 0.10,
-        centerX - tileSize * 0.10,
-        flameBaseY + tileSize * 0.07
+        -tileSize * 0.18,
+        -tileSize * 0.08,
+        -tileSize * 0.10,
+        tileSize * 0.07
       );
       ctx.quadraticCurveTo(
-        centerX,
-        flameBaseY + tileSize * 0.13,
-        centerX + tileSize * 0.10,
-        flameBaseY + tileSize * 0.07
+        0,
+        tileSize * 0.13,
+        tileSize * 0.10,
+        tileSize * 0.07
       );
       ctx.quadraticCurveTo(
-        centerX + tileSize * 0.18,
-        flameBaseY - tileSize * 0.10,
-        centerX,
-        flameBaseY -
-          tileSize * 0.34 -
-          flicker
+        tileSize * 0.18,
+        -tileSize * 0.08,
+        0,
+        -tileSize * 0.30
       );
       ctx.fill();
 
       ctx.fillStyle = "#e7b84f";
       ctx.beginPath();
       ctx.moveTo(
-        centerX,
-        flameBaseY -
-          tileSize * 0.23 +
-          flicker * 0.4
+        0,
+        -tileSize * 0.20
       );
       ctx.quadraticCurveTo(
-        centerX - tileSize * 0.09,
-        flameBaseY - tileSize * 0.05,
-        centerX,
-        flameBaseY + tileSize * 0.06
+        -tileSize * 0.09,
+        -tileSize * 0.04,
+        0,
+        tileSize * 0.055
       );
       ctx.quadraticCurveTo(
-        centerX + tileSize * 0.09,
-        flameBaseY - tileSize * 0.05,
-        centerX,
-        flameBaseY -
-          tileSize * 0.23 +
-          flicker * 0.4
+        tileSize * 0.09,
+        -tileSize * 0.04,
+        0,
+        -tileSize * 0.20
       );
       ctx.fill();
+
+      ctx.restore();
     }
 
+    ctx.restore();
     ctx.restore();
   }
 
@@ -1417,7 +1594,10 @@
 
       const centerX = p.x + tileSize * 0.5;
       const centerY = p.y + tileSize * 0.58;
-      const radius = tileSize * 3.0;
+      const intensity =
+        LLW.fire.getVisualIntensity();
+      const radius =
+        tileSize * (2.2 + intensity * 1.15);
 
       const glow = ctx.createRadialGradient(
         centerX,
@@ -1489,6 +1669,7 @@
     );
 
     drawBrambles(
+      now,
       tileSize,
       offsetX,
       offsetY

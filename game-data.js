@@ -12,7 +12,9 @@
     randomBushCount: 4,
 
     fireStartSticks: 3,
-    fireBurnTurns: 24,
+    fireMaxSticks: 5,
+    fireBurnTurnsPerStick: 8,
+    fireEmberTurns: 12,
 
     treeForageCooldownTurns: 12,
     treeForageStickChance: 0.5,
@@ -81,7 +83,8 @@
       y: 14,
       sticks: 0,
       isLit: false,
-      burnTurnsRemaining: 0
+      burnTurnsRemaining: 0,
+      emberTurnsRemaining: 0
     },
 
     bramblePatches: [
@@ -394,6 +397,7 @@
     LLW.state.firepit.sticks = 0;
     LLW.state.firepit.isLit = false;
     LLW.state.firepit.burnTurnsRemaining = 0;
+    LLW.state.firepit.emberTurnsRemaining = 0;
 
     LLW.state.trees = [];
     LLW.state.bushes = [];

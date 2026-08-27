@@ -2,6 +2,30 @@
   const LLW = window.LLW;
   const state = LLW.state;
 
+  function maxFuelTurns() {
+    return (
+      LLW.CONFIG.fireMaxSticks *
+      LLW.CONFIG.fireBurnTurnsPerStick
+    );
+  }
+
+  function syncVisibleSticksFromBurn() {
+    if (!state.firepit.isLit) {
+      return;
+    }
+
+    state.firepit.sticks = Math.max(
+      1,
+      Math.min(
+        LLW.CONFIG.fireMaxSticks,
+        Math.ceil(
+          state.firepit.burnTurnsRemaining /
+          LLW.CONFIG.fireBurnTurnsPerStick
+        )
+      )
+    );
+  }
+
   function findOutputTile() {
     const candidates = [];
 
@@ -26,73 +50,198 @@
         }
 
         const playerPenalty =
-          x === state.player.x && y === state.player.y ? 3 : 0;
+          x === state.player.x && y === state.player.y
+            ? 3
+            : 0;
 
         candidates.push({
           x,
           y,
-          score: LLW.getWorldItemsAt(x, y).length + playerPenalty
+          score:
+            LLW.getWorldItemsAt(x, y).length +
+            playerPenalty
         });
       }
     }
 
     candidates.sort((a, b) => a.score - b.score);
-    return candidates[0] || { x: state.player.x, y: state.player.y };
+
+    return (
+      candidates[0] ||
+      { x: state.player.x, y: state.player.y }
+    );
+  }
+
+  function canAcceptStick() {
+    if (state.firepit.isLit) {
+      return (
+        state.firepit.sticks <
+        LLW.CONFIG.fireMaxSticks
+      );
+    }
+
+    if (state.firepit.emberTurnsRemaining > 0) {
+      return true;
+    }
+
+    return (
+      state.firepit.sticks <
+      LLW.CONFIG.fireStartSticks
+    );
   }
 
   function addStick(item) {
-    const stickIndex = state.firepit.sticks;
-    const flightDuration = 420;
+    if (!canAcceptStick()) {
+      return;
+    }
+
+    const flightDuration = 500;
+    const arrivalDelay = flightDuration - 55;
 
     LLW.juice.flyItem(
       item,
       { kind: "player" },
       { kind: "fire" },
-      { duration: flightDuration, bounce: 0.34 }
+      {
+        duration: flightDuration,
+        bounce: 0.48
+      }
     );
 
     LLW.removeItem(item.id);
-    state.firepit.sticks += 1;
-    LLW.juice.pulseFireStick(stickIndex, flightDuration - 40);
 
-    if (state.firepit.sticks >= LLW.CONFIG.fireStartSticks) {
-      state.firepit.sticks = LLW.CONFIG.fireStartSticks;
-      state.firepit.isLit = true;
-      state.firepit.burnTurnsRemaining = LLW.CONFIG.fireBurnTurns;
+    const hadHotEmbers =
+      !state.firepit.isLit &&
+      state.firepit.emberTurnsRemaining > 0;
+
+    if (state.firepit.isLit) {
+      state.firepit.burnTurnsRemaining = Math.min(
+        maxFuelTurns(),
+        state.firepit.burnTurnsRemaining +
+          LLW.CONFIG.fireBurnTurnsPerStick
+      );
+
+      syncVisibleSticksFromBurn();
+
+      LLW.juice.pulseFireStick(
+        Math.max(0, state.firepit.sticks - 1),
+        arrivalDelay
+      );
+      LLW.juice.pulseFire(arrivalDelay);
 
       LLW.notify(
-        `The fire catches. It should burn for about ${LLW.CONFIG.fireBurnTurns} turns.`
+        `Fed the fire. ${state.firepit.sticks}/${LLW.CONFIG.fireMaxSticks} sticks.`
+      );
+      return;
+    }
+
+    if (hadHotEmbers) {
+      state.firepit.isLit = true;
+      state.firepit.emberTurnsRemaining = 0;
+      state.firepit.sticks = 1;
+      state.firepit.burnTurnsRemaining =
+        LLW.CONFIG.fireBurnTurnsPerStick;
+
+      LLW.juice.pulseFireStick(0, arrivalDelay);
+      LLW.juice.pulseFire(arrivalDelay);
+
+      LLW.notify("The hot embers catch. The fire relights.");
+      return;
+    }
+
+    state.firepit.sticks += 1;
+
+    LLW.juice.pulseFireStick(
+      Math.max(0, state.firepit.sticks - 1),
+      arrivalDelay
+    );
+    LLW.juice.pulseFire(arrivalDelay);
+
+    if (
+      state.firepit.sticks >=
+      LLW.CONFIG.fireStartSticks
+    ) {
+      state.firepit.sticks =
+        LLW.CONFIG.fireStartSticks;
+
+      state.firepit.isLit = true;
+      state.firepit.emberTurnsRemaining = 0;
+      state.firepit.burnTurnsRemaining =
+        LLW.CONFIG.fireStartSticks *
+        LLW.CONFIG.fireBurnTurnsPerStick;
+
+      LLW.notify(
+        `The fire catches. ${state.firepit.sticks}/${LLW.CONFIG.fireMaxSticks} sticks burning.`
       );
       return;
     }
 
     LLW.notify(
-      `Added a stick. ${state.firepit.sticks}/${LLW.CONFIG.fireStartSticks}.`
+      `Added a stick. ${state.firepit.sticks}/${LLW.CONFIG.fireStartSticks} to light.`
     );
   }
 
   function cookMushroom(item) {
     const outputTile = findOutputTile();
-    const output = LLW.worldLocation(outputTile.x, outputTile.y);
+    const output = LLW.worldLocation(
+      outputTile.x,
+      outputTile.y
+    );
 
+    const rawKind = item.kind;
+    const inputDuration = 430;
+    const cookPause = 240;
+    const outputDuration = 500;
+    const outputDelay =
+      inputDuration + cookPause;
+    const landingDelay =
+      outputDelay + outputDuration - 25;
+
+    // The item becomes unavailable to custody interactions immediately,
+    // but stays hidden from the destination pile until both animation
+    // segments complete.
     item.kind = "cooked_mushroom";
     item.location = output;
 
-    const result = LLW.advanceTurn(LLW.CONFIG.cookTurnCost);
+    LLW.juice.flyItem(
+      item,
+      { kind: "player" },
+      { kind: "fire" },
+      {
+        kind: rawKind,
+        duration: inputDuration,
+        bounce: 0.38
+      }
+    );
+
+    LLW.juice.pulseFire(inputDuration - 55);
 
     LLW.juice.flyItem(
       item,
       { kind: "fire" },
-      { kind: "world", x: output.x, y: output.y },
+      {
+        kind: "world",
+        x: output.x,
+        y: output.y
+      },
       {
         kind: "cooked_mushroom",
-        delay: 180,
-        duration: 430,
-        bounce: 0.42
+        delay: outputDelay,
+        duration: outputDuration,
+        bounce: 0.56
       }
     );
 
-    LLW.juice.popPile(output.x, output.y, 540);
+    LLW.juice.popPile(
+      output.x,
+      output.y,
+      landingDelay
+    );
+
+    const result =
+      LLW.advanceTurn(
+        LLW.CONFIG.cookTurnCost
+      );
 
     if (result.fireWentOut) {
       LLW.notify(
@@ -115,10 +264,119 @@
     },
 
     isPlayerBesideFire() {
-      const dx = Math.abs(state.player.x - state.firepit.x);
-      const dy = Math.abs(state.player.y - state.firepit.y);
+      const dx = Math.abs(
+        state.player.x - state.firepit.x
+      );
+      const dy = Math.abs(
+        state.player.y - state.firepit.y
+      );
 
       return Math.max(dx, dy) === 1;
+    },
+
+    getMaxFuelTurns() {
+      return maxFuelTurns();
+    },
+
+    getFuelRatio() {
+      if (!state.firepit.isLit) {
+        return 0;
+      }
+
+      return Math.max(
+        0,
+        Math.min(
+          1,
+          state.firepit.burnTurnsRemaining /
+            maxFuelTurns()
+        )
+      );
+    },
+
+    getVisualIntensity() {
+      const ratio = this.getFuelRatio();
+
+      if (ratio <= 0) {
+        return 0;
+      }
+
+      // Even a one-stick ember relight is readable, while five sticks
+      // produce a visibly larger fire.
+      return 0.55 + 0.75 * Math.sqrt(ratio);
+    },
+
+    getEmberRatio() {
+      if (state.firepit.isLit) {
+        return 1;
+      }
+
+      if (state.firepit.emberTurnsRemaining <= 0) {
+        return 0;
+      }
+
+      return Math.max(
+        0,
+        Math.min(
+          1,
+          state.firepit.emberTurnsRemaining /
+            LLW.CONFIG.fireEmberTurns
+        )
+      );
+    },
+
+    advanceTurns(amount = 1) {
+      let remaining = Math.max(0, amount);
+      let fireWentOut = false;
+      let embersWentCold = false;
+
+      if (state.firepit.isLit && remaining > 0) {
+        if (
+          state.firepit.burnTurnsRemaining >
+          remaining
+        ) {
+          state.firepit.burnTurnsRemaining -=
+            remaining;
+          remaining = 0;
+          syncVisibleSticksFromBurn();
+        } else {
+          remaining -=
+            state.firepit.burnTurnsRemaining;
+
+          state.firepit.burnTurnsRemaining = 0;
+          state.firepit.isLit = false;
+          state.firepit.sticks = 0;
+          state.firepit.emberTurnsRemaining =
+            LLW.CONFIG.fireEmberTurns;
+          fireWentOut = true;
+        }
+      }
+
+      if (
+        !state.firepit.isLit &&
+        state.firepit.emberTurnsRemaining > 0 &&
+        remaining > 0
+      ) {
+        const before =
+          state.firepit.emberTurnsRemaining;
+
+        state.firepit.emberTurnsRemaining =
+          Math.max(
+            0,
+            before - remaining
+          );
+
+        if (
+          before > 0 &&
+          state.firepit.emberTurnsRemaining === 0
+        ) {
+          embersWentCold = true;
+        }
+      }
+
+      return {
+        fireWentOut,
+        embersWentCold
+      };
     },
 
     getHeldAction(held) {
@@ -129,8 +387,7 @@
       if (
         held.kind === "stick" &&
         this.isPlayerBesideFire() &&
-        !state.firepit.isLit &&
-        state.firepit.sticks < LLW.CONFIG.fireStartSticks
+        canAcceptStick()
       ) {
         return {
           type: "add_stick",
@@ -186,17 +443,21 @@
       }
 
       const wasTired =
-        state.game.vitality < state.game.maxVitality;
+        state.game.vitality <
+        state.game.maxVitality;
 
       LLW.vitality.restoreNormalToFull();
 
-      const result = LLW.advanceTurn(LLW.CONFIG.restTurnCost);
+      const result =
+        LLW.advanceTurn(
+          LLW.CONFIG.restTurnCost
+        );
 
       if (result.fireWentOut) {
         LLW.notify(
           wasTired
-            ? "You rest by the fire. Vitality restored, and the fire burns down."
-            : "You sit awhile. The fire burns down."
+            ? "You rest by the fire. Vitality restored, and the fire burns down to hot embers."
+            : "You sit awhile. The fire burns down to hot embers."
         );
         return;
       }
