@@ -18,7 +18,7 @@
     <section class="info-panel">
       <div class="info-copy">
         <h1>Low Level Wizards</h1>
-        <p>Second brick: move through the little field.</p>
+        <p>Third brick: things can be picked up and put down.</p>
       </div>
 
       <div class="dpad" aria-label="Movement controls">
@@ -28,7 +28,17 @@
         <button class="move-button right" data-dx="1" data-dy="0" aria-label="Move right">▶︎</button>
       </div>
 
-      <p class="control-hint">Arrow buttons · keyboard arrows · WASD</p>
+      <button
+        id="actionButton"
+        class="action-button"
+        type="button"
+        aria-label="Pick up or drop"
+        disabled
+      >
+        Pick Up
+      </button>
+
+      <p class="control-hint">Move: arrows / WASD · Act: E / Space</p>
     </section>
   </main>
 

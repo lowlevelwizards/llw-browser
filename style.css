@@ -48,11 +48,11 @@ button {
 
 .info-panel {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    "dpad copy"
-    "dpad hint";
-  gap: 4px 18px;
+    "dpad copy action"
+    "dpad hint action";
+  gap: 4px 12px;
   align-items: center;
   padding: 12px 14px;
 }
@@ -123,6 +123,41 @@ button {
   background: #ddd2b5;
 }
 
+
+.action-button {
+  grid-area: action;
+  align-self: center;
+  width: 72px;
+  height: 72px;
+  appearance: none;
+  border: 2px solid #7c6d52;
+  border-radius: 50%;
+  background: #d9b96e;
+  color: #344322;
+  font-family: Arial, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.05;
+  text-transform: uppercase;
+  padding: 8px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  box-shadow: 0 3px 0 rgba(77, 64, 43, 0.25);
+}
+
+.action-button:not(:disabled):active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(77, 64, 43, 0.2);
+}
+
+.action-button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
 .move-button.up {
   grid-column: 2;
   grid-row: 1;
@@ -155,6 +190,7 @@ button {
     grid-template-areas:
       "copy"
       "dpad"
+      "action"
       "hint";
     align-content: center;
     justify-items: start;
@@ -171,7 +207,13 @@ button {
   }
 
   .info-panel {
-    gap: 4px 10px;
+    gap: 4px 8px;
+  }
+
+  .action-button {
+    width: 62px;
+    height: 62px;
+    font-size: 0.72rem;
   }
 
   .control-hint {

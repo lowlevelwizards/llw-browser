@@ -1,11 +1,15 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+const actionButton = document.getElementById("actionButton");
+
+const PLAYER_ID = "player";
 
 const scene = {
   cols: 12,
   rows: 16,
 
   player: {
+    id: PLAYER_ID,
     x: 5,
     y: 10,
     renderX: 5,
@@ -24,8 +28,61 @@ const scene = {
     { x: 3, y: 6 },
     { x: 2, y: 11 }
   ],
-  mushroom: { x: 7, y: 9 }
+
+  mushrooms: []
 };
+
+function worldLocation(x, y) {
+  return {
+    kind: "world",
+    x,
+    y
+  };
+}
+
+function heldLocation(actorId) {
+  return {
+    kind: "held",
+    actorId
+  };
+}
+
+function gridKey(x, y) {
+  return `${x},${y}`;
+}
+
+function makeRandomMushrooms(count) {
+  const blocked = new Set([
+    gridKey(scene.player.x, scene.player.y),
+    gridKey(scene.tree.x, scene.tree.y),
+    ...scene.bushes.map((bush) => gridKey(bush.x, bush.y))
+  ]);
+
+  const mushrooms = [];
+
+  for (let i = 0; i < count; i++) {
+    let x;
+    let y;
+    let key;
+
+    do {
+      x = Math.floor(Math.random() * scene.cols);
+      y = Math.floor(Math.random() * scene.rows);
+      key = gridKey(x, y);
+    } while (blocked.has(key));
+
+    blocked.add(key);
+
+    mushrooms.push({
+      id: `mushroom_${i + 1}`,
+      location: worldLocation(x, y)
+    });
+  }
+
+  return mushrooms;
+}
+
+scene.mushrooms = makeRandomMushrooms(3);
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
@@ -72,6 +129,23 @@ function lerp(a, b, t) {
 
 function smoothstep(t) {
   return t * t * (3 - 2 * t);
+}
+
+function getHeldMushroom() {
+  return scene.mushrooms.find(
+    (mushroom) =>
+      mushroom.location.kind === "held" &&
+      mushroom.location.actorId === PLAYER_ID
+  ) || null;
+}
+
+function getWorldMushroomAt(x, y) {
+  return scene.mushrooms.find(
+    (mushroom) =>
+      mushroom.location.kind === "world" &&
+      mushroom.location.x === x &&
+      mushroom.location.y === y
+  ) || null;
 }
 
 function requestMove(dx, dy) {
@@ -128,6 +202,73 @@ function updatePlayer(now) {
   return rawT;
 }
 
+function getAvailableAction() {
+  const player = scene.player;
+
+  if (player.moving) {
+    return null;
+  }
+
+  const heldMushroom = getHeldMushroom();
+
+  if (heldMushroom) {
+    // Keep individual mushrooms visually distinct: no stacking two on one tile yet.
+    if (getWorldMushroomAt(player.x, player.y)) {
+      return null;
+    }
+
+    return {
+      type: "drop",
+      mushroom: heldMushroom
+    };
+  }
+
+  const mushroomHere = getWorldMushroomAt(player.x, player.y);
+
+  if (mushroomHere) {
+    return {
+      type: "pickup",
+      mushroom: mushroomHere
+    };
+  }
+
+  return null;
+}
+
+function updateActionButton() {
+  const action = getAvailableAction();
+
+  if (!action) {
+    actionButton.disabled = true;
+    actionButton.textContent = getHeldMushroom() ? "Drop" : "Pick Up";
+    return;
+  }
+
+  actionButton.disabled = false;
+  actionButton.textContent = action.type === "pickup" ? "Pick Up" : "Drop";
+}
+
+function performAction() {
+  const action = getAvailableAction();
+
+  if (!action) {
+    return;
+  }
+
+  if (action.type === "pickup") {
+    action.mushroom.location = heldLocation(PLAYER_ID);
+  }
+
+  if (action.type === "drop") {
+    action.mushroom.location = worldLocation(
+      scene.player.x,
+      scene.player.y
+    );
+  }
+
+  updateActionButton();
+}
+
 function draw(now) {
   const walkT = updatePlayer(now);
   const { width, height, tileSize, mapWidth, mapHeight, offsetX, offsetY } =
@@ -143,8 +284,23 @@ function draw(now) {
   drawGrid(tileSize, offsetX, offsetY);
   drawBushes(tileSize, offsetX, offsetY);
   drawTree(scene.tree, tileSize, offsetX, offsetY);
-  drawMushroom(scene.mushroom, tileSize, offsetX, offsetY);
+
+  for (const mushroom of scene.mushrooms) {
+    if (mushroom.location.kind !== "world") {
+      continue;
+    }
+
+    drawMushroom(
+      mushroom.location.x,
+      mushroom.location.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+  }
+
   drawPlayer(scene.player, walkT, tileSize, offsetX, offsetY);
+  updateActionButton();
 }
 
 function animate(now) {
@@ -196,6 +352,42 @@ function roundedCapsule(x, y, width, height, radius) {
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+
+function drawTinyHeldMushroom(centerX, baseY, tileSize) {
+  ctx.save();
+
+  const stemWidth = tileSize * 0.07;
+  const stemHeight = tileSize * 0.13;
+
+  ctx.fillStyle = "#d8c49a";
+  roundedCapsule(
+    centerX - stemWidth / 2,
+    baseY - stemHeight,
+    stemWidth,
+    stemHeight,
+    stemWidth / 2
+  );
+  ctx.fill();
+
+  const capHalfWidth = tileSize * 0.11;
+  const capY = baseY - stemHeight * 0.85;
+  const capHeight = tileSize * 0.07;
+
+  ctx.fillStyle = "#c63c36";
+  ctx.beginPath();
+  ctx.moveTo(centerX - capHalfWidth, capY);
+  ctx.quadraticCurveTo(
+    centerX,
+    capY - capHeight * 1.7,
+    centerX + capHalfWidth,
+    capY
+  );
+  ctx.lineTo(centerX - capHalfWidth, capY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
 }
 
 function drawPlayer(player, walkT, tileSize, offsetX, offsetY) {
@@ -302,6 +494,15 @@ function drawPlayer(player, walkT, tileSize, offsetX, offsetY) {
   );
   ctx.fill();
 
+  // The held mushroom visibly travels with the body and its hop.
+  if (getHeldMushroom()) {
+    drawTinyHeldMushroom(
+      centerX + tileSize * 0.29,
+      bodyY + tileSize * 0.57,
+      tileSize
+    );
+  }
+
   ctx.restore();
 }
 
@@ -368,8 +569,8 @@ function drawBushes(tileSize, offsetX, offsetY) {
   }
 }
 
-function drawMushroom(mushroom, tileSize, offsetX, offsetY) {
-  const p = gridToPixel(mushroom.x, mushroom.y, tileSize, offsetX, offsetY);
+function drawMushroom(x, y, tileSize, offsetX, offsetY) {
+  const p = gridToPixel(x, y, tileSize, offsetX, offsetY);
 
   const centerX = p.x + tileSize * 0.5;
   const baseY = p.y + tileSize * 0.85;
@@ -428,50 +629,55 @@ function handleKeyDown(event) {
 
   const move = keyMoves[event.key];
 
-  if (!move) {
+  if (move) {
+    event.preventDefault();
+    requestMove(move[0], move[1]);
     return;
   }
 
-  event.preventDefault();
-  requestMove(move[0], move[1]);
+  if (event.key === "e" || event.key === "E" || event.code === "Space") {
+    event.preventDefault();
+    performAction();
+  }
 }
 
-document.querySelectorAll(".move-button").forEach((button) => {
-  const moveFromButton = () => {
-    const dx = Number(button.dataset.dx);
-    const dy = Number(button.dataset.dy);
-    requestMove(dx, dy);
-  };
-
-  // Touch gets its own non-passive handler so iOS never interprets
-  // rapid D-pad presses as a double-tap zoom gesture.
+function bindPress(button, action) {
   button.addEventListener(
     "touchstart",
     (event) => {
       event.preventDefault();
-      moveFromButton();
+      action();
     },
     { passive: false }
   );
 
-  // Mouse / trackpad / pen.
   button.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "touch") {
       return;
     }
 
     event.preventDefault();
-    moveFromButton();
+    action();
   });
 
-  // Extra browser fallback.
   button.addEventListener("dblclick", (event) => {
     event.preventDefault();
   });
+}
+
+document.querySelectorAll(".move-button").forEach((button) => {
+  bindPress(button, () => {
+    const dx = Number(button.dataset.dx);
+    const dy = Number(button.dataset.dy);
+    requestMove(dx, dy);
+  });
 });
+
+bindPress(actionButton, performAction);
 
 window.addEventListener("keydown", handleKeyDown, { passive: false });
 window.addEventListener("resize", resizeCanvas);
 
 resizeCanvas();
+updateActionButton();
 requestAnimationFrame(animate);
