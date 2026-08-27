@@ -15,7 +15,11 @@
       <canvas id="gameCanvas"></canvas>
 
       <div class="hud hud-top-left" aria-label="Vitality">
-        <span id="vitalityPips" class="vitality-pips" aria-label="Vitality 3 of 3"></span>
+        <span
+          id="vitalityPips"
+          class="vitality-pips"
+          aria-label="Vitality 3 of 3"
+        ></span>
       </div>
 
       <div class="hud hud-top-right">
@@ -52,7 +56,7 @@
             id="useButton"
             class="context-action use-action"
             type="button"
-            aria-label="Use held item"
+            aria-label="Use held item or nearby thing"
             hidden
           >
             Use
@@ -87,6 +91,10 @@
     </section>
   </main>
 
+  <!-- Flat files on purpose: easy to edit from a phone, no module server required. -->
+  <script src="game-data.js"></script>
+  <script src="systems.js"></script>
+  <script src="render.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

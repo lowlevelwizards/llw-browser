@@ -1,1336 +1,437 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-const actionButton = document.getElementById("actionButton");
-const useButton = document.getElementById("useButton");
-const restButton = document.getElementById("restButton");
-const pocketButtons = [...document.querySelectorAll(".pocket-slot")];
-const turnStatus = document.getElementById("turnStatus");
-const vitalityPips = document.getElementById("vitalityPips");
-const momentStatus = document.getElementById("momentStatus");
+(function () {
+  const LLW = window.LLW;
 
-const PLAYER_ID = "player";
-const POCKET_COUNT = 2;
+  const canvas =
+    document.getElementById("gameCanvas");
 
+  const actionButton =
+    document.getElementById("actionButton");
 
-const heldMovement = {
-  active: false,
-  dx: 0,
-  dy: 0,
-  source: null,
-  key: null
-};
+  const useButton =
+    document.getElementById("useButton");
 
+  const restButton =
+    document.getElementById("restButton");
 
-const gameState = {
-  turn: 0,
-  vitality: 3,
-  maxVitality: 3
-};
-
-let momentStatusTimer = null;
-
-const scene = {
-  cols: 12,
-  rows: 16,
-
-  player: {
-    id: PLAYER_ID,
-    x: 2,
-    y: 13,
-    renderX: 2,
-    renderY: 13,
-    startX: 2,
-    startY: 13,
-    targetX: 2,
-    targetY: 13,
-    moving: false,
-    moveStartedAt: 0,
-    moveDuration: 190
-  },
-
-  firepit: { x: 2, y: 14 },
-
-  tree: { x: 8, y: 4 },
-  bushes: [
-    { x: 3, y: 6 },
-    { x: 2, y: 11 }
-  ],
-
-  bramblePatches: [
-    {
-      id: "bramble_patch_1",
-      tiles: [
-        { x: 6, y: 8 }, { x: 7, y: 8 }, { x: 8, y: 8 },
-        { x: 6, y: 9 }, { x: 7, y: 9 }, { x: 8, y: 9 },
-        { x: 6, y: 10 }, { x: 7, y: 10 }, { x: 8, y: 10 },
-        { x: 6, y: 11 }, { x: 7, y: 11 }, { x: 8, y: 11 }
-      ]
-    }
-  ],
-
-  mushrooms: []
-};
-
-function worldLocation(x, y) {
-  return {
-    kind: "world",
-    x,
-    y
-  };
-}
-
-function heldLocation(actorId) {
-  return {
-    kind: "held",
-    actorId
-  };
-}
-
-function pocketLocation(actorId, pocketIndex) {
-  return {
-    kind: "pocket",
-    actorId,
-    pocketIndex
-  };
-}
-
-function gridKey(x, y) {
-  return `${x},${y}`;
-}
-
-function makeRandomMushrooms(count) {
-  const blocked = new Set([
-    gridKey(scene.player.x, scene.player.y),
-    gridKey(scene.firepit.x, scene.firepit.y),
-    gridKey(scene.tree.x, scene.tree.y),
-    ...scene.bushes.map((bush) => gridKey(bush.x, bush.y)),
-    ...scene.bramblePatches.flatMap((patch) =>
-      patch.tiles.map((tile) => gridKey(tile.x, tile.y))
+  const pocketButtons = [
+    ...document.querySelectorAll(
+      ".pocket-slot"
     )
-  ]);
+  ];
 
-  const mushrooms = [];
+  const turnStatus =
+    document.getElementById("turnStatus");
 
-  for (let i = 0; i < count; i++) {
-    let x;
-    let y;
-    let key;
+  const vitalityPips =
+    document.getElementById("vitalityPips");
 
-    do {
-      x = Math.floor(Math.random() * scene.cols);
-      y = Math.floor(Math.random() * scene.rows);
-      key = gridKey(x, y);
-    } while (blocked.has(key));
+  const momentStatus =
+    document.getElementById("momentStatus");
 
-    blocked.add(key);
+  let momentStatusTimer = null;
 
-    mushrooms.push({
-      id: `mushroom_${i + 1}`,
-      location: worldLocation(x, y)
-    });
-  }
-
-  return mushrooms;
-}
-
-scene.mushrooms = makeRandomMushrooms(3);
-
-
-function advanceTurn() {
-  gameState.turn += 1;
-  updateStatusUI();
-}
-
-function setMomentStatus(message) {
-  if (momentStatusTimer) {
-    clearTimeout(momentStatusTimer);
-  }
-
-  momentStatus.textContent = message;
-  momentStatus.hidden = false;
-
-  momentStatusTimer = setTimeout(() => {
-    momentStatus.hidden = true;
-    momentStatus.textContent = "";
-    momentStatusTimer = null;
-  }, 1700);
-}
-
-function updateStatusUI() {
-  turnStatus.textContent = `Turn ${gameState.turn}`;
-
-  vitalityPips.innerHTML = "";
-
-  for (let i = 0; i < gameState.maxVitality; i++) {
-    const pip = document.createElement("span");
-    pip.className = "vitality-pip";
-
-    if (i < gameState.vitality) {
-      pip.classList.add("filled");
+  LLW.notify = function (message) {
+    if (momentStatusTimer) {
+      clearTimeout(momentStatusTimer);
     }
 
-    vitalityPips.appendChild(pip);
-  }
+    momentStatus.textContent = message;
+    momentStatus.hidden = false;
 
-  vitalityPips.setAttribute(
-    "aria-label",
-    `Vitality ${gameState.vitality} of ${gameState.maxVitality}`
-  );
-}
-
-function canUseHeldItem() {
-  return (
-    Boolean(getHeldMushroom()) &&
-    !scene.player.moving &&
-    gameState.vitality < gameState.maxVitality
-  );
-}
-
-function useHeldItem() {
-  if (!canUseHeldItem()) {
-    return;
-  }
-
-  const mushroom = getHeldMushroom();
-
-  // A mushroom restores short-term bodily reserve. It does not heal wounds.
-  scene.mushrooms = scene.mushrooms.filter(
-    (candidate) => candidate.id !== mushroom.id
-  );
-
-  gameState.vitality = Math.min(
-    gameState.maxVitality,
-    gameState.vitality + 1
-  );
-
-  updateStatusUI();
-  updateActionButton();
-  setMomentStatus("Ate a mushroom. +1 Vitality.");
-}
-
-
-function isPlayerOnFire() {
-  return (
-    scene.player.x === scene.firepit.x &&
-    scene.player.y === scene.firepit.y
-  );
-}
-
-function isPlayerBesideFire() {
-  const dx = Math.abs(scene.player.x - scene.firepit.x);
-  const dy = Math.abs(scene.player.y - scene.firepit.y);
-
-  // Any of the eight neighboring tiles, including diagonals.
-  return Math.max(dx, dy) === 1;
-}
-
-function canRestAtFire() {
-  return isPlayerBesideFire() && !scene.player.moving;
-}
-
-function restAtFire() {
-  if (!canRestAtFire()) {
-    return;
-  }
-
-  const wasTired = gameState.vitality < gameState.maxVitality;
-
-  gameState.vitality = gameState.maxVitality;
-  gameState.turn += 4;
-
-  updateStatusUI();
-  updateActionButton();
-
-  setMomentStatus(
-    wasTired
-      ? "You rest by the fire. Vitality restored. +4 turns."
-      : "You sit by the fire awhile. +4 turns."
-  );
-}
-
-function getBramblePatchAt(x, y) {
-  return scene.bramblePatches.find((patch) =>
-    patch.tiles.some((tile) => tile.x === x && tile.y === y)
-  ) || null;
-}
-
-
-function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-
-  canvas.width = Math.floor(rect.width * dpr);
-  canvas.height = Math.floor(rect.height * dpr);
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.scale(dpr, dpr);
-}
-
-function getLayout() {
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
-
-  const tileSize = Math.floor(
-    Math.min(width / scene.cols, height / scene.rows)
-  );
-
-  const mapWidth = tileSize * scene.cols;
-  const mapHeight = tileSize * scene.rows;
-
-  const offsetX = Math.floor((width - mapWidth) / 2);
-  const offsetY = Math.floor((height - mapHeight) / 2);
-
-  return { width, height, tileSize, mapWidth, mapHeight, offsetX, offsetY };
-}
-
-function gridToPixel(x, y, tileSize, offsetX, offsetY) {
-  return {
-    x: offsetX + x * tileSize,
-    y: offsetY + y * tileSize
+    momentStatusTimer = setTimeout(() => {
+      momentStatus.hidden = true;
+      momentStatus.textContent = "";
+      momentStatusTimer = null;
+    }, 1700);
   };
-}
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
+  function updateStatusUI() {
+    const game = LLW.state.game;
 
-function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
+    turnStatus.textContent =
+      `Turn ${game.turn}`;
 
-function smoothstep(t) {
-  return t * t * (3 - 2 * t);
-}
+    vitalityPips.innerHTML = "";
 
-function getHeldMushroom() {
-  return scene.mushrooms.find(
-    (mushroom) =>
-      mushroom.location.kind === "held" &&
-      mushroom.location.actorId === PLAYER_ID
-  ) || null;
-}
+    for (
+      let i = 0;
+      i < game.maxVitality;
+      i++
+    ) {
+      const pip =
+        document.createElement("span");
 
-function getPocketMushroom(pocketIndex) {
-  return scene.mushrooms.find(
-    (mushroom) =>
-      mushroom.location.kind === "pocket" &&
-      mushroom.location.actorId === PLAYER_ID &&
-      mushroom.location.pocketIndex === pocketIndex
-  ) || null;
-}
+      pip.className = "vitality-pip";
 
-function getFirstEmptyPocketIndex() {
-  for (let i = 0; i < POCKET_COUNT; i++) {
-    if (!getPocketMushroom(i)) {
-      return i;
-    }
-  }
-
-  return -1;
-}
-
-function hasCarrySpace() {
-  return !getHeldMushroom() || getFirstEmptyPocketIndex() !== -1;
-}
-
-function getWorldMushroomAt(x, y) {
-  return scene.mushrooms.find(
-    (mushroom) =>
-      mushroom.location.kind === "world" &&
-      mushroom.location.x === x &&
-      mushroom.location.y === y
-  ) || null;
-}
-
-function requestMove(dx, dy, startedAt = performance.now()) {
-  const player = scene.player;
-
-  if (player.moving) {
-    return false;
-  }
-
-  const nextX = clamp(player.x + dx, 0, scene.cols - 1);
-  const nextY = clamp(player.y + dy, 0, scene.rows - 1);
-
-  if (nextX === player.x && nextY === player.y) {
-    return false;
-  }
-
-  const currentBramble = getBramblePatchAt(player.x, player.y);
-  const nextBramble = getBramblePatchAt(nextX, nextY);
-
-  const enteringBramble =
-    nextBramble &&
-    (!currentBramble || currentBramble.id !== nextBramble.id);
-
-  const enteringFire =
-    nextX === scene.firepit.x &&
-    nextY === scene.firepit.y &&
-    !isPlayerOnFire();
-
-  if (enteringBramble) {
-    if (gameState.vitality <= 0) {
-      setMomentStatus("Too worn out to push through the brambles.");
-      return false;
-    }
-
-    gameState.vitality -= 1;
-    updateStatusUI();
-    setMomentStatus("Pushed through brambles. -1 Vitality.");
-  }
-
-  if (enteringFire) {
-    if (gameState.vitality <= 0) {
-      setMomentStatus("You do not have it in you to step into the fire.");
-      return false;
-    }
-
-    gameState.vitality -= 1;
-    updateStatusUI();
-    setMomentStatus("Ow. The fire burns. -1 Vitality.");
-  }
-
-  player.startX = player.renderX;
-  player.startY = player.renderY;
-  player.targetX = nextX;
-  player.targetY = nextY;
-  player.moving = true;
-  player.moveStartedAt = startedAt;
-
-  return true;
-}
-
-function startHeldMovement(dx, dy, source, key = null) {
-  heldMovement.active = true;
-  heldMovement.dx = dx;
-  heldMovement.dy = dy;
-  heldMovement.source = source;
-  heldMovement.key = key;
-
-  requestMove(dx, dy);
-}
-
-function stopHeldMovement(source, key = null) {
-  if (!heldMovement.active) {
-    return;
-  }
-
-  if (heldMovement.source !== source) {
-    return;
-  }
-
-  if (source === "keyboard" && heldMovement.key !== key) {
-    return;
-  }
-
-  heldMovement.active = false;
-  heldMovement.dx = 0;
-  heldMovement.dy = 0;
-  heldMovement.source = null;
-  heldMovement.key = null;
-}
-
-function updatePlayer(now) {
-  const player = scene.player;
-
-  if (!player.moving) {
-    player.renderX = player.x;
-    player.renderY = player.y;
-    return 0;
-  }
-
-  const rawT = clamp(
-    (now - player.moveStartedAt) / player.moveDuration,
-    0,
-    1
-  );
-
-  const travelT = smoothstep(rawT);
-
-  player.renderX = lerp(player.startX, player.targetX, travelT);
-  player.renderY = lerp(player.startY, player.targetY, travelT);
-
-  if (rawT >= 1) {
-    player.x = player.targetX;
-    player.y = player.targetY;
-    player.renderX = player.x;
-    player.renderY = player.y;
-    player.moving = false;
-
-    // One completed tile-hop = one turn.
-    advanceTurn();
-
-    // Holding a direction does not create continuous motion.
-    // It simply starts the next one-tile hop after this hop lands.
-    if (heldMovement.active) {
-      requestMove(heldMovement.dx, heldMovement.dy, now);
-    }
-
-    return 0;
-  }
-
-  return rawT;
-}
-
-function getAvailableAction() {
-  const player = scene.player;
-
-  if (player.moving) {
-    return null;
-  }
-
-  const mushroomHere = getWorldMushroomAt(player.x, player.y);
-
-  // A mushroom underfoot takes priority. If the hand is occupied,
-  // pickup routes the mushroom into the first empty pocket.
-  if (mushroomHere && hasCarrySpace()) {
-    return {
-      type: "pickup",
-      mushroom: mushroomHere
-    };
-  }
-
-  const heldMushroom = getHeldMushroom();
-
-  if (heldMushroom) {
-    // No mushroom stacking on one ground tile yet.
-    if (mushroomHere) {
-      return null;
-    }
-
-    return {
-      type: "drop",
-      mushroom: heldMushroom
-    };
-  }
-
-  return null;
-}
-
-function updatePocketButtons() {
-  for (let i = 0; i < pocketButtons.length; i++) {
-    const button = pocketButtons[i];
-    const mushroom = getPocketMushroom(i);
-
-    button.classList.toggle("occupied", Boolean(mushroom));
-    button.disabled = !mushroom || Boolean(getHeldMushroom());
-
-    button.setAttribute(
-      "aria-label",
-      mushroom
-        ? `Pocket ${i + 1}: mushroom`
-        : `Pocket ${i + 1}: empty`
-    );
-  }
-}
-
-function updateActionButton() {
-  const action = getAvailableAction();
-
-  const canUse = canUseHeldItem();
-  const canRest = canRestAtFire();
-
-  actionButton.hidden = !action;
-  useButton.hidden = !canUse;
-  restButton.hidden = !canRest;
-
-  if (action) {
-    actionButton.textContent =
-      action.type === "pickup" ? "Pick Up" : "Drop";
-  }
-
-  updatePocketButtons();
-}
-
-function performAction() {
-  const action = getAvailableAction();
-
-  if (!action) {
-    return;
-  }
-
-  if (action.type === "pickup") {
-    if (!getHeldMushroom()) {
-      action.mushroom.location = heldLocation(PLAYER_ID);
-    } else {
-      const pocketIndex = getFirstEmptyPocketIndex();
-
-      if (pocketIndex === -1) {
-        return;
+      if (i < game.vitality) {
+        pip.classList.add("filled");
       }
 
-      action.mushroom.location = pocketLocation(
-        PLAYER_ID,
-        pocketIndex
+      vitalityPips.appendChild(pip);
+    }
+
+    vitalityPips.setAttribute(
+      "aria-label",
+      `Vitality ${game.vitality} of ${game.maxVitality}`
+    );
+  }
+
+  function updatePocketButtons() {
+    for (
+      let i = 0;
+      i < pocketButtons.length;
+      i++
+    ) {
+      const button = pocketButtons[i];
+      const item = LLW.getPocketItem(i);
+
+      button.classList.toggle(
+        "occupied",
+        Boolean(item)
+      );
+
+      button.classList.remove(
+        "item-mushroom"
+      );
+
+      if (item) {
+        button.classList.add(
+          `item-${item.kind}`
+        );
+      }
+
+      button.disabled =
+        !item ||
+        Boolean(LLW.getHeldItem());
+
+      button.setAttribute(
+        "aria-label",
+        item
+          ? `Pocket ${i + 1}: ${LLW.ITEM_DEFS[item.kind].name}`
+          : `Pocket ${i + 1}: empty`
       );
     }
   }
 
-  if (action.type === "drop") {
-    action.mushroom.location = worldLocation(
-      scene.player.x,
-      scene.player.y
+  function updateContextActions() {
+    const contextAction =
+      LLW.getContextAction();
+
+    const useAction =
+      LLW.getUseAction();
+
+    const canRest =
+      LLW.canRestAtFire();
+
+    actionButton.hidden =
+      !contextAction;
+
+    useButton.hidden =
+      !useAction;
+
+    restButton.hidden =
+      !canRest;
+
+    if (contextAction) {
+      actionButton.textContent =
+        contextAction.label;
+    }
+
+    if (useAction) {
+      useButton.textContent =
+        useAction.label;
+    }
+
+    updatePocketButtons();
+  }
+
+  function refreshUI() {
+    updateStatusUI();
+    updateContextActions();
+  }
+
+  function bindPress(button, action) {
+    button.addEventListener(
+      "touchstart",
+      (event) => {
+        event.preventDefault();
+        action();
+      },
+      { passive: false }
+    );
+
+    button.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (event.pointerType === "touch") {
+          return;
+        }
+
+        event.preventDefault();
+        action();
+      }
+    );
+
+    button.addEventListener(
+      "dblclick",
+      (event) => {
+        event.preventDefault();
+      }
     );
   }
 
-  updateActionButton();
-}
+  document
+    .querySelectorAll(".move-button")
+    .forEach((button) => {
+      const start = () => {
+        const dx =
+          Number(button.dataset.dx);
 
-function takeFromPocket(pocketIndex) {
-  if (scene.player.moving || getHeldMushroom()) {
-    return;
-  }
+        const dy =
+          Number(button.dataset.dy);
 
-  const mushroom = getPocketMushroom(pocketIndex);
+        LLW.startHeldMovement(
+          dx,
+          dy,
+          button
+        );
+      };
 
-  if (!mushroom) {
-    return;
-  }
+      const stop = () => {
+        LLW.stopHeldMovement(button);
+      };
 
-  mushroom.location = heldLocation(PLAYER_ID);
-  updateActionButton();
-}
+      button.addEventListener(
+        "touchstart",
+        (event) => {
+          event.preventDefault();
+          start();
+        },
+        { passive: false }
+      );
 
-function draw(now) {
-  const walkT = updatePlayer(now);
-  const { width, height, tileSize, mapWidth, mapHeight, offsetX, offsetY } =
-    getLayout();
+      button.addEventListener(
+        "touchend",
+        (event) => {
+          event.preventDefault();
+          stop();
+        },
+        { passive: false }
+      );
 
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#b9d58d";
-  ctx.fillRect(0, 0, width, height);
+      button.addEventListener(
+        "touchcancel",
+        (event) => {
+          event.preventDefault();
+          stop();
+        },
+        { passive: false }
+      );
 
-  ctx.fillStyle = "#a9c97d";
-  ctx.fillRect(offsetX, offsetY, mapWidth, mapHeight);
+      button.addEventListener(
+        "pointerdown",
+        (event) => {
+          if (
+            event.pointerType ===
+            "touch"
+          ) {
+            return;
+          }
 
-  drawGrid(tileSize, offsetX, offsetY);
-  drawFirepit(scene.firepit, now, tileSize, offsetX, offsetY);
-  drawBrambles(tileSize, offsetX, offsetY);
-  drawBushes(tileSize, offsetX, offsetY);
-  drawTree(scene.tree, tileSize, offsetX, offsetY);
+          event.preventDefault();
 
-  for (const mushroom of scene.mushrooms) {
-    if (mushroom.location.kind !== "world") {
-      continue;
-    }
+          button.setPointerCapture?.(
+            event.pointerId
+          );
 
-    drawMushroom(
-      mushroom.location.x,
-      mushroom.location.y,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-  }
+          start();
+        }
+      );
 
-  drawPlayer(scene.player, walkT, tileSize, offsetX, offsetY);
-  updateActionButton();
-}
+      button.addEventListener(
+        "pointerup",
+        (event) => {
+          if (
+            event.pointerType ===
+            "touch"
+          ) {
+            return;
+          }
 
-function animate(now) {
-  draw(now);
-  requestAnimationFrame(animate);
-}
+          event.preventDefault();
+          stop();
+        }
+      );
 
-function drawGrid(tileSize, offsetX, offsetY) {
-  ctx.strokeStyle = "rgba(48, 73, 28, 0.18)";
-  ctx.lineWidth = 1;
+      button.addEventListener(
+        "pointercancel",
+        stop
+      );
 
-  for (let x = 0; x <= scene.cols; x++) {
-    const px = offsetX + x * tileSize;
-    ctx.beginPath();
-    ctx.moveTo(px, offsetY);
-    ctx.lineTo(px, offsetY + scene.rows * tileSize);
-    ctx.stroke();
-  }
+      button.addEventListener(
+        "lostpointercapture",
+        stop
+      );
 
-  for (let y = 0; y <= scene.rows; y++) {
-    const py = offsetY + y * tileSize;
-    ctx.beginPath();
-    ctx.moveTo(offsetX, py);
-    ctx.lineTo(offsetX + scene.cols * tileSize, py);
-    ctx.stroke();
-  }
-}
+      button.addEventListener(
+        "dblclick",
+        (event) => {
+          event.preventDefault();
+        }
+      );
+    });
 
-
-
-function hash01(x, y, salt = 0) {
-  const value = Math.sin(
-    x * 12.9898 +
-    y * 78.233 +
-    salt * 37.719
-  ) * 43758.5453;
-
-  return value - Math.floor(value);
-}
-
-function drawBrambles(tileSize, offsetX, offsetY) {
-  for (const patch of scene.bramblePatches) {
-    for (const tile of patch.tiles) {
-      drawBrambleTile(tile.x, tile.y, tileSize, offsetX, offsetY);
-    }
-  }
-}
-
-function drawBrambleTile(x, y, tileSize, offsetX, offsetY) {
-  const p = gridToPixel(x, y, tileSize, offsetX, offsetY);
-
-  const tileOffsetX = (hash01(x, y, 1) - 0.5) * tileSize * 0.12;
-  const tileOffsetY = (hash01(x, y, 2) - 0.5) * tileSize * 0.10;
-  const tileRotation = (hash01(x, y, 3) - 0.5) * 0.24;
-
-  const centerX = p.x + tileSize * 0.5 + tileOffsetX;
-  const centerY = p.y + tileSize * 0.62 + tileOffsetY;
-  const groundY = p.y + tileSize * 0.84 + tileOffsetY * 0.35;
-
-  drawShadow(
-    centerX,
-    groundY,
-    tileSize * 0.38,
-    tileSize * 0.095
+  bindPress(
+    actionButton,
+    LLW.performContextAction
   );
 
-  const twigColors = [
-    "#6f5367",
-    "#79544e",
-    "#855d68",
-    "#684b58"
-  ];
+  bindPress(
+    useButton,
+    LLW.performUseAction
+  );
 
-  const crosses = [
-    { cx: -0.22, cy: -0.01, size: 0.24, angle: -0.08 },
-    { cx:  0.00, cy: -0.07, size: 0.30, angle:  0.10 },
-    { cx:  0.20, cy:  0.02, size: 0.23, angle: -0.14 },
-    { cx: -0.11, cy:  0.12, size: 0.22, angle:  0.16 },
-    { cx:  0.11, cy:  0.13, size: 0.25, angle: -0.04 }
-  ];
+  bindPress(
+    restButton,
+    LLW.restAtFire
+  );
 
-  ctx.save();
-  ctx.translate(centerX, centerY);
-  ctx.rotate(tileRotation);
-  ctx.lineCap = "round";
-  ctx.lineWidth = Math.max(2, tileSize * 0.055);
+  pocketButtons.forEach((button) => {
+    const pocketIndex =
+      Number(button.dataset.pocket);
 
-  crosses.forEach((cross, index) => {
-    const jitterX =
-      (hash01(x, y, 10 + index) - 0.5) * tileSize * 0.055;
-    const jitterY =
-      (hash01(x, y, 20 + index) - 0.5) * tileSize * 0.045;
-    const jitterAngle =
-      (hash01(x, y, 30 + index) - 0.5) * 0.18;
-
-    const cx = tileSize * cross.cx + jitterX;
-    const cy = tileSize * cross.cy + jitterY;
-    const half = tileSize * cross.size * 0.5;
-
-    ctx.strokeStyle =
-      twigColors[(index + x * 2 + y) % twigColors.length];
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(cross.angle + jitterAngle);
-
-    ctx.beginPath();
-    ctx.moveTo(-half, -half * 0.72);
-    ctx.lineTo(half, half * 0.72);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(-half, half * 0.72);
-    ctx.lineTo(half, -half * 0.72);
-    ctx.stroke();
-
-    ctx.restore();
+    bindPress(button, () => {
+      LLW.takeFromPocket(pocketIndex);
+    });
   });
 
-  ctx.restore();
-}
+  const keyMoves = {
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0],
+    w: [0, -1],
+    W: [0, -1],
+    s: [0, 1],
+    S: [0, 1],
+    a: [-1, 0],
+    A: [-1, 0],
+    d: [1, 0],
+    D: [1, 0]
+  };
 
+  function handleKeyDown(event) {
+    const move = keyMoves[event.key];
 
-function drawFirepit(firepit, now, tileSize, offsetX, offsetY) {
-  const p = gridToPixel(
-    firepit.x,
-    firepit.y,
-    tileSize,
-    offsetX,
-    offsetY
-  );
+    if (move) {
+      event.preventDefault();
 
-  const centerX = p.x + tileSize * 0.5;
-  const baseY = p.y + tileSize * 0.79;
+      if (
+        !event.repeat ||
+        LLW.heldMovement.source !==
+          "keyboard" ||
+        LLW.heldMovement.key !==
+          event.key
+      ) {
+        LLW.startHeldMovement(
+          move[0],
+          move[1],
+          "keyboard",
+          event.key
+        );
+      }
 
-  drawShadow(
-    centerX,
-    baseY + tileSize * 0.07,
-    tileSize * 0.36,
-    tileSize * 0.105
-  );
-
-  ctx.save();
-
-  // A few chunky stones make the fire read as a place, not a loose flame.
-  const stones = [
-    [-0.22,  0.03],
-    [-0.11,  0.12],
-    [ 0.05,  0.14],
-    [ 0.21,  0.05],
-    [ 0.15, -0.08],
-    [-0.05, -0.10]
-  ];
-
-  stones.forEach(([sx, sy], index) => {
-    ctx.fillStyle = index % 2 === 0 ? "#877962" : "#766b59";
-    ctx.beginPath();
-    ctx.ellipse(
-      centerX + tileSize * sx,
-      baseY + tileSize * sy,
-      tileSize * 0.105,
-      tileSize * 0.065,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  });
-
-  // Crossed little logs.
-  ctx.strokeStyle = "#75513b";
-  ctx.lineWidth = Math.max(3, tileSize * 0.07);
-  ctx.lineCap = "round";
-
-  ctx.save();
-  ctx.translate(centerX, baseY - tileSize * 0.01);
-  ctx.rotate(-0.55);
-  ctx.beginPath();
-  ctx.moveTo(-tileSize * 0.16, 0);
-  ctx.lineTo(tileSize * 0.16, 0);
-  ctx.stroke();
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(centerX, baseY - tileSize * 0.01);
-  ctx.rotate(0.55);
-  ctx.beginPath();
-  ctx.moveTo(-tileSize * 0.16, 0);
-  ctx.lineTo(tileSize * 0.16, 0);
-  ctx.stroke();
-  ctx.restore();
-
-  // Tiny animated flame. The geometry changes subtly, never its ground position.
-  const flicker = Math.sin(now * 0.014) * tileSize * 0.018;
-  const flameBaseY = baseY - tileSize * 0.08;
-
-  ctx.fillStyle = "#dc6b3e";
-  ctx.beginPath();
-  ctx.moveTo(centerX, flameBaseY - tileSize * 0.34 - flicker);
-  ctx.quadraticCurveTo(
-    centerX - tileSize * 0.18,
-    flameBaseY - tileSize * 0.10,
-    centerX - tileSize * 0.10,
-    flameBaseY + tileSize * 0.07
-  );
-  ctx.quadraticCurveTo(
-    centerX,
-    flameBaseY + tileSize * 0.13,
-    centerX + tileSize * 0.10,
-    flameBaseY + tileSize * 0.07
-  );
-  ctx.quadraticCurveTo(
-    centerX + tileSize * 0.18,
-    flameBaseY - tileSize * 0.10,
-    centerX,
-    flameBaseY - tileSize * 0.34 - flicker
-  );
-  ctx.fill();
-
-  ctx.fillStyle = "#e7b84f";
-  ctx.beginPath();
-  ctx.moveTo(centerX, flameBaseY - tileSize * 0.23 + flicker * 0.4);
-  ctx.quadraticCurveTo(
-    centerX - tileSize * 0.09,
-    flameBaseY - tileSize * 0.05,
-    centerX,
-    flameBaseY + tileSize * 0.06
-  );
-  ctx.quadraticCurveTo(
-    centerX + tileSize * 0.09,
-    flameBaseY - tileSize * 0.05,
-    centerX,
-    flameBaseY - tileSize * 0.23 + flicker * 0.4
-  );
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawShadow(centerX, baseY, width, height) {
-  ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
-  ctx.beginPath();
-  ctx.ellipse(centerX, baseY, width, height, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function roundedCapsule(x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-function drawTinyHeldMushroom(centerX, baseY, tileSize) {
-  ctx.save();
-
-  const stemWidth = tileSize * 0.07;
-  const stemHeight = tileSize * 0.13;
-
-  ctx.fillStyle = "#d8c49a";
-  roundedCapsule(
-    centerX - stemWidth / 2,
-    baseY - stemHeight,
-    stemWidth,
-    stemHeight,
-    stemWidth / 2
-  );
-  ctx.fill();
-
-  const capHalfWidth = tileSize * 0.11;
-  const capY = baseY - stemHeight * 0.85;
-  const capHeight = tileSize * 0.07;
-
-  ctx.fillStyle = "#c63c36";
-  ctx.beginPath();
-  ctx.moveTo(centerX - capHalfWidth, capY);
-  ctx.quadraticCurveTo(
-    centerX,
-    capY - capHeight * 1.7,
-    centerX + capHalfWidth,
-    capY
-  );
-  ctx.lineTo(centerX - capHalfWidth, capY);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawPlayer(player, walkT, tileSize, offsetX, offsetY) {
-  const p = gridToPixel(
-    player.renderX,
-    player.renderY,
-    tileSize,
-    offsetX,
-    offsetY
-  );
-
-  const centerX = p.x + tileSize * 0.5;
-  const groundY = p.y + tileSize * 0.86;
-
-  // The shadow follows the lerped ground position, but never bounces.
-  drawShadow(centerX, groundY, tileSize * 0.29, tileSize * 0.11);
-
-  const moving = walkT > 0;
-  const bounce = moving
-    ? -Math.sin(walkT * Math.PI) * tileSize * 0.09
-    : 0;
-  const step = moving
-    ? Math.sin(walkT * Math.PI * 2)
-    : 0;
-
-  const bodyY = p.y + bounce;
-
-  ctx.save();
-
-  // Legs sit higher and remain tucked behind the tunic skirt.
-  ctx.strokeStyle = "#5d4331";
-  ctx.lineWidth = Math.max(2, tileSize * 0.075);
-  ctx.lineCap = "round";
-
-  ctx.beginPath();
-  ctx.moveTo(centerX - tileSize * 0.09, bodyY + tileSize * 0.64);
-  ctx.lineTo(
-    centerX - tileSize * 0.08 - step * tileSize * 0.025,
-    bodyY + tileSize * 0.86 + step * tileSize * 0.015
-  );
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(centerX + tileSize * 0.09, bodyY + tileSize * 0.64);
-  ctx.lineTo(
-    centerX + tileSize * 0.08 + step * tileSize * 0.025,
-    bodyY + tileSize * 0.86 - step * tileSize * 0.015
-  );
-  ctx.stroke();
-
-  // Arms behind the torso.
-  ctx.strokeStyle = "#d9b08c";
-  ctx.lineWidth = Math.max(2, tileSize * 0.07);
-
-  ctx.beginPath();
-  ctx.moveTo(centerX - tileSize * 0.16, bodyY + tileSize * 0.43);
-  ctx.lineTo(centerX - tileSize * 0.28, bodyY + tileSize * 0.57);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(centerX + tileSize * 0.16, bodyY + tileSize * 0.43);
-  ctx.lineTo(centerX + tileSize * 0.28, bodyY + tileSize * 0.57);
-  ctx.stroke();
-
-  // Upper-body capsule gives the wizard a sturdier little torso.
-  ctx.fillStyle = "#5676bc";
-  roundedCapsule(
-    centerX - tileSize * 0.17,
-    bodyY + tileSize * 0.31,
-    tileSize * 0.34,
-    tileSize * 0.31,
-    tileSize * 0.12
-  );
-  ctx.fill();
-
-  // Tunic skirt.
-  ctx.fillStyle = "#5c7fcb";
-  ctx.beginPath();
-  ctx.moveTo(centerX - tileSize * 0.17, bodyY + tileSize * 0.50);
-  ctx.lineTo(centerX - tileSize * 0.24, bodyY + tileSize * 0.72);
-  ctx.lineTo(centerX + tileSize * 0.24, bodyY + tileSize * 0.72);
-  ctx.lineTo(centerX + tileSize * 0.17, bodyY + tileSize * 0.50);
-  ctx.closePath();
-  ctx.fill();
-
-  // Belt.
-  ctx.fillStyle = "#6b4a2f";
-  ctx.fillRect(
-    centerX - tileSize * 0.18,
-    bodyY + tileSize * 0.50,
-    tileSize * 0.36,
-    tileSize * 0.065
-  );
-
-  // Bigger, slightly lower head.
-  ctx.fillStyle = "#d9b08c";
-  ctx.beginPath();
-  ctx.arc(
-    centerX,
-    bodyY + tileSize * 0.22,
-    tileSize * 0.175,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  // The held mushroom visibly travels with the body and its hop.
-  if (getHeldMushroom()) {
-    drawTinyHeldMushroom(
-      centerX + tileSize * 0.29,
-      bodyY + tileSize * 0.57,
-      tileSize
-    );
-  }
-
-  ctx.restore();
-}
-
-function drawTree(tree, tileSize, offsetX, offsetY) {
-  const p = gridToPixel(tree.x, tree.y, tileSize, offsetX, offsetY);
-
-  const centerX = p.x + tileSize * 0.5;
-  const baseY = p.y + tileSize * 0.9;
-
-  drawShadow(centerX, baseY, tileSize * 0.48, tileSize * 0.18);
-
-  ctx.save();
-
-  ctx.fillStyle = "#7a5233";
-  ctx.fillRect(
-    centerX - tileSize * 0.12,
-    p.y + tileSize * 0.42,
-    tileSize * 0.24,
-    tileSize * 0.42
-  );
-
-  ctx.fillStyle = "#4f9b4f";
-
-  const circles = [
-    { x: centerX - tileSize * 0.2, y: p.y + tileSize * 0.36, r: tileSize * 0.23 },
-    { x: centerX + tileSize * 0.2, y: p.y + tileSize * 0.36, r: tileSize * 0.23 },
-    { x: centerX, y: p.y + tileSize * 0.22, r: tileSize * 0.28 },
-    { x: centerX, y: p.y + tileSize * 0.42, r: tileSize * 0.24 }
-  ];
-
-  for (const c of circles) {
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.restore();
-}
-
-function drawBushes(tileSize, offsetX, offsetY) {
-  for (const bush of scene.bushes) {
-    const p = gridToPixel(bush.x, bush.y, tileSize, offsetX, offsetY);
-    const centerX = p.x + tileSize * 0.5;
-    const baseY = p.y + tileSize * 0.83;
-
-    drawShadow(centerX, baseY, tileSize * 0.34, tileSize * 0.12);
-
-    ctx.save();
-    ctx.fillStyle = "#5da24c";
-
-    const circles = [
-      { x: centerX - tileSize * 0.14, y: p.y + tileSize * 0.62, r: tileSize * 0.16 },
-      { x: centerX + tileSize * 0.14, y: p.y + tileSize * 0.62, r: tileSize * 0.16 },
-      { x: centerX, y: p.y + tileSize * 0.52, r: tileSize * 0.18 }
-    ];
-
-    for (const c of circles) {
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-      ctx.fill();
+      return;
     }
 
-    ctx.restore();
-  }
-}
-
-function drawMushroom(x, y, tileSize, offsetX, offsetY) {
-  const p = gridToPixel(x, y, tileSize, offsetX, offsetY);
-
-  const centerX = p.x + tileSize * 0.5;
-  const baseY = p.y + tileSize * 0.85;
-
-  drawShadow(centerX, baseY, tileSize * 0.2, tileSize * 0.08);
-
-  ctx.save();
-
-  // Beige stem.
-  ctx.fillStyle = "#d8c49a";
-  roundedCapsule(
-    centerX - tileSize * 0.055,
-    p.y + tileSize * 0.56,
-    tileSize * 0.11,
-    tileSize * 0.21,
-    tileSize * 0.045
-  );
-  ctx.fill();
-
-  // Red cap: flat underside, rounded dome on top.
-  ctx.fillStyle = "#c63c36";
-  const capY = p.y + tileSize * 0.57;
-  const capHalfWidth = tileSize * 0.19;
-  const capHeight = tileSize * 0.12;
-
-  ctx.beginPath();
-  ctx.moveTo(centerX - capHalfWidth, capY);
-  ctx.quadraticCurveTo(
-    centerX,
-    capY - capHeight * 1.7,
-    centerX + capHalfWidth,
-    capY
-  );
-  ctx.lineTo(centerX - capHalfWidth, capY);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.restore();
-}
-
-const keyMoves = {
-  ArrowUp: [0, -1],
-  ArrowDown: [0, 1],
-  ArrowLeft: [-1, 0],
-  ArrowRight: [1, 0],
-  w: [0, -1],
-  W: [0, -1],
-  s: [0, 1],
-  S: [0, 1],
-  a: [-1, 0],
-  A: [-1, 0],
-  d: [1, 0],
-  D: [1, 0]
-};
-
-function handleKeyDown(event) {
-  const move = keyMoves[event.key];
-
-  if (move) {
-    event.preventDefault();
-
-    // Browser key-repeat should not speed the wizard up; the movement
-    // loop itself decides when the next tile-hop begins.
     if (
-      !event.repeat ||
-      heldMovement.source !== "keyboard" ||
-      heldMovement.key !== event.key
+      event.key === "e" ||
+      event.key === "E" ||
+      event.code === "Space"
     ) {
-      startHeldMovement(move[0], move[1], "keyboard", event.key);
-    }
-
-    return;
-  }
-
-  if (event.key === "e" || event.key === "E" || event.code === "Space") {
-    event.preventDefault();
-
-    if (!event.repeat) {
-      performAction();
-    }
-
-    return;
-  }
-
-  if (event.key === "f" || event.key === "F") {
-    event.preventDefault();
-
-    if (!event.repeat) {
-      useHeldItem();
-    }
-
-    return;
-  }
-
-  if (event.key === "r" || event.key === "R") {
-    event.preventDefault();
-
-    if (!event.repeat) {
-      restAtFire();
-    }
-  }
-}
-
-function handleKeyUp(event) {
-  if (!keyMoves[event.key]) {
-    return;
-  }
-
-  event.preventDefault();
-  stopHeldMovement("keyboard", event.key);
-}
-
-function bindPress(button, action) {
-  button.addEventListener(
-    "touchstart",
-    (event) => {
       event.preventDefault();
-      action();
-    },
-    { passive: false }
-  );
 
-  button.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "touch") {
+      if (!event.repeat) {
+        LLW.performContextAction();
+      }
+
+      return;
+    }
+
+    if (
+      event.key === "f" ||
+      event.key === "F"
+    ) {
+      event.preventDefault();
+
+      if (!event.repeat) {
+        LLW.performUseAction();
+      }
+
+      return;
+    }
+
+    if (
+      event.key === "r" ||
+      event.key === "R"
+    ) {
+      event.preventDefault();
+
+      if (!event.repeat) {
+        LLW.restAtFire();
+      }
+    }
+  }
+
+  function handleKeyUp(event) {
+    if (!keyMoves[event.key]) {
       return;
     }
 
     event.preventDefault();
-    action();
-  });
 
-  button.addEventListener("dblclick", (event) => {
-    event.preventDefault();
-  });
-}
+    LLW.stopHeldMovement(
+      "keyboard",
+      event.key
+    );
+  }
 
-document.querySelectorAll(".move-button").forEach((button) => {
-  const start = () => {
-    const dx = Number(button.dataset.dx);
-    const dy = Number(button.dataset.dy);
-    startHeldMovement(dx, dy, button);
-  };
-
-  const stop = () => {
-    stopHeldMovement(button);
-  };
-
-  button.addEventListener(
-    "touchstart",
-    (event) => {
-      event.preventDefault();
-      start();
-    },
+  window.addEventListener(
+    "keydown",
+    handleKeyDown,
     { passive: false }
   );
 
-  button.addEventListener(
-    "touchend",
-    (event) => {
-      event.preventDefault();
-      stop();
-    },
+  window.addEventListener(
+    "keyup",
+    handleKeyUp,
     { passive: false }
   );
 
-  button.addEventListener(
-    "touchcancel",
-    (event) => {
-      event.preventDefault();
-      stop();
-    },
-    { passive: false }
-  );
-
-  button.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "touch") {
-      return;
+  window.addEventListener(
+    "blur",
+    () => {
+      LLW.heldMovement.active = false;
+      LLW.heldMovement.dx = 0;
+      LLW.heldMovement.dy = 0;
+      LLW.heldMovement.source = null;
+      LLW.heldMovement.key = null;
     }
+  );
 
-    event.preventDefault();
-    button.setPointerCapture?.(event.pointerId);
-    start();
-  });
+  window.addEventListener(
+    "resize",
+    LLW.resizeCanvas
+  );
 
-  button.addEventListener("pointerup", (event) => {
-    if (event.pointerType === "touch") {
-      return;
-    }
+  function animate(now) {
+    LLW.drawScene(now);
+    refreshUI();
+    requestAnimationFrame(animate);
+  }
 
-    event.preventDefault();
-    stop();
-  });
-
-  button.addEventListener("pointercancel", stop);
-  button.addEventListener("lostpointercapture", stop);
-
-  button.addEventListener("dblclick", (event) => {
-    event.preventDefault();
-  });
-});
-
-pocketButtons.forEach((button) => {
-  const pocketIndex = Number(button.dataset.pocket);
-
-  bindPress(button, () => {
-    takeFromPocket(pocketIndex);
-  });
-});
-
-bindPress(actionButton, performAction);
-bindPress(useButton, useHeldItem);
-bindPress(restButton, restAtFire);
-
-window.addEventListener("keydown", handleKeyDown, { passive: false });
-window.addEventListener("keyup", handleKeyUp, { passive: false });
-window.addEventListener("blur", () => {
-  heldMovement.active = false;
-  heldMovement.dx = 0;
-  heldMovement.dy = 0;
-  heldMovement.source = null;
-  heldMovement.key = null;
-});
-window.addEventListener("resize", resizeCanvas);
-
-resizeCanvas();
-updateStatusUI();
-updateActionButton();
-requestAnimationFrame(animate);
+  LLW.createWorld();
+  LLW.initRenderer(canvas);
+  refreshUI();
+  requestAnimationFrame(animate);
+})();

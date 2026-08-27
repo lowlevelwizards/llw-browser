@@ -104,7 +104,7 @@ button {
   top: 52px;
   left: 50%;
   z-index: 11;
-  max-width: min(82%, 360px);
+  max-width: min(84%, 390px);
   transform: translateX(-50%);
   padding: 7px 11px;
   border: 1.5px solid rgba(124, 109, 82, 0.58);
@@ -279,7 +279,8 @@ button {
   cursor: pointer;
 }
 
-.pocket-slot.occupied::before {
+/* Mushroom in pocket. */
+.pocket-slot.item-mushroom::before {
   content: "";
   position: absolute;
   left: 50%;
@@ -292,7 +293,7 @@ button {
   z-index: 1;
 }
 
-.pocket-slot.occupied::after {
+.pocket-slot.item-mushroom::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -310,7 +311,6 @@ button {
   transform: translateY(1px);
 }
 
-/* Mobile landscape / desktop: keep the map dominant, just loosen controls. */
 @media (min-width: 760px), (orientation: landscape) {
   .hud {
     top: 14px;
