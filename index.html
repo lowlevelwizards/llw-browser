@@ -6,36 +6,28 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   />
-  <title>LLW HTML Experiment</title>
+  <title>Low Level Wizards</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="app">
     <section class="game-panel">
       <canvas id="gameCanvas"></canvas>
-    </section>
 
-    <section class="info-panel">
-      <div class="info-copy">
-        <h1>Low Level Wizards</h1>
-        <p>Eighth brick: the fire gives the journey a way back.</p>
-
-        <div class="status-row" aria-label="Player status">
-          <span id="turnStatus" class="status-chip">Turn 0</span>
-
-          <span class="status-chip vitality-chip">
-            <span>Vitality</span>
-            <span id="vitalityPips" class="vitality-pips" aria-label="Vitality 3 of 3"></span>
-          </span>
-
-          <span
-            id="momentStatus"
-            class="status-chip moment-status"
-            aria-live="polite"
-            hidden
-          ></span>
-        </div>
+      <div class="hud hud-top-left" aria-label="Vitality">
+        <span id="vitalityPips" class="vitality-pips" aria-label="Vitality 3 of 3"></span>
       </div>
+
+      <div class="hud hud-top-right">
+        <span id="turnStatus">Turn 0</span>
+      </div>
+
+      <div
+        id="momentStatus"
+        class="moment-status"
+        aria-live="polite"
+        hidden
+      ></div>
 
       <div class="dpad" aria-label="Movement controls">
         <button class="move-button up" data-dx="0" data-dy="-1" aria-label="Move up">▲</button>
@@ -44,58 +36,54 @@
         <button class="move-button right" data-dx="1" data-dy="0" aria-label="Move right">▶︎</button>
       </div>
 
-      <div class="carry-controls">
-        <div class="action-row">
+      <div class="carry-hud">
+        <div class="context-actions">
           <button
             id="actionButton"
-            class="action-button"
+            class="context-action pickup-action"
             type="button"
             aria-label="Pick up or drop"
-            disabled
+            hidden
           >
             Pick Up
           </button>
 
           <button
             id="useButton"
-            class="action-button use-button"
+            class="context-action use-action"
             type="button"
             aria-label="Use held item"
-            disabled
+            hidden
           >
             Use
           </button>
-        </div>
-
-        <div class="carry-bottom-row">
-          <div class="pockets" aria-label="Pockets">
-            <button
-              class="pocket-slot"
-              data-pocket="0"
-              type="button"
-              aria-label="Pocket 1"
-            ></button>
-            <button
-              class="pocket-slot"
-              data-pocket="1"
-              type="button"
-              aria-label="Pocket 2"
-            ></button>
-          </div>
 
           <button
             id="restButton"
-            class="rest-button"
+            class="context-action rest-action"
             type="button"
             aria-label="Rest by the fire"
-            disabled
+            hidden
           >
             Rest
           </button>
         </div>
-      </div>
 
-      <p class="control-hint">Move: arrows / WASD · Act: E / Space · Use: F · Rest: R</p>
+        <div class="pockets" aria-label="Pockets">
+          <button
+            class="pocket-slot"
+            data-pocket="0"
+            type="button"
+            aria-label="Pocket 1"
+          ></button>
+          <button
+            class="pocket-slot"
+            data-pocket="1"
+            type="button"
+            aria-label="Pocket 2"
+          ></button>
+        </div>
+      </div>
     </section>
   </main>
 

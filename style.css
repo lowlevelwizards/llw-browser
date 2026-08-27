@@ -6,16 +6,18 @@ html,
 body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  min-height: 100%;
   background: #dbe8c8;
   color: #243018;
   font-family: Arial, sans-serif;
-  min-height: 100%;
   overscroll-behavior: none;
 }
 
 body {
   min-height: 100vh;
   min-height: 100dvh;
+  overflow: hidden;
 }
 
 button {
@@ -23,59 +25,25 @@ button {
 }
 
 .app {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 12px;
-  min-height: 100vh;
-  min-height: 100dvh;
-}
-
-.game-panel,
-.info-panel {
-  background: #f3eddc;
-  border: 2px solid #7c6d52;
-  border-radius: 16px;
-  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  padding:
+    max(6px, env(safe-area-inset-top))
+    max(6px, env(safe-area-inset-right))
+    max(6px, env(safe-area-inset-bottom))
+    max(6px, env(safe-area-inset-left));
 }
 
 .game-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
   min-height: 0;
-}
-
-.info-panel {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "dpad copy action"
-    "dpad hint action";
-  gap: 4px 12px;
-  align-items: center;
-  padding: 12px 14px;
-}
-
-.info-copy {
-  grid-area: copy;
-  min-width: 0;
-}
-
-.info-panel h1 {
-  margin: 0 0 5px;
-  font-size: clamp(1.1rem, 4vw, 1.35rem);
-}
-
-.info-panel p {
-  margin: 0;
-  line-height: 1.3;
-  font-size: 0.9rem;
-}
-
-.control-hint {
-  grid-area: hint;
-  opacity: 0.72;
+  overflow: hidden;
+  background: #b9d58d;
+  border: 2px solid #7c6d52;
+  border-radius: 18px;
 }
 
 #gameCanvas {
@@ -86,12 +54,80 @@ button {
   touch-action: none;
 }
 
+/* ---------- top HUD ---------- */
+
+.hud {
+  position: absolute;
+  top: 10px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1.5px solid rgba(124, 109, 82, 0.68);
+  border-radius: 999px;
+  background: rgba(243, 237, 220, 0.90);
+  box-shadow: 0 2px 0 rgba(77, 64, 43, 0.16);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  backdrop-filter: blur(3px);
+}
+
+.hud-top-left {
+  left: 10px;
+}
+
+.hud-top-right {
+  right: 10px;
+}
+
+.vitality-pips {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.vitality-pip {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #6b5b3f;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.vitality-pip.filled {
+  background: #d9b96e;
+}
+
+.moment-status {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  z-index: 11;
+  max-width: min(82%, 360px);
+  transform: translateX(-50%);
+  padding: 7px 11px;
+  border: 1.5px solid rgba(124, 109, 82, 0.58);
+  border-radius: 999px;
+  background: rgba(243, 237, 220, 0.92);
+  box-shadow: 0 2px 0 rgba(77, 64, 43, 0.14);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  backdrop-filter: blur(3px);
+}
+
+/* ---------- movement ---------- */
+
 .dpad {
-  grid-area: dpad;
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 12;
   display: grid;
   grid-template-columns: repeat(3, 44px);
-  grid-template-rows: repeat(3, 44px);
-  gap: 3px;
+  grid-template-rows: repeat(2, 44px);
+  gap: 4px;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -102,78 +138,116 @@ button {
   appearance: none;
   border: 2px solid #7c6d52;
   border-radius: 11px;
-  background: #e9e1c9;
+  background: rgba(233, 225, 201, 0.94);
   color: #344322;
   font-size: 1rem;
   font-weight: 700;
   line-height: 1;
   padding: 0;
   cursor: pointer;
-  /* Prevent rapid D-pad taps from becoming iOS double-tap zoom. */
   touch-action: none;
   -webkit-touch-callout: none;
   font-family: Arial, sans-serif;
   font-variant-emoji: text;
   box-shadow: 0 2px 0 rgba(77, 64, 43, 0.22);
+  backdrop-filter: blur(3px);
 }
 
 .move-button:active {
   transform: translateY(1px);
   box-shadow: 0 1px 0 rgba(77, 64, 43, 0.18);
-  background: #ddd2b5;
+  background: rgba(221, 210, 181, 0.98);
 }
 
+.move-button.up {
+  grid-column: 2;
+  grid-row: 1;
+}
 
-.carry-controls {
-  grid-area: action;
-  align-self: center;
+.move-button.left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.move-button.down {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.move-button.right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+/* ---------- carried things / context actions ---------- */
+
+.carry-hud {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 12;
   display: grid;
-  justify-items: center;
+  justify-items: end;
   gap: 8px;
 }
 
-.action-row {
+.context-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 7px;
+  min-height: 56px;
 }
 
-.action-button {
-  align-self: center;
-  width: 64px;
-  height: 64px;
+.context-action {
+  width: 56px;
+  height: 56px;
   appearance: none;
   border: 2px solid #7c6d52;
   border-radius: 50%;
-  background: #d9b96e;
   color: #344322;
   font-family: Arial, sans-serif;
-  font-size: 0.82rem;
+  font-size: 0.69rem;
   font-weight: 800;
   line-height: 1.05;
   text-transform: uppercase;
-  padding: 8px;
+  padding: 7px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: none;
-  box-shadow: 0 3px 0 rgba(77, 64, 43, 0.25);
+  box-shadow: 0 3px 0 rgba(77, 64, 43, 0.24);
 }
 
-.action-button:not(:disabled):active {
+.context-action[hidden] {
+  display: none;
+}
+
+.pickup-action {
+  background: #d9b96e;
+}
+
+.use-action {
+  background: #d4c28f;
+}
+
+.rest-action {
+  background: #c98753;
+}
+
+.context-action:active {
   transform: translateY(2px);
-  box-shadow: 0 1px 0 rgba(77, 64, 43, 0.2);
+  box-shadow: 0 1px 0 rgba(77, 64, 43, 0.18);
 }
-
-.action-button:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
-
 
 .pockets {
   display: flex;
   gap: 6px;
+  padding: 5px;
+  border: 1.5px solid rgba(124, 109, 82, 0.50);
+  border-radius: 12px;
+  background: rgba(243, 237, 220, 0.78);
+  backdrop-filter: blur(3px);
 }
 
 .pocket-slot {
@@ -236,162 +310,60 @@ button {
   transform: translateY(1px);
 }
 
-.move-button.up {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.move-button.left {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.move-button.down {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.move-button.right {
-  grid-column: 3;
-  grid-row: 2;
-}
-
-/* Landscape mobile + desktop */
-@media (min-width: 800px), (orientation: landscape) {
-  .app {
-    grid-template-columns: minmax(0, 1fr) 280px;
-    grid-template-rows: 1fr;
+/* Mobile landscape / desktop: keep the map dominant, just loosen controls. */
+@media (min-width: 760px), (orientation: landscape) {
+  .hud {
+    top: 14px;
+    min-height: 36px;
+    font-size: 0.82rem;
   }
 
-  .info-panel {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "copy"
-      "dpad"
-      "action"
-      "hint";
-    align-content: center;
-    justify-items: start;
-    text-align: left;
-    gap: 14px;
-    overflow-y: auto;
+  .hud-top-left {
+    left: 14px;
+  }
+
+  .hud-top-right {
+    right: 14px;
+  }
+
+  .dpad {
+    left: 16px;
+    bottom: 16px;
+    grid-template-columns: repeat(3, 48px);
+    grid-template-rows: repeat(2, 48px);
+  }
+
+  .carry-hud {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .context-action {
+    width: 60px;
+    height: 60px;
+    font-size: 0.72rem;
+  }
+
+  .pocket-slot {
+    width: 42px;
+    height: 42px;
   }
 }
 
-@media (max-width: 430px) {
+@media (max-width: 390px) {
   .dpad {
     grid-template-columns: repeat(3, 40px);
-    grid-template-rows: repeat(3, 40px);
+    grid-template-rows: repeat(2, 40px);
   }
 
-  .info-panel {
-    gap: 4px 8px;
-  }
-
-  .action-button {
-    width: 56px;
-    height: 56px;
-    font-size: 0.68rem;
+  .context-action {
+    width: 52px;
+    height: 52px;
+    font-size: 0.65rem;
   }
 
   .pocket-slot {
     width: 34px;
     height: 34px;
   }
-
-  .control-hint {
-    font-size: 0.78rem;
-  }
-}
-
-
-.status-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 9px;
-  border: 1.5px solid rgba(124, 109, 82, 0.55);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.vitality-pips {
-  display: inline-flex;
-  gap: 3px;
-}
-
-.vitality-pip {
-  width: 8px;
-  height: 8px;
-  border: 1.5px solid #6b5b3f;
-  border-radius: 50%;
-  background: transparent;
-}
-
-.vitality-pip.filled {
-  background: #d9b96e;
-}
-
-
-.use-button {
-  background: #d4c28f;
-}
-
-
-.moment-status {
-  background: rgba(217, 185, 110, 0.28);
-  max-width: 100%;
-  white-space: normal;
-}
-
-
-.carry-bottom-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-}
-
-.rest-button {
-  min-width: 56px;
-  height: 38px;
-  appearance: none;
-  border: 2px solid #7c6d52;
-  border-radius: 12px;
-  background: #c98753;
-  color: #344322;
-  font-family: Arial, sans-serif;
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1;
-  text-transform: uppercase;
-  padding: 0 10px;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  touch-action: none;
-  box-shadow: 0 2px 0 rgba(77, 64, 43, 0.24);
-}
-
-.rest-button:not(:disabled):active {
-  transform: translateY(1px);
-  box-shadow: 0 1px 0 rgba(77, 64, 43, 0.18);
-}
-
-.rest-button:disabled {
-  opacity: 0.36;
-  cursor: default;
 }

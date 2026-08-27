@@ -209,15 +209,23 @@ function useHeldItem() {
 }
 
 
-function isPlayerAtFire() {
+function isPlayerOnFire() {
   return (
     scene.player.x === scene.firepit.x &&
     scene.player.y === scene.firepit.y
   );
 }
 
+function isPlayerBesideFire() {
+  const dx = Math.abs(scene.player.x - scene.firepit.x);
+  const dy = Math.abs(scene.player.y - scene.firepit.y);
+
+  // Any of the eight neighboring tiles, including diagonals.
+  return Math.max(dx, dy) === 1;
+}
+
 function canRestAtFire() {
-  return isPlayerAtFire() && !scene.player.moving;
+  return isPlayerBesideFire() && !scene.player.moving;
 }
 
 function restAtFire() {
@@ -355,6 +363,11 @@ function requestMove(dx, dy, startedAt = performance.now()) {
     nextBramble &&
     (!currentBramble || currentBramble.id !== nextBramble.id);
 
+  const enteringFire =
+    nextX === scene.firepit.x &&
+    nextY === scene.firepit.y &&
+    !isPlayerOnFire();
+
   if (enteringBramble) {
     if (gameState.vitality <= 0) {
       setMomentStatus("Too worn out to push through the brambles.");
@@ -364,6 +377,17 @@ function requestMove(dx, dy, startedAt = performance.now()) {
     gameState.vitality -= 1;
     updateStatusUI();
     setMomentStatus("Pushed through brambles. -1 Vitality.");
+  }
+
+  if (enteringFire) {
+    if (gameState.vitality <= 0) {
+      setMomentStatus("You do not have it in you to step into the fire.");
+      return false;
+    }
+
+    gameState.vitality -= 1;
+    updateStatusUI();
+    setMomentStatus("Ow. The fire burns. -1 Vitality.");
   }
 
   player.startX = player.renderX;
@@ -502,33 +526,19 @@ function updatePocketButtons() {
 
 function updateActionButton() {
   const action = getAvailableAction();
-  const held = getHeldMushroom();
-  const mushroomHere = getWorldMushroomAt(
-    scene.player.x,
-    scene.player.y
-  );
 
-  if (!action) {
-    actionButton.disabled = true;
+  const canUse = canUseHeldItem();
+  const canRest = canRestAtFire();
 
-    if (mushroomHere && !hasCarrySpace()) {
-      actionButton.textContent = "Full";
-    } else {
-      actionButton.textContent = held ? "Drop" : "Pick Up";
-    }
+  actionButton.hidden = !action;
+  useButton.hidden = !canUse;
+  restButton.hidden = !canRest;
 
-    useButton.disabled = !canUseHeldItem();
-    restButton.disabled = !canRestAtFire();
-    updatePocketButtons();
-    return;
+  if (action) {
+    actionButton.textContent =
+      action.type === "pickup" ? "Pick Up" : "Drop";
   }
 
-  actionButton.disabled = false;
-  actionButton.textContent =
-    action.type === "pickup" ? "Pick Up" : "Drop";
-
-  useButton.disabled = !canUseHeldItem();
-  restButton.disabled = !canRestAtFire();
   updatePocketButtons();
 }
 
