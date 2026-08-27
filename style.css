@@ -348,3 +348,10 @@ button {
 .use-button {
   background: #d4c28f;
 }
+
+
+.moment-status {
+  background: rgba(217, 185, 110, 0.28);
+  max-width: 100%;
+  white-space: normal;
+}

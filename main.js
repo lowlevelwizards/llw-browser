@@ -4,23 +4,12 @@ const actionButton = document.getElementById("actionButton");
 const useButton = document.getElementById("useButton");
 const pocketButtons = [...document.querySelectorAll(".pocket-slot")];
 const turnStatus = document.getElementById("turnStatus");
-const foodStatus = document.getElementById("foodStatus");
 const vitalityPips = document.getElementById("vitalityPips");
+const momentStatus = document.getElementById("momentStatus");
 
 const PLAYER_ID = "player";
 const POCKET_COUNT = 2;
 
-const FOOD_STATES = [
-  "Stuffed",
-  "Well Fed",
-  "Fed",
-  "Peckish",
-  "Hungry",
-  "Famished",
-  "Starving"
-];
-
-const HUNGER_INTERVAL_TURNS = 12;
 
 const heldMovement = {
   active: false,
@@ -33,10 +22,11 @@ const heldMovement = {
 
 const gameState = {
   turn: 0,
-  foodStateIndex: FOOD_STATES.indexOf("Fed"),
   vitality: 3,
   maxVitality: 3
 };
+
+let momentStatusTimer = null;
 
 const scene = {
   cols: 12,
@@ -61,6 +51,18 @@ const scene = {
   bushes: [
     { x: 3, y: 6 },
     { x: 2, y: 11 }
+  ],
+
+  bramblePatches: [
+    {
+      id: "bramble_patch_1",
+      tiles: [
+        { x: 6, y: 8 }, { x: 7, y: 8 }, { x: 8, y: 8 },
+        { x: 6, y: 9 }, { x: 7, y: 9 }, { x: 8, y: 9 },
+        { x: 6, y: 10 }, { x: 7, y: 10 }, { x: 8, y: 10 },
+        { x: 6, y: 11 }, { x: 7, y: 11 }, { x: 8, y: 11 }
+      ]
+    }
   ],
 
   mushrooms: []
@@ -129,29 +131,26 @@ scene.mushrooms = makeRandomMushrooms(3);
 
 function advanceTurn() {
   gameState.turn += 1;
-
-  if (gameState.turn % HUNGER_INTERVAL_TURNS === 0) {
-    gameState.foodStateIndex = Math.min(
-      gameState.foodStateIndex + 1,
-      FOOD_STATES.length - 1
-    );
-  }
-
   updateStatusUI();
 }
 
-function improveFoodState(steps = 1) {
-  gameState.foodStateIndex = Math.max(
-    0,
-    gameState.foodStateIndex - steps
-  );
+function setMomentStatus(message) {
+  if (momentStatusTimer) {
+    clearTimeout(momentStatusTimer);
+  }
 
-  updateStatusUI();
+  momentStatus.textContent = message;
+  momentStatus.hidden = false;
+
+  momentStatusTimer = setTimeout(() => {
+    momentStatus.hidden = true;
+    momentStatus.textContent = "";
+    momentStatusTimer = null;
+  }, 1700);
 }
 
 function updateStatusUI() {
   turnStatus.textContent = `Turn ${gameState.turn}`;
-  foodStatus.textContent = FOOD_STATES[gameState.foodStateIndex];
 
   vitalityPips.innerHTML = "";
 
@@ -173,7 +172,11 @@ function updateStatusUI() {
 }
 
 function canUseHeldItem() {
-  return Boolean(getHeldMushroom()) && !scene.player.moving;
+  return (
+    Boolean(getHeldMushroom()) &&
+    !scene.player.moving &&
+    gameState.vitality < gameState.maxVitality
+  );
 }
 
 function useHeldItem() {
@@ -183,15 +186,27 @@ function useHeldItem() {
 
   const mushroom = getHeldMushroom();
 
-  // For now mushrooms are food: one mushroom improves the food
-  // condition by one step and is physically consumed.
+  // A mushroom restores short-term bodily reserve. It does not heal wounds.
   scene.mushrooms = scene.mushrooms.filter(
     (candidate) => candidate.id !== mushroom.id
   );
 
-  improveFoodState(1);
+  gameState.vitality = Math.min(
+    gameState.maxVitality,
+    gameState.vitality + 1
+  );
+
+  updateStatusUI();
   updateActionButton();
+  setMomentStatus("Ate a mushroom. +1 Vitality.");
 }
+
+function getBramblePatchAt(x, y) {
+  return scene.bramblePatches.find((patch) =>
+    patch.tiles.some((tile) => tile.x === x && tile.y === y)
+  ) || null;
+}
+
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
@@ -292,6 +307,24 @@ function requestMove(dx, dy, startedAt = performance.now()) {
 
   if (nextX === player.x && nextY === player.y) {
     return false;
+  }
+
+  const currentBramble = getBramblePatchAt(player.x, player.y);
+  const nextBramble = getBramblePatchAt(nextX, nextY);
+
+  const enteringBramble =
+    nextBramble &&
+    (!currentBramble || currentBramble.id !== nextBramble.id);
+
+  if (enteringBramble) {
+    if (gameState.vitality <= 0) {
+      setMomentStatus("Too worn out to push through the brambles.");
+      return false;
+    }
+
+    gameState.vitality -= 1;
+    updateStatusUI();
+    setMomentStatus("Pushed through brambles. -1 Vitality.");
   }
 
   player.startX = player.renderX;
@@ -520,6 +553,7 @@ function draw(now) {
   ctx.fillRect(offsetX, offsetY, mapWidth, mapHeight);
 
   drawGrid(tileSize, offsetX, offsetY);
+  drawBrambles(tileSize, offsetX, offsetY);
   drawBushes(tileSize, offsetX, offsetY);
   drawTree(scene.tree, tileSize, offsetX, offsetY);
 
@@ -565,6 +599,76 @@ function drawGrid(tileSize, offsetX, offsetY) {
     ctx.lineTo(offsetX + scene.cols * tileSize, py);
     ctx.stroke();
   }
+}
+
+
+function drawBrambles(tileSize, offsetX, offsetY) {
+  for (const patch of scene.bramblePatches) {
+    for (const tile of patch.tiles) {
+      drawBrambleTile(tile.x, tile.y, tileSize, offsetX, offsetY);
+    }
+  }
+}
+
+function drawBrambleTile(x, y, tileSize, offsetX, offsetY) {
+  const p = gridToPixel(x, y, tileSize, offsetX, offsetY);
+  const centerX = p.x + tileSize * 0.5;
+  const groundY = p.y + tileSize * 0.79;
+
+  drawShadow(
+    centerX,
+    groundY + tileSize * 0.05,
+    tileSize * 0.38,
+    tileSize * 0.095
+  );
+
+  const twigColors = [
+    "#6f5367",
+    "#79544e",
+    "#855d68",
+    "#684b58"
+  ];
+
+  // Deterministic little offsets keep every tile scrappy without flickering.
+  const shift = ((x * 17 + y * 11) % 7) * 0.008;
+
+  const crosses = [
+    { cx: 0.28, cy: 0.61, size: 0.24, angle: -0.08 },
+    { cx: 0.50, cy: 0.55, size: 0.30, angle: 0.10 },
+    { cx: 0.70, cy: 0.64, size: 0.23, angle: -0.14 },
+    { cx: 0.39, cy: 0.73, size: 0.22, angle: 0.16 },
+    { cx: 0.61, cy: 0.74, size: 0.25, angle: -0.04 }
+  ];
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(2, tileSize * 0.055);
+
+  crosses.forEach((cross, index) => {
+    const cx = p.x + tileSize * (cross.cx + shift);
+    const cy = p.y + tileSize * cross.cy;
+    const half = tileSize * cross.size * 0.5;
+
+    ctx.strokeStyle = twigColors[(index + x + y) % twigColors.length];
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(cross.angle);
+
+    ctx.beginPath();
+    ctx.moveTo(-half, -half * 0.72);
+    ctx.lineTo(half, half * 0.72);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(-half, half * 0.72);
+    ctx.lineTo(half, -half * 0.72);
+    ctx.stroke();
+
+    ctx.restore();
+  });
+
+  ctx.restore();
 }
 
 function drawShadow(centerX, baseY, width, height) {

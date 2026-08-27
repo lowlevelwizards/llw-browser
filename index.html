@@ -18,7 +18,7 @@
     <section class="info-panel">
       <div class="info-copy">
         <h1>Low Level Wizards</h1>
-        <p>Sixth brick: time passes, bodies have reserves, and food matters.</p>
+        <p>Seventh brick: rough ground asks something of you.</p>
 
         <div class="status-row" aria-label="Player status">
           <span id="turnStatus" class="status-chip">Turn 0</span>
@@ -28,7 +28,12 @@
             <span id="vitalityPips" class="vitality-pips" aria-label="Vitality 3 of 3"></span>
           </span>
 
-          <span id="foodStatus" class="status-chip">Fed</span>
+          <span
+            id="momentStatus"
+            class="status-chip moment-status"
+            aria-live="polite"
+            hidden
+          ></span>
         </div>
       </div>
 
