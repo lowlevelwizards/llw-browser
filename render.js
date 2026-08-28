@@ -626,6 +626,216 @@
     ctx.restore();
   }
 
+  function drawResolvedDrainageDebug(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (
+      !LLW.CONFIG.pcgDebugResolvedDrainage ||
+      !state.landscape.catchments.length
+    ) {
+      return;
+    }
+
+    const maxRoutedFlow = Math.max(
+      1,
+      ...state.landscape.catchments.map(
+        (catchment) =>
+          catchment.routedFlow || 1
+      )
+    );
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (
+      const catchment of
+      state.landscape.catchments
+    ) {
+      const sink =
+        state.landscape.cells[
+          catchment.sinkIndex
+        ];
+
+      const outlet =
+        LLW.hydrology.getResolvedOutletCell(
+          catchment
+        );
+
+      if (!sink || !outlet) {
+        continue;
+      }
+
+      const sinkP = gridToPixel(
+        sink.x,
+        sink.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const outletP = gridToPixel(
+        outlet.x,
+        outlet.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const sinkX =
+        sinkP.x + tileSize * 0.5;
+
+      const sinkY =
+        sinkP.y + tileSize * 0.5;
+
+      const outletX =
+        outletP.x + tileSize * 0.5;
+
+      const outletY =
+        outletP.y + tileSize * 0.5;
+
+      const strength =
+        Math.sqrt(
+          (catchment.routedFlow || 1) /
+            maxRoutedFlow
+        );
+
+      ctx.strokeStyle =
+        `rgba(33, 122, 151, ${
+          0.24 + strength * 0.42
+        })`;
+
+      ctx.lineWidth =
+        Math.max(
+          1.5,
+          tileSize *
+            (
+              0.025 +
+              strength * 0.065
+            )
+        );
+
+      // This debug line means "water collected by this basin eventually
+      // escapes here." It is deliberately not pretending to be a stream.
+      ctx.beginPath();
+      ctx.moveTo(
+        sinkX,
+        sinkY
+      );
+
+      const midX =
+        LLW.lerp(
+          sinkX,
+          outletX,
+          0.58
+        );
+
+      const midY =
+        LLW.lerp(
+          sinkY,
+          outletY,
+          0.58
+        );
+
+      ctx.quadraticCurveTo(
+        midX,
+        midY - tileSize * 0.10,
+        outletX,
+        outletY
+      );
+
+      ctx.stroke();
+
+      const outletNeighbor =
+        LLW.hydrology.getResolvedOutletNeighbor(
+          catchment
+        );
+
+      if (outletNeighbor) {
+        const neighborP =
+          gridToPixel(
+            outletNeighbor.x,
+            outletNeighbor.y,
+            tileSize,
+            offsetX,
+            offsetY
+          );
+
+        const neighborX =
+          neighborP.x +
+          tileSize * 0.5;
+
+        const neighborY =
+          neighborP.y +
+          tileSize * 0.5;
+
+        ctx.strokeStyle =
+          `rgba(25, 106, 139, ${
+            0.40 +
+            strength * 0.42
+          })`;
+
+        ctx.beginPath();
+        ctx.moveTo(
+          outletX,
+          outletY
+        );
+        ctx.lineTo(
+          neighborX,
+          neighborY
+        );
+        ctx.stroke();
+
+        ctx.fillStyle =
+          `rgba(25, 106, 139, ${
+            0.48 +
+            strength * 0.40
+          })`;
+
+        ctx.beginPath();
+        ctx.arc(
+          neighborX,
+          neighborY,
+          Math.max(
+            1.7,
+            tileSize *
+              (
+                0.035 +
+                strength * 0.035
+              )
+          ),
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      } else {
+        // Resolved route leaves the local map here.
+        ctx.strokeStyle =
+          `rgba(206, 133, 72, ${
+            0.42 +
+            strength * 0.38
+          })`;
+
+        ctx.beginPath();
+        ctx.arc(
+          outletX,
+          outletY,
+          Math.max(
+            2,
+            tileSize * 0.07
+          ),
+          0,
+          Math.PI * 2
+        );
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
   function drawGrid(
     tileSize,
     offsetX,
@@ -2149,6 +2359,12 @@
     );
 
     drawSpillPointsDebug(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawResolvedDrainageDebug(
       tileSize,
       offsetX,
       offsetY

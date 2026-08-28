@@ -14,6 +14,7 @@
     pcgDebugFlowNumbers: false,
     pcgDebugBasins: true,
     pcgDebugSpillPoints: true,
+    pcgDebugResolvedDrainage: true,
 
     mushroomCount: 3,
 

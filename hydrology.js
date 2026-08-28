@@ -96,7 +96,17 @@
         floodedCellIndexes: [],
         potentialFloodArea: 0,
         meanPotentialDepth: 0,
-        potentialVolume: 0
+        potentialVolume: 0,
+
+        // Larger watershed routing, resolved after local basin geometry.
+        downstreamCatchmentId: null,
+        resolvedOutletCellIndex: null,
+        resolvedOutletNeighborIndex: null,
+        resolvedOutletElevation: null,
+        escapeElevation: null,
+        routeDepth: 0,
+        routedFlow: 0,
+        upstreamCatchmentIds: []
       })
     );
 
@@ -435,6 +445,550 @@
     }
   }
 
+
+  const OUTSIDE_ID =
+    "__outside__";
+
+  function ensureAdjacency(
+    adjacency,
+    id
+  ) {
+    if (!adjacency.has(id)) {
+      adjacency.set(id, []);
+    }
+
+    return adjacency.get(id);
+  }
+
+  function addDirectedEdge(
+    adjacency,
+    fromId,
+    toId,
+    weight,
+    fromCellIndex,
+    toCellIndex
+  ) {
+    ensureAdjacency(
+      adjacency,
+      fromId
+    ).push({
+      toId,
+      weight,
+      fromCellIndex,
+      toCellIndex
+    });
+  }
+
+  function buildCatchmentBoundaryGraph(
+    cells,
+    catchments
+  ) {
+    const adjacency = new Map();
+
+    ensureAdjacency(
+      adjacency,
+      OUTSIDE_ID
+    );
+
+    for (const catchment of catchments) {
+      ensureAdjacency(
+        adjacency,
+        catchment.id
+      );
+    }
+
+    const bestPairEdges =
+      new Map();
+
+    const bestOutsideEdges =
+      new Map();
+
+    for (const cell of cells) {
+      const basinId =
+        cell.catchmentId;
+
+      if (!basinId) {
+        continue;
+      }
+
+      if (isMapEdge(cell)) {
+        const current =
+          bestOutsideEdges.get(
+            basinId
+          );
+
+        const candidate = {
+          basinId,
+          weight: cell.elevation,
+          cellIndex: cell.index
+        };
+
+        if (
+          !current ||
+          candidate.weight <
+            current.weight -
+              EPSILON ||
+          (
+            Math.abs(
+              candidate.weight -
+                current.weight
+            ) <= EPSILON &&
+            candidate.cellIndex <
+              current.cellIndex
+          )
+        ) {
+          bestOutsideEdges.set(
+            basinId,
+            candidate
+          );
+        }
+      }
+
+      for (
+        const neighborIndex of
+        cell.neighborIndexes
+      ) {
+        const neighbor =
+          cells[neighborIndex];
+
+        const neighborBasin =
+          neighbor.catchmentId;
+
+        if (
+          !neighborBasin ||
+          neighborBasin === basinId
+        ) {
+          continue;
+        }
+
+        const firstId =
+          basinId < neighborBasin
+            ? basinId
+            : neighborBasin;
+
+        const secondId =
+          basinId < neighborBasin
+            ? neighborBasin
+            : basinId;
+
+        const key =
+          `${firstId}|${secondId}`;
+
+        const saddleElevation =
+          Math.max(
+            cell.elevation,
+            neighbor.elevation
+          );
+
+        const firstCellIndex =
+          basinId === firstId
+            ? cell.index
+            : neighbor.index;
+
+        const secondCellIndex =
+          basinId === firstId
+            ? neighbor.index
+            : cell.index;
+
+        const candidate = {
+          firstId,
+          secondId,
+          weight:
+            saddleElevation,
+          firstCellIndex,
+          secondCellIndex
+        };
+
+        const current =
+          bestPairEdges.get(key);
+
+        if (
+          !current ||
+          candidate.weight <
+            current.weight -
+              EPSILON ||
+          (
+            Math.abs(
+              candidate.weight -
+                current.weight
+            ) <= EPSILON &&
+            (
+              candidate.firstCellIndex <
+                current.firstCellIndex ||
+              (
+                candidate.firstCellIndex ===
+                  current.firstCellIndex &&
+                candidate.secondCellIndex <
+                  current.secondCellIndex
+              )
+            )
+          )
+        ) {
+          bestPairEdges.set(
+            key,
+            candidate
+          );
+        }
+      }
+    }
+
+    for (
+      const edge of
+      bestPairEdges.values()
+    ) {
+      addDirectedEdge(
+        adjacency,
+        edge.firstId,
+        edge.secondId,
+        edge.weight,
+        edge.firstCellIndex,
+        edge.secondCellIndex
+      );
+
+      addDirectedEdge(
+        adjacency,
+        edge.secondId,
+        edge.firstId,
+        edge.weight,
+        edge.secondCellIndex,
+        edge.firstCellIndex
+      );
+    }
+
+    for (
+      const edge of
+      bestOutsideEdges.values()
+    ) {
+      addDirectedEdge(
+        adjacency,
+        edge.basinId,
+        OUTSIDE_ID,
+        edge.weight,
+        edge.cellIndex,
+        null
+      );
+
+      addDirectedEdge(
+        adjacency,
+        OUTSIDE_ID,
+        edge.basinId,
+        edge.weight,
+        null,
+        edge.cellIndex
+      );
+    }
+
+    return adjacency;
+  }
+
+  function resolveEscapeRoutes(
+    cells,
+    catchments
+  ) {
+    const adjacency =
+      buildCatchmentBoundaryGraph(
+        cells,
+        catchments
+      );
+
+    const ids = [
+      OUTSIDE_ID,
+      ...catchments.map(
+        (catchment) =>
+          catchment.id
+      )
+    ];
+
+    const escapeCost =
+      new Map(
+        ids.map(
+          (id) => [id, Infinity]
+        )
+      );
+
+    const parent =
+      new Map();
+
+    const parentEdge =
+      new Map();
+
+    const visited =
+      new Set();
+
+    // Outside is already escaped. Any first basin cost is therefore just
+    // the height of its lowest connection to the map edge.
+    escapeCost.set(
+      OUTSIDE_ID,
+      -Infinity
+    );
+
+    while (
+      visited.size <
+      ids.length
+    ) {
+      let currentId = null;
+      let currentCost = Infinity;
+
+      for (const id of ids) {
+        if (visited.has(id)) {
+          continue;
+        }
+
+        const cost =
+          escapeCost.get(id);
+
+        if (
+          cost < currentCost -
+            EPSILON ||
+          (
+            Math.abs(
+              cost - currentCost
+            ) <= EPSILON &&
+            currentId !== null &&
+            id < currentId
+          )
+        ) {
+          currentId = id;
+          currentCost = cost;
+        }
+      }
+
+      if (
+        currentId === null ||
+        currentCost === Infinity
+      ) {
+        break;
+      }
+
+      visited.add(currentId);
+
+      const edges =
+        adjacency.get(currentId) ||
+        [];
+
+      for (const edge of edges) {
+        if (
+          visited.has(edge.toId)
+        ) {
+          continue;
+        }
+
+        const candidateCost =
+          Math.max(
+            currentCost,
+            edge.weight
+          );
+
+        const knownCost =
+          escapeCost.get(
+            edge.toId
+          );
+
+        if (
+          candidateCost <
+          knownCost -
+            EPSILON
+        ) {
+          escapeCost.set(
+            edge.toId,
+            candidateCost
+          );
+
+          // We are solving outward from the map edge. If currentId is the
+          // predecessor toward safety, the neighboring basin should route
+          // back through the same boundary in the opposite direction.
+          parent.set(
+            edge.toId,
+            currentId
+          );
+
+          parentEdge.set(
+            edge.toId,
+            {
+              weight:
+                edge.weight,
+
+              fromCellIndex:
+                edge.toCellIndex,
+
+              toCellIndex:
+                edge.fromCellIndex
+            }
+          );
+        }
+      }
+    }
+
+    const catchmentById =
+      new Map(
+        catchments.map(
+          (catchment) => [
+            catchment.id,
+            catchment
+          ]
+        )
+      );
+
+    for (const catchment of catchments) {
+      const downstreamId =
+        parent.get(
+          catchment.id
+        );
+
+      const edge =
+        parentEdge.get(
+          catchment.id
+        );
+
+      if (
+        downstreamId ===
+        undefined ||
+        !edge
+      ) {
+        // Defensive fallback. A rectangular cell grid should always connect
+        // every basin to some map edge through neighboring catchments.
+        catchment.downstreamCatchmentId =
+          null;
+
+        catchment.resolvedOutletCellIndex =
+          catchment.spillCellIndex;
+
+        catchment.resolvedOutletNeighborIndex =
+          catchment.spillNeighborIndex;
+
+        catchment.resolvedOutletElevation =
+          catchment.spillElevation;
+
+        catchment.escapeElevation =
+          catchment.spillElevation;
+
+        continue;
+      }
+
+      catchment.downstreamCatchmentId =
+        downstreamId ===
+        OUTSIDE_ID
+          ? null
+          : downstreamId;
+
+      catchment.resolvedOutletCellIndex =
+        edge.fromCellIndex;
+
+      catchment.resolvedOutletNeighborIndex =
+        edge.toCellIndex;
+
+      catchment.resolvedOutletElevation =
+        edge.weight;
+
+      catchment.escapeElevation =
+        escapeCost.get(
+          catchment.id
+        );
+    }
+
+    // Parent links always point toward a node finalized earlier by the
+    // minimax search, so this graph is acyclic. Record depth and children.
+    for (const catchment of catchments) {
+      catchment.upstreamCatchmentIds =
+        [];
+    }
+
+    for (const catchment of catchments) {
+      if (
+        catchment.downstreamCatchmentId
+      ) {
+        const downstream =
+          catchmentById.get(
+            catchment.downstreamCatchmentId
+          );
+
+        if (downstream) {
+          downstream.upstreamCatchmentIds.push(
+            catchment.id
+          );
+        }
+      }
+    }
+
+    function calculateRouteDepth(
+      catchment
+    ) {
+      let depth = 0;
+      let current = catchment;
+      const seen = new Set();
+
+      while (
+        current &&
+        current.downstreamCatchmentId
+      ) {
+        if (
+          seen.has(current.id)
+        ) {
+          throw new Error(
+            "Resolved basin routing cycle detected."
+          );
+        }
+
+        seen.add(current.id);
+        depth += 1;
+
+        current =
+          catchmentById.get(
+            current.downstreamCatchmentId
+          ) || null;
+      }
+
+      return depth;
+    }
+
+    for (const catchment of catchments) {
+      catchment.routeDepth =
+        calculateRouteDepth(
+          catchment
+        );
+    }
+
+    function calculateRoutedFlow(
+      catchment
+    ) {
+      let total =
+        catchment.cellCount;
+
+      for (
+        const upstreamId of
+        catchment.upstreamCatchmentIds
+      ) {
+        const upstream =
+          catchmentById.get(
+            upstreamId
+          );
+
+        if (upstream) {
+          total +=
+            calculateRoutedFlow(
+              upstream
+            );
+        }
+      }
+
+      catchment.routedFlow =
+        total;
+
+      return total;
+    }
+
+    for (const catchment of catchments) {
+      if (
+        catchment.downstreamCatchmentId ===
+        null
+      ) {
+        calculateRoutedFlow(
+          catchment
+        );
+      }
+    }
+  }
+
   LLW.hydrology = {
     derive(cells) {
       calculateDownhill(cells);
@@ -446,6 +1000,11 @@
         assignCatchments(cells);
 
       calculateBasinGeometry(
+        cells,
+        catchments
+      );
+
+      resolveEscapeRoutes(
         cells,
         catchments
       );
@@ -529,6 +1088,55 @@
         state.landscape.cells[
           catchment.spillNeighborIndex
         ] || null
+      );
+    },
+
+    getResolvedOutletCell(catchment) {
+      if (
+        !catchment ||
+        catchment.resolvedOutletCellIndex ===
+          null
+      ) {
+        return null;
+      }
+
+      return (
+        state.landscape.cells[
+          catchment.resolvedOutletCellIndex
+        ] || null
+      );
+    },
+
+    getResolvedOutletNeighbor(catchment) {
+      if (
+        !catchment ||
+        catchment.resolvedOutletNeighborIndex ===
+          null
+      ) {
+        return null;
+      }
+
+      return (
+        state.landscape.cells[
+          catchment.resolvedOutletNeighborIndex
+        ] || null
+      );
+    },
+
+    getDownstreamCatchment(catchment) {
+      if (
+        !catchment ||
+        !catchment.downstreamCatchmentId
+      ) {
+        return null;
+      }
+
+      return (
+        state.landscape.catchments.find(
+          (candidate) =>
+            candidate.id ===
+            catchment.downstreamCatchmentId
+        ) || null
       );
     }
   };
