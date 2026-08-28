@@ -49,6 +49,7 @@
       i++
     ) {
       const a = points[i];
+
       const b =
         points[
           (i + 1) %
@@ -82,6 +83,47 @@
     };
   }
 
+  function pointInPolygon(
+    point,
+    polygon
+  ) {
+    let inside = false;
+
+    for (
+      let i = 0,
+        j = polygon.length - 1;
+      i < polygon.length;
+      j = i++
+    ) {
+      const a = polygon[i];
+      const b = polygon[j];
+
+      const intersects =
+        (
+          (a.y > point.y) !==
+          (b.y > point.y)
+        ) &&
+        (
+          point.x <
+          (
+            (b.x - a.x) *
+            (point.y - a.y)
+          ) /
+          (
+            b.y - a.y +
+            Number.EPSILON
+          ) +
+          a.x
+        );
+
+      if (intersects) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  }
+
   function removeCollinear(points) {
     if (points.length <= 3) {
       return [...points];
@@ -96,7 +138,10 @@
     ) {
       const previous =
         points[
-          (i - 1 + points.length) %
+          (
+            i - 1 +
+            points.length
+          ) %
           points.length
         ];
 
@@ -110,19 +155,24 @@
         ];
 
       const ax =
-        current.x - previous.x;
+        current.x -
+        previous.x;
 
       const ay =
-        current.y - previous.y;
+        current.y -
+        previous.y;
 
       const bx =
-        next.x - current.x;
+        next.x -
+        current.x;
 
       const by =
-        next.y - current.y;
+        next.y -
+        current.y;
 
       const cross =
-        ax * by - ay * bx;
+        ax * by -
+        ay * bx;
 
       if (
         Math.abs(cross) >
@@ -165,8 +215,7 @@
         i < current.length;
         i++
       ) {
-        const a =
-          current[i];
+        const a = current[i];
 
         const b =
           current[
@@ -215,7 +264,8 @@
 
   function gentlyIrregularizeClosed(
     points,
-    salt
+    salt,
+    amount = 0.045
   ) {
     const centroid =
       polygonCentroid(points);
@@ -223,10 +273,12 @@
     return points.map(
       (point, index) => {
         const dx =
-          point.x - centroid.x;
+          point.x -
+          centroid.x;
 
         const dy =
-          point.y - centroid.y;
+          point.y -
+          centroid.y;
 
         const length =
           Math.max(
@@ -240,8 +292,6 @@
         const normalY =
           dy / length;
 
-        // Very small deterministic shoreline unevenness. This happens after
-        // smoothing, so it adds hand-drawn life rather than rebuilding cells.
         const wobble =
           (
             hash01(
@@ -251,22 +301,59 @@
             ) -
             0.5
           ) *
-          0.055;
+          amount;
 
         return {
           x:
             point.x +
-            normalX * wobble,
+            normalX *
+            wobble,
 
           y:
             point.y +
-            normalY * wobble
+            normalY *
+            wobble
         };
       }
     );
   }
 
-  function traceWetBoundaries(cells) {
+  function cardinalNeighborIndexes(
+    cell
+  ) {
+    const result = [];
+
+    const positions = [
+      [cell.x, cell.y - 1],
+      [cell.x + 1, cell.y],
+      [cell.x, cell.y + 1],
+      [cell.x - 1, cell.y]
+    ];
+
+    for (
+      const [x, y] of
+      positions
+    ) {
+      if (
+        x < 0 ||
+        y < 0 ||
+        x >= LLW.CONFIG.worldCols ||
+        y >= LLW.CONFIG.worldRows
+      ) {
+        continue;
+      }
+
+      result.push(
+        y *
+        LLW.CONFIG.worldCols +
+        x
+      );
+    }
+
+    return result;
+  }
+
+  function buildWetComponents(cells) {
     const wetSet =
       new Set(
         cells
@@ -281,48 +368,141 @@
           )
       );
 
-    if (!wetSet.size) {
-      return [];
+    const visited =
+      new Set();
+
+    const components = [];
+
+    for (const index of wetSet) {
+      if (visited.has(index)) {
+        continue;
+      }
+
+      const queue = [index];
+      const indexes = [];
+
+      visited.add(index);
+
+      while (queue.length) {
+        const currentIndex =
+          queue.shift();
+
+        const cell =
+          cells[currentIndex];
+
+        if (!cell) {
+          continue;
+        }
+
+        indexes.push(
+          currentIndex
+        );
+
+        for (
+          const neighborIndex of
+          cardinalNeighborIndexes(
+            cell
+          )
+        ) {
+          if (
+            !wetSet.has(
+              neighborIndex
+            ) ||
+            visited.has(
+              neighborIndex
+            )
+          ) {
+            continue;
+          }
+
+          visited.add(
+            neighborIndex
+          );
+
+          queue.push(
+            neighborIndex
+          );
+        }
+      }
+
+      const maxDepth =
+        Math.max(
+          0,
+          ...indexes.map(
+            (cellIndex) =>
+              cells[
+                cellIndex
+              ].surfaceWaterDepth
+          )
+        );
+
+      const visible =
+        indexes.length >=
+          LLW.CONFIG.visibleWaterMinCells ||
+        maxDepth >=
+          LLW.CONFIG.visibleWaterDeepSingleCell;
+
+      components.push({
+        indexes,
+        maxDepth,
+        visible
+      });
     }
 
-    const cols =
-      LLW.CONFIG.worldCols;
+    return components;
+  }
 
-    const rows =
-      LLW.CONFIG.worldRows;
+  function traceComponentBoundaries(
+    component,
+    cells
+  ) {
+    const componentSet =
+      new Set(
+        component.indexes
+      );
 
-    function wetAt(x, y) {
+    function insideAt(x, y) {
       if (
         x < 0 ||
         y < 0 ||
-        x >= cols ||
-        y >= rows
+        x >= LLW.CONFIG.worldCols ||
+        y >= LLW.CONFIG.worldRows
       ) {
         return false;
       }
 
-      return wetSet.has(
-        y * cols + x
+      return componentSet.has(
+        y *
+        LLW.CONFIG.worldCols +
+        x
       );
     }
 
     const edges = [];
 
-    function addEdge(ax, ay, bx, by) {
+    function addEdge(
+      ax,
+      ay,
+      bx,
+      by
+    ) {
       edges.push({
         a: { x: ax, y: ay },
         b: { x: bx, y: by }
       });
     }
 
-    for (const index of wetSet) {
+    for (
+      const cellIndex of
+      component.indexes
+    ) {
       const cell =
-        cells[index];
+        cells[cellIndex];
 
       const x = cell.x;
       const y = cell.y;
 
-      if (!wetAt(x, y - 1)) {
+      if (!insideAt(x, y - 1)) {
         addEdge(
           x,
           y,
@@ -331,7 +511,7 @@
         );
       }
 
-      if (!wetAt(x + 1, y)) {
+      if (!insideAt(x + 1, y)) {
         addEdge(
           x + 1,
           y,
@@ -340,7 +520,7 @@
         );
       }
 
-      if (!wetAt(x, y + 1)) {
+      if (!insideAt(x, y + 1)) {
         addEdge(
           x + 1,
           y + 1,
@@ -349,7 +529,7 @@
         );
       }
 
-      if (!wetAt(x - 1, y)) {
+      if (!insideAt(x - 1, y)) {
         addEdge(
           x,
           y + 1,
@@ -363,13 +543,15 @@
       new Map();
 
     for (
-      let i = 0;
-      i < edges.length;
-      i++
+      let edgeIndex = 0;
+      edgeIndex < edges.length;
+      edgeIndex++
     ) {
       const key =
         pointKey(
-          edges[i].a
+          edges[
+            edgeIndex
+          ].a
         );
 
       if (!outgoing.has(key)) {
@@ -379,9 +561,9 @@
         );
       }
 
-      outgoing.get(
-        key
-      ).push(i);
+      outgoing.get(key).push(
+        edgeIndex
+      );
     }
 
     const visited =
@@ -406,8 +588,7 @@
       const startKey =
         pointKey(first.a);
 
-      const points =
-        [first.a];
+      const points = [first.a];
 
       let currentIndex =
         edgeIndex;
@@ -440,7 +621,9 @@
         );
 
         const endKey =
-          pointKey(edge.b);
+          pointKey(
+            edge.b
+          );
 
         if (
           endKey === startKey
@@ -464,9 +647,6 @@
           break;
         }
 
-        // Normally there is one outgoing boundary edge. In the rare
-        // diagonal-touch ambiguity, deterministic index order keeps the
-        // generated shape stable.
         currentIndex =
           Math.min(
             ...candidates
@@ -486,64 +666,47 @@
       ) {
         points.pop();
 
-        loops.push(points);
+        loops.push(
+          removeCollinear(
+            points
+          )
+        );
       }
     }
 
     return loops;
   }
 
-  function buildWaterBodies(cells) {
-    const loops =
-      traceWetBoundaries(cells);
+  function processLoop(
+    points,
+    salt,
+    scale = 1
+  ) {
+    let result =
+      chaikinClosed(
+        points,
+        2,
+        0.16
+      );
 
-    const bodies = [];
+    result =
+      gentlyIrregularizeClosed(
+        result,
+        salt,
+        0.05
+      );
 
-    for (
-      let i = 0;
-      i < loops.length;
-      i++
+    if (
+      Math.abs(scale - 1) >
+      EPSILON
     ) {
-      let points =
-        removeCollinear(
-          loops[i]
-        );
-
-      if (
-        points.length < 3
-      ) {
-        continue;
-      }
-
-      // Keep clockwise/counterclockwise stable but normalize outer shape
-      // orientation for predictable rendering.
-      if (
-        polygonArea(points) <
-        0
-      ) {
-        points.reverse();
-      }
-
-      points =
-        chaikinClosed(
-          points,
-          2,
-          0.16
-        );
-
-      points =
-        gentlyIrregularizeClosed(
-          points,
-          900 + i * 31
-        );
-
       const centroid =
-        polygonCentroid(points);
+        polygonCentroid(
+          result
+        );
 
-      // Chaikin trims hard cell corners. A tiny radial expansion restores
-      // roughly the same footprint without bringing the squares back.
-      points =
-        points.map(
+      result =
+        result.map(
           (point) => ({
             x:
               centroid.x +
@@ -551,7 +714,7 @@
                 point.x -
                 centroid.x
               ) *
-              1.035,
+              scale,
 
             y:
               centroid.y +
@@ -559,53 +722,254 @@
                 point.y -
                 centroid.y
               ) *
-              1.035
+              scale
           })
         );
+    }
+
+    return result;
+  }
+
+  function buildWaterBodies(cells) {
+    const components =
+      buildWetComponents(cells);
+
+    const bodies = [];
+
+    const visibleWetCellIndexes =
+      new Set();
+
+    for (
+      let componentIndex = 0;
+      componentIndex <
+        components.length;
+      componentIndex++
+    ) {
+      const component =
+        components[
+          componentIndex
+        ];
+
+      if (!component.visible) {
+        continue;
+      }
+
+      const loops =
+        traceComponentBoundaries(
+          component,
+          cells
+        );
+
+      if (!loops.length) {
+        continue;
+      }
+
+      const sorted =
+        loops
+          .map(
+            (points) => ({
+              points,
+              area:
+                polygonArea(
+                  points
+                )
+            })
+          )
+          .sort(
+            (a, b) =>
+              Math.abs(b.area) -
+              Math.abs(a.area)
+          );
+
+      const rawOuter =
+        sorted[0].points;
+
+      const outer =
+        processLoop(
+          rawOuter,
+          900 +
+            componentIndex *
+            41,
+          1.025
+        );
+
+      const holes = [];
+
+      for (
+        let loopIndex = 1;
+        loopIndex < sorted.length;
+        loopIndex++
+      ) {
+        const loop =
+          sorted[
+            loopIndex
+          ].points;
+
+        const testPoint =
+          polygonCentroid(loop);
+
+        if (
+          !pointInPolygon(
+            testPoint,
+            rawOuter
+          )
+        ) {
+          continue;
+        }
+
+        holes.push(
+          processLoop(
+            loop,
+            1200 +
+              componentIndex *
+              53 +
+              loopIndex *
+              17,
+            0.985
+          )
+        );
+      }
 
       const xs =
-        points.map(
+        outer.map(
           (point) =>
             point.x
         );
 
       const ys =
-        points.map(
+        outer.map(
           (point) =>
             point.y
         );
 
+      for (
+        const cellIndex of
+        component.indexes
+      ) {
+        visibleWetCellIndexes.add(
+          cellIndex
+        );
+      }
+
       bodies.push({
         id:
-          `water_body_${i + 1}`,
+          `water_body_${
+            bodies.length + 1
+          }`,
 
-        points,
+        outer,
+        holes,
+
+        cellIndexes:
+          [...component.indexes],
+
+        cellCount:
+          component.indexes.length,
+
+        maxDepth:
+          component.maxDepth,
 
         bounds: {
-          minX: Math.min(...xs),
-          minY: Math.min(...ys),
-          maxX: Math.max(...xs),
-          maxY: Math.max(...ys)
+          minX:
+            Math.min(...xs),
+
+          minY:
+            Math.min(...ys),
+
+          maxX:
+            Math.max(...xs),
+
+          maxY:
+            Math.max(...ys)
         }
       });
     }
 
-    return bodies;
+    return {
+      bodies,
+      visibleWetCellIndexes
+    };
   }
 
-  function buildChannelTraces(edges) {
-    if (!edges.length) {
-      return [];
+  function touchesVisibleWater(
+    edge,
+    cells,
+    visibleWetCellIndexes
+  ) {
+    if (
+      visibleWetCellIndexes.has(
+        edge.fromIndex
+      ) ||
+      visibleWetCellIndexes.has(
+        edge.toIndex
+      )
+    ) {
+      return true;
     }
+
+    const from =
+      cells[
+        edge.fromIndex
+      ];
+
+    const to =
+      cells[
+        edge.toIndex
+      ];
+
+    return (
+      from.neighborIndexes.some(
+        (index) =>
+          visibleWetCellIndexes.has(
+            index
+          )
+      ) ||
+      to.neighborIndexes.some(
+        (index) =>
+          visibleWetCellIndexes.has(
+            index
+          )
+      )
+    );
+  }
+
+  function isWorldEdgeCell(cell) {
+    return (
+      cell.x === 0 ||
+      cell.y === 0 ||
+      cell.x ===
+        LLW.CONFIG.worldCols - 1 ||
+      cell.y ===
+        LLW.CONFIG.worldRows - 1
+    );
+  }
+
+  function buildEdgeGraph(edges) {
+    const incident =
+      new Map();
+
+    const incoming =
+      new Map();
 
     const outgoing =
       new Map();
 
-    const incomingCount =
-      new Map();
+    function push(
+      map,
+      key,
+      value
+    ) {
+      if (!map.has(key)) {
+        map.set(
+          key,
+          []
+        );
+      }
 
-    const outgoingCount =
-      new Map();
+      map.get(key).push(
+        value
+      );
+    }
 
     for (
       let edgeIndex = 0;
@@ -615,40 +979,412 @@
       const edge =
         edges[edgeIndex];
 
-      if (
-        !outgoing.has(
-          edge.fromIndex
-        )
-      ) {
-        outgoing.set(
-          edge.fromIndex,
-          []
-        );
-      }
-
-      outgoing.get(
-        edge.fromIndex
-      ).push(
+      push(
+        incident,
+        edge.fromIndex,
         edgeIndex
       );
 
-      outgoingCount.set(
-        edge.fromIndex,
-        (
-          outgoingCount.get(
-            edge.fromIndex
-          ) || 0
-        ) + 1
+      push(
+        incident,
+        edge.toIndex,
+        edgeIndex
       );
 
-      incomingCount.set(
-        edge.toIndex,
-        (
-          incomingCount.get(
-            edge.toIndex
-          ) || 0
-        ) + 1
+      push(
+        outgoing,
+        edge.fromIndex,
+        edgeIndex
       );
+
+      push(
+        incoming,
+        edge.toIndex,
+        edgeIndex
+      );
+    }
+
+    return {
+      incident,
+      incoming,
+      outgoing
+    };
+  }
+
+  function pruneShortWeakStubs(
+    edges,
+    cells,
+    visibleWetCellIndexes
+  ) {
+    let active =
+      edges.map(
+        () => true
+      );
+
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+
+      const currentEdges =
+        edges.filter(
+          (_, index) =>
+            active[index]
+        );
+
+      const graph =
+        buildEdgeGraph(
+          currentEdges
+        );
+
+      // Need mapping back to original edge object identity.
+      const activeIndexByEdge =
+        new Map();
+
+      edges.forEach(
+        (edge, index) => {
+          if (active[index]) {
+            activeIndexByEdge.set(
+              edge,
+              index
+            );
+          }
+        }
+      );
+
+      const nodes =
+        new Set();
+
+      for (
+        const edge of
+        currentEdges
+      ) {
+        nodes.add(
+          edge.fromIndex
+        );
+
+        nodes.add(
+          edge.toIndex
+        );
+      }
+
+      for (const leafNode of nodes) {
+        const incident =
+          graph.incident.get(
+            leafNode
+          ) || [];
+
+        if (
+          incident.length !== 1
+        ) {
+          continue;
+        }
+
+        const leafCell =
+          cells[leafNode];
+
+        if (
+          visibleWetCellIndexes.has(
+            leafNode
+          ) ||
+          isWorldEdgeCell(
+            leafCell
+          )
+        ) {
+          continue;
+        }
+
+        const branch = [];
+
+        let currentNode =
+          leafNode;
+
+        let previousEdge =
+          null;
+
+        let guard = 0;
+
+        while (
+          guard++ <
+          edges.length + 4
+        ) {
+          const incidentEdges =
+            (
+              graph.incident.get(
+                currentNode
+              ) || []
+            ).filter(
+              (edgeIndex) =>
+                edgeIndex !==
+                previousEdge
+            );
+
+          if (
+            incidentEdges.length !== 1
+          ) {
+            break;
+          }
+
+          const localEdgeIndex =
+            incidentEdges[0];
+
+          const edge =
+            currentEdges[
+              localEdgeIndex
+            ];
+
+          branch.push(edge);
+
+          const nextNode =
+            edge.fromIndex ===
+              currentNode
+              ? edge.toIndex
+              : edge.fromIndex;
+
+          previousEdge =
+            localEdgeIndex;
+
+          const nextDegree =
+            (
+              graph.incident.get(
+                nextNode
+              ) || []
+            ).length;
+
+          currentNode =
+            nextNode;
+
+          if (
+            nextDegree !== 2
+          ) {
+            break;
+          }
+
+          if (
+            branch.length >=
+            LLW.CONFIG
+              .visibleChannelMinBranchEdges
+          ) {
+            break;
+          }
+        }
+
+        if (
+          branch.length >=
+          LLW.CONFIG
+            .visibleChannelMinBranchEdges
+        ) {
+          continue;
+        }
+
+        const maxStrength =
+          Math.max(
+            ...branch.map(
+              (edge) =>
+                edge.strength
+            )
+          );
+
+        const branchTouchesWater =
+          branch.some(
+            (edge) =>
+              touchesVisibleWater(
+                edge,
+                cells,
+                visibleWetCellIndexes
+              )
+          );
+
+        const keepThreshold =
+          branchTouchesWater
+            ? LLW.CONFIG
+                .visibleChannelWaterStubStrength
+            : LLW.CONFIG
+                .visibleChannelStrongStubStrength;
+
+        if (
+          maxStrength >=
+          keepThreshold
+        ) {
+          continue;
+        }
+
+        for (
+          const edge of
+          branch
+        ) {
+          const originalIndex =
+            activeIndexByEdge.get(
+              edge
+            );
+
+          if (
+            originalIndex !==
+            undefined &&
+            active[originalIndex]
+          ) {
+            active[
+              originalIndex
+            ] = false;
+
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          break;
+        }
+      }
+    }
+
+    return edges.filter(
+      (_, index) =>
+        active[index]
+    );
+  }
+
+  function filterVisibleChannelEdges(
+    cells,
+    edges,
+    visibleWetCellIndexes
+  ) {
+    const candidates =
+      edges
+        .filter(
+          (edge) =>
+            edge.strength >=
+            LLW.CONFIG
+              .visibleChannelMinStrength
+        )
+        .map(
+          (edge, index) => ({
+            ...edge,
+
+            sourceOrder:
+              index,
+
+            displayStrength:
+              edge.strength
+          })
+        );
+
+    return pruneShortWeakStubs(
+      candidates,
+      cells,
+      visibleWetCellIndexes
+    );
+  }
+
+  function prepareJunctions(
+    edges
+  ) {
+    const graph =
+      buildEdgeGraph(edges);
+
+    const junctions =
+      new Map();
+
+    const allNodes =
+      new Set([
+        ...graph.incoming.keys(),
+        ...graph.outgoing.keys()
+      ]);
+
+    for (
+      const node of
+      allNodes
+    ) {
+      const incoming =
+        graph.incoming.get(
+          node
+        ) || [];
+
+      const outgoing =
+        graph.outgoing.get(
+          node
+        ) || [];
+
+      if (
+        incoming.length < 2 ||
+        outgoing.length < 1
+      ) {
+        continue;
+      }
+
+      const strongestIncoming =
+        incoming.reduce(
+          (bestIndex, edgeIndex) => {
+            if (
+              bestIndex === null
+            ) {
+              return edgeIndex;
+            }
+
+            return (
+              edges[
+                edgeIndex
+              ].displayStrength >
+              edges[
+                bestIndex
+              ].displayStrength
+                ? edgeIndex
+                : bestIndex
+            );
+          },
+          null
+        );
+
+      const incomingStrength =
+        Math.max(
+          ...incoming.map(
+            (edgeIndex) =>
+              edges[
+                edgeIndex
+              ].displayStrength
+          )
+        );
+
+      for (
+        const edgeIndex of
+        outgoing
+      ) {
+        edges[
+          edgeIndex
+        ].displayStrength =
+          Math.max(
+            edges[
+              edgeIndex
+            ].displayStrength,
+            Math.min(
+              1,
+              incomingStrength *
+              1.035
+            )
+          );
+      }
+
+      junctions.set(
+        node,
+        {
+          strongestIncoming,
+          incoming,
+          outgoing
+        }
+      );
+    }
+
+    return {
+      ...graph,
+      junctions
+    };
+  }
+
+  function buildChannelTraces(
+    edges,
+    graph
+  ) {
+    if (!edges.length) {
+      return [];
     }
 
     const visited =
@@ -656,7 +1392,9 @@
 
     const traces = [];
 
-    function traceFrom(edgeIndex) {
+    function traceFrom(
+      edgeIndex
+    ) {
       if (
         visited.has(
           edgeIndex
@@ -666,6 +1404,7 @@
       }
 
       const trace = [];
+
       let current =
         edgeIndex;
 
@@ -681,30 +1420,34 @@
         const edge =
           edges[current];
 
-        trace.push(edge);
+        trace.push({
+          edge,
+          edgeIndex:
+            current
+        });
 
         const node =
           edge.toIndex;
 
         const incoming =
-          incomingCount.get(
+          graph.incoming.get(
             node
-          ) || 0;
+          ) || [];
 
-        const nextEdges =
-          outgoing.get(
+        const outgoing =
+          graph.outgoing.get(
             node
           ) || [];
 
         if (
-          incoming !== 1 ||
-          nextEdges.length !== 1
+          incoming.length !== 1 ||
+          outgoing.length !== 1
         ) {
           break;
         }
 
         current =
-          nextEdges[0];
+          outgoing[0];
       }
 
       if (trace.length) {
@@ -713,46 +1456,54 @@
     }
 
     for (
-      let i = 0;
-      i < edges.length;
-      i++
+      let edgeIndex = 0;
+      edgeIndex < edges.length;
+      edgeIndex++
     ) {
       const edge =
-        edges[i];
+        edges[
+          edgeIndex
+        ];
 
       const incoming =
-        incomingCount.get(
+        graph.incoming.get(
           edge.fromIndex
-        ) || 0;
+        ) || [];
 
-      const outgoingForNode =
-        outgoingCount.get(
+      const outgoing =
+        graph.outgoing.get(
           edge.fromIndex
-        ) || 0;
+        ) || [];
 
       if (
-        incoming !== 1 ||
-        outgoingForNode !== 1
+        incoming.length !== 1 ||
+        outgoing.length !== 1
       ) {
-        traceFrom(i);
+        traceFrom(
+          edgeIndex
+        );
       }
     }
 
     for (
-      let i = 0;
-      i < edges.length;
-      i++
+      let edgeIndex = 0;
+      edgeIndex < edges.length;
+      edgeIndex++
     ) {
-      traceFrom(i);
+      traceFrom(
+        edgeIndex
+      );
     }
 
     return traces;
   }
 
   function channelNode(
-    cell,
-    salt
+    cell
   ) {
+    // Crucial coherence rule: the same simulation cell gets the SAME visual
+    // node in every tributary/main-stem trace. v23 used trace-specific jitter,
+    // which made junction pieces visibly miss one another.
     return {
       x:
         cell.x +
@@ -761,11 +1512,11 @@
           hash01(
             cell.x,
             cell.y,
-            salt + 11
+            1111
           ) -
           0.5
         ) *
-        0.12,
+        0.11,
 
       y:
         cell.y +
@@ -774,11 +1525,11 @@
           hash01(
             cell.x,
             cell.y,
-            salt + 17
+            1117
           ) -
           0.5
         ) *
-        0.12
+        0.11
     };
   }
 
@@ -789,8 +1540,11 @@
     p3,
     t
   ) {
-    const t2 = t * t;
-    const t3 = t2 * t;
+    const t2 =
+      t * t;
+
+    const t3 =
+      t2 * t;
 
     return {
       x:
@@ -845,36 +1599,43 @@
     };
   }
 
-  function nearStandingWater(
-    cell,
-    cells
+  function touchesVisibleWetCell(
+    cellIndex,
+    cells,
+    visibleWetCellIndexes
   ) {
     if (
-      cell.surfaceWaterDepth >
-      EPSILON
+      visibleWetCellIndexes.has(
+        cellIndex
+      )
     ) {
       return true;
     }
 
-    return cell.neighborIndexes.some(
+    return cells[
+      cellIndex
+    ].neighborIndexes.some(
       (neighborIndex) =>
-        cells[
+        visibleWetCellIndexes.has(
           neighborIndex
-        ].surfaceWaterDepth >
-        EPSILON
+        )
     );
   }
 
   function sampleChannelTrace(
     trace,
     cells,
-    traceIndex
+    graph,
+    visibleWetCellIndexes
   ) {
+    const first =
+      trace[0];
+
     const cellIndexes = [
-      trace[0].fromIndex,
+      first.edge.fromIndex,
       ...trace.map(
-        (edge) =>
-          edge.toIndex
+        (entry) =>
+          entry.edge.toIndex
       )
     ];
 
@@ -882,13 +1643,87 @@
       cellIndexes.map(
         (cellIndex) =>
           channelNode(
-            cells[cellIndex],
-            1100 + traceIndex * 47
+            cells[
+              cellIndex
+            ]
           )
       );
 
+    // Tributaries join a little downstream into the established main stem,
+    // rather than every branch hitting a perfect vector-Y at one point.
+    const lastEntry =
+      trace[
+        trace.length - 1
+      ];
+
+    const endNodeIndex =
+      lastEntry.edge.toIndex;
+
+    const junction =
+      graph.junctions.get(
+        endNodeIndex
+      );
+
+    if (
+      junction &&
+      junction.strongestIncoming !==
+        lastEntry.edgeIndex &&
+      junction.outgoing.length
+    ) {
+      const resolvedDownstream =
+        graph._edges[
+          junction.outgoing[0]
+        ] || null;
+
+      if (resolvedDownstream) {
+        const center =
+          channelNode(
+            cells[
+              endNodeIndex
+            ]
+          );
+
+        const downstream =
+          channelNode(
+            cells[
+              resolvedDownstream.toIndex
+            ]
+          );
+
+        const dx =
+          downstream.x -
+          center.x;
+
+        const dy =
+          downstream.y -
+          center.y;
+
+        const length =
+          Math.max(
+            0.0001,
+            Math.hypot(dx, dy)
+          );
+
+        nodes[
+          nodes.length - 1
+        ] = {
+          x:
+            center.x +
+            dx /
+            length *
+            0.16,
+
+          y:
+            center.y +
+            dy /
+            length *
+            0.16
+        };
+      }
+    }
+
     const strengths = [
-      trace[0].strength
+      first.edge.displayStrength
     ];
 
     for (
@@ -898,24 +1733,27 @@
     ) {
       strengths.push(
         (
-          trace[i - 1].strength +
-          trace[i].strength
+          trace[
+            i - 1
+          ].edge.displayStrength +
+          trace[
+            i
+          ].edge.displayStrength
         ) *
         0.5
       );
     }
 
     strengths.push(
-      trace[
-        trace.length - 1
-      ].strength
+      lastEntry.edge.displayStrength
     );
 
     const samples = [];
 
     for (
       let segment = 0;
-      segment < nodes.length - 1;
+      segment <
+        nodes.length - 1;
       segment++
     ) {
       const p0 =
@@ -927,7 +1765,9 @@
         ];
 
       const p1 =
-        nodes[segment];
+        nodes[
+          segment
+        ];
 
       const p2 =
         nodes[
@@ -970,49 +1810,51 @@
 
         const strength =
           lerp(
-            strengths[segment],
+            strengths[
+              segment
+            ],
             strengths[
               segment + 1
             ],
             t
           );
 
-        const fromCell =
-          cells[
-            cellIndexes[
-              segment
-            ]
+        const fromCellIndex =
+          cellIndexes[
+            segment
           ];
 
-        const toCell =
-          cells[
-            cellIndexes[
-              segment + 1
-            ]
+        const toCellIndex =
+          cellIndexes[
+            segment + 1
           ];
 
         const nearWater =
-          nearStandingWater(
-            fromCell,
-            cells
+          touchesVisibleWetCell(
+            fromCellIndex,
+            cells,
+            visibleWetCellIndexes
           ) ||
-          nearStandingWater(
-            toCell,
-            cells
+          touchesVisibleWetCell(
+            toCellIndex,
+            cells,
+            visibleWetCellIndexes
           );
 
-        // These are intentionally much wider than v22's "blue wire" look.
-        // Width is full ribbon width in world-tile units.
+        // Wider overall than the earlier blue-wire pass.
         let width =
-          0.20 +
-          strength * 0.30;
+          0.27 +
+          strength *
+          0.34;
 
+        // Mouths widen as they merge into standing water.
         if (nearWater) {
           width =
             Math.max(
               width,
-              0.34 +
-              strength * 0.22
+              0.43 +
+              strength *
+              0.22
             );
         }
 
@@ -1025,6 +1867,87 @@
     }
 
     return samples;
+  }
+
+  function chaikinOpen(
+    points,
+    iterations = 1,
+    ratio = 0.08
+  ) {
+    let current =
+      [...points];
+
+    for (
+      let iteration = 0;
+      iteration < iterations;
+      iteration++
+    ) {
+      if (
+        current.length < 3
+      ) {
+        break;
+      }
+
+      const next =
+        [current[0]];
+
+      for (
+        let i = 0;
+        i <
+          current.length - 1;
+        i++
+      ) {
+        const a =
+          current[i];
+
+        const b =
+          current[
+            i + 1
+          ];
+
+        next.push({
+          x:
+            lerp(
+              a.x,
+              b.x,
+              ratio
+            ),
+
+          y:
+            lerp(
+              a.y,
+              b.y,
+              ratio
+            )
+        });
+
+        next.push({
+          x:
+            lerp(
+              a.x,
+              b.x,
+              1 - ratio
+            ),
+
+          y:
+            lerp(
+              a.y,
+              b.y,
+              1 - ratio
+            )
+        });
+      }
+
+      next.push(
+        current[
+          current.length - 1
+        ]
+      );
+
+      current = next;
+    }
+
+    return current;
   }
 
   function buildRibbonPolygon(
@@ -1064,10 +1987,12 @@
         ];
 
       let dx =
-        next.x - previous.x;
+        next.x -
+        previous.x;
 
       let dy =
-        next.y - previous.y;
+        next.y -
+        previous.y;
 
       const length =
         Math.max(
@@ -1082,7 +2007,8 @@
       const normalY = dx;
 
       const halfWidth =
-        current.width * 0.5;
+        current.width *
+        0.5;
 
       left.push({
         x:
@@ -1109,35 +2035,59 @@
       });
     }
 
-    const polygon = [
-      ...left,
-      ...right.reverse()
-    ];
+    const smoothedLeft =
+      chaikinOpen(
+        left,
+        1,
+        0.06
+      );
 
-    // One gentle corner cut keeps banks from showing the sampled ribbon
-    // vertices without washing out the path's actual bends.
-    return chaikinClosed(
-      polygon,
-      1,
-      0.08
-    );
+    const smoothedRight =
+      chaikinOpen(
+        right,
+        1,
+        0.06
+      );
+
+    return [
+      ...smoothedLeft,
+      ...smoothedRight.reverse()
+    ];
   }
 
   function buildChannels(
     cells,
-    edges
+    allEdges,
+    visibleWetCellIndexes
   ) {
+    const edges =
+      filterVisibleChannelEdges(
+        cells,
+        allEdges,
+        visibleWetCellIndexes
+      );
+
+    const graph =
+      prepareJunctions(edges);
+
+    // Internal convenience for the tributary bend calculation.
+    graph._edges = edges;
+
     const traces =
-      buildChannelTraces(edges);
+      buildChannelTraces(
+        edges,
+        graph
+      );
 
     return traces
       .map(
-        (trace, index) => {
+        (trace, traceIndex) => {
           const centerline =
             sampleChannelTrace(
               trace,
               cells,
-              index
+              graph,
+              visibleWetCellIndexes
             );
 
           const polygon =
@@ -1146,7 +2096,7 @@
             );
 
           if (
-            polygon.length < 3
+            polygon.length < 4
           ) {
             return null;
           }
@@ -1159,17 +2109,25 @@
 
           return {
             id:
-              `channel_${index + 1}`,
+              `channel_${
+                traceIndex + 1
+              }`,
 
             centerline,
-
             polygon,
 
+            edgeCount:
+              trace.length,
+
             minWidth:
-              Math.min(...widths),
+              Math.min(
+                ...widths
+              ),
 
             maxWidth:
-              Math.max(...widths)
+              Math.max(
+                ...widths
+              )
           };
         }
       )
@@ -1187,7 +2145,8 @@
             state.landscape.seed,
 
           waterBodies: [],
-          channels: []
+          channels: [],
+          visibleWetCellIndexes: []
         };
 
         return (
@@ -1195,21 +2154,32 @@
         );
       }
 
-      const waterBodies =
+      const {
+        bodies,
+        visibleWetCellIndexes
+      } =
         buildWaterBodies(cells);
 
       const channels =
         buildChannels(
           cells,
-          state.landscape.channelEdges
+          state.landscape.channelEdges,
+          visibleWetCellIndexes
         );
 
       state.landscape.geometry = {
         seed:
           state.landscape.seed,
 
-        waterBodies,
-        channels
+        waterBodies:
+          bodies,
+
+        channels,
+
+        visibleWetCellIndexes:
+          [
+            ...visibleWetCellIndexes
+          ]
       };
 
       return (

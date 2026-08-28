@@ -30,6 +30,15 @@
     channelStartAreaRatio: 0.015,
     channelFullAreaRatio: 0.12,
 
+    // Water presentation coherence. Hydrology keeps all drainage truth;
+    // geometry decides which of it deserves to read as permanent open water.
+    visibleChannelMinStrength: 0.18,
+    visibleChannelMinBranchEdges: 2,
+    visibleChannelStrongStubStrength: 0.42,
+    visibleChannelWaterStubStrength: 0.28,
+    visibleWaterMinCells: 2,
+    visibleWaterDeepSingleCell: 0.055,
+
     // Static prototype runoff. This is a relative volume per landscape cell,
     // not literal rainfall yet.
     runoffPerCell: 0.0025,

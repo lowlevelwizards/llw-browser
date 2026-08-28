@@ -2344,14 +2344,30 @@
     ctx.fillRect(0, 0, width, height);
 
     ctx.fillStyle = "#a9c97d";
-    ctx.fillRect(
-      offsetX,
-      offsetY,
-      mapWidth,
-      mapHeight
-    );
+
+    if (
+      LLW.camera.isOverview()
+    ) {
+      ctx.fillRect(
+        offsetX,
+        offsetY,
+        mapWidth,
+        mapHeight
+      );
+    } else {
+      // Local play is a camera into the larger world, not a 12x16 board
+      // pasted onto the middle of the canvas.
+      ctx.fillRect(
+        0,
+        0,
+        width,
+        height
+      );
+    }
 
     const landscapeView = {
+      width,
+      height,
       tileSize,
       offsetX,
       offsetY,

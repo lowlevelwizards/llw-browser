@@ -8,7 +8,20 @@
     pixelsPerTile: 7
   };
 
-  function clamp(value, min, max) {
+  let waterLayers = {
+    width: 0,
+    height: 0,
+    bankCanvas: null,
+    bankCtx: null,
+    waterCanvas: null,
+    waterCtx: null
+  };
+
+  function clamp(
+    value,
+    min,
+    max
+  ) {
     return Math.max(
       min,
       Math.min(max, value)
@@ -16,7 +29,9 @@
   }
 
   function lerp(a, b, t) {
-    return a + (b - a) * t;
+    return a +
+      (b - a) *
+      t;
   }
 
   function smoothstep(t) {
@@ -30,7 +45,85 @@
     );
   }
 
-  function getCellClamped(x, y) {
+  function hash01(
+    x,
+    y,
+    salt = 0
+  ) {
+    const value =
+      Math.sin(
+        x * 12.9898 +
+        y * 78.233 +
+        salt * 37.719
+      ) *
+      43758.5453;
+
+    return (
+      value -
+      Math.floor(value)
+    );
+  }
+
+  function valueNoise(
+    x,
+    y,
+    salt = 0
+  ) {
+    const x0 =
+      Math.floor(x);
+
+    const y0 =
+      Math.floor(y);
+
+    const tx =
+      smoothstep(
+        x - x0
+      );
+
+    const ty =
+      smoothstep(
+        y - y0
+      );
+
+    const a =
+      hash01(
+        x0,
+        y0,
+        salt
+      );
+
+    const b =
+      hash01(
+        x0 + 1,
+        y0,
+        salt
+      );
+
+    const c =
+      hash01(
+        x0,
+        y0 + 1,
+        salt
+      );
+
+    const d =
+      hash01(
+        x0 + 1,
+        y0 + 1,
+        salt
+      );
+
+    return lerp(
+      lerp(a, b, tx),
+      lerp(c, d, tx),
+      ty
+    );
+  }
+
+  function getCellClamped(
+    x,
+    y
+  ) {
     const px =
       clamp(
         x,
@@ -97,7 +190,12 @@
         y1
       );
 
-    if (!a || !b || !c || !d) {
+    if (
+      !a ||
+      !b ||
+      !c ||
+      !d
+    ) {
       return 0.5;
     }
 
@@ -107,12 +205,62 @@
         b.elevation,
         tx
       ),
+
       lerp(
         c.elevation,
         d.elevation,
         tx
       ),
+
       ty
+    );
+  }
+
+  function displayElevation(
+    worldX,
+    worldY
+  ) {
+    let elevation =
+      sampleElevation(
+        worldX,
+        worldY
+      );
+
+    // Broad patch variation gives the ground hand-painted regions rather
+    // than one perfectly smooth digital gradient.
+    const patch =
+      (
+        valueNoise(
+          worldX * 0.29,
+          worldY * 0.29,
+          2401
+        ) -
+        0.5
+      ) *
+      0.055;
+
+    elevation =
+      clamp(
+        elevation + patch,
+        0,
+        1
+      );
+
+    // Soft terracing: restores readable high/low color regions without
+    // bringing back square simulation cells.
+    const bands = 7;
+
+    const stepped =
+      Math.round(
+        elevation *
+        (bands - 1)
+      ) /
+      (bands - 1);
+
+    return lerp(
+      elevation,
+      stepped,
+      0.56
     );
   }
 
@@ -120,74 +268,82 @@
     elevation
   ) {
     const t =
-      smoothstep(elevation);
+      smoothstep(
+        elevation
+      );
 
-    // Stronger than v22. The old tile shading carried useful topography;
-    // this keeps that amplitude while removing the visible cell boundaries.
     const low =
-      [70, 125, 99];
+      [62, 123, 100];
 
-    const mid =
-      [145, 178, 105];
+    const lowerMid =
+      [111, 158, 103];
+
+    const upperMid =
+      [165, 185, 103];
 
     const high =
-      [216, 204, 118];
+      [218, 203, 116];
 
-    let r;
-    let g;
-    let b;
+    let from;
+    let to;
+    let local;
 
-    if (t < 0.52) {
-      const local =
-        t / 0.52;
+    if (t < 0.34) {
+      from = low;
+      to = lowerMid;
+      local =
+        t / 0.34;
+    } else if (
+      t < 0.68
+    ) {
+      from =
+        lowerMid;
 
-      r = lerp(
-        low[0],
-        mid[0],
-        local
-      );
+      to =
+        upperMid;
 
-      g = lerp(
-        low[1],
-        mid[1],
-        local
-      );
-
-      b = lerp(
-        low[2],
-        mid[2],
-        local
-      );
-    } else {
-      const local =
+      local =
         (
-          t - 0.52
+          t - 0.34
         ) /
-        0.48;
+        0.34;
+    } else {
+      from =
+        upperMid;
 
-      r = lerp(
-        mid[0],
-        high[0],
-        local
-      );
+      to = high;
 
-      g = lerp(
-        mid[1],
-        high[1],
-        local
-      );
-
-      b = lerp(
-        mid[2],
-        high[2],
-        local
-      );
+      local =
+        (
+          t - 0.68
+        ) /
+        0.32;
     }
 
     return [
-      Math.round(r),
-      Math.round(g),
-      Math.round(b)
+      Math.round(
+        lerp(
+          from[0],
+          to[0],
+          local
+        )
+      ),
+
+      Math.round(
+        lerp(
+          from[1],
+          to[1],
+          local
+        )
+      ),
+
+      Math.round(
+        lerp(
+          from[2],
+          to[2],
+          local
+        )
+      )
     ];
   }
 
@@ -201,7 +357,8 @@
     }
 
     const scale =
-      elevationCache.pixelsPerTile;
+      elevationCache
+        .pixelsPerTile;
 
     const key =
       [
@@ -212,7 +369,8 @@
       ].join(":");
 
     if (
-      elevationCache.key === key &&
+      elevationCache.key ===
+        key &&
       elevationCache.canvas
     ) {
       return (
@@ -227,13 +385,15 @@
 
     canvas.width =
       (
-        LLW.CONFIG.worldCols + 1
+        LLW.CONFIG.worldCols +
+        1
       ) *
       scale;
 
     canvas.height =
       (
-        LLW.CONFIG.worldRows + 1
+        LLW.CONFIG.worldRows +
+        1
       ) *
       scale;
 
@@ -252,7 +412,8 @@
       py++
     ) {
       const worldY =
-        py / scale - 0.5;
+        py / scale -
+        0.5;
 
       for (
         let px = 0;
@@ -260,11 +421,12 @@
         px++
       ) {
         const worldX =
-          px / scale - 0.5;
+          px / scale -
+          0.5;
 
         const [r, g, b] =
           elevationColor(
-            sampleElevation(
+            displayElevation(
               worldX,
               worldY
             )
@@ -305,8 +467,10 @@
     view
   ) {
     if (
-      !LLW.CONFIG.terrainElevationShading ||
-      !state.landscape.cells.length
+      !LLW.CONFIG
+        .terrainElevationShading ||
+      !state.landscape
+        .cells.length
     ) {
       return;
     }
@@ -318,38 +482,19 @@
       return;
     }
 
+    const scale =
+      elevationCache
+        .pixelsPerTile;
+
     const overview =
       LLW.camera.isOverview();
-
-    const scale =
-      elevationCache.pixelsPerTile;
-
-    const originX =
-      overview
-        ? 0
-        : state.camera.x;
-
-    const originY =
-      overview
-        ? 0
-        : state.camera.y;
-
-    const columns =
-      overview
-        ? LLW.CONFIG.worldCols
-        : LLW.CONFIG.viewportCols;
-
-    const rows =
-      overview
-        ? LLW.CONFIG.worldRows
-        : LLW.CONFIG.viewportRows;
 
     ctx.save();
 
     ctx.globalAlpha =
       overview
-        ? 0.58
-        : 0.36;
+        ? 0.66
+        : 0.48;
 
     ctx.imageSmoothingEnabled =
       true;
@@ -357,27 +502,148 @@
     ctx.imageSmoothingQuality =
       "high";
 
-    ctx.drawImage(
-      cache,
+    if (overview) {
+      ctx.drawImage(
+        cache,
 
-      (
-        originX + 0.5
-      ) *
-      scale,
+        0.5 * scale,
+        0.5 * scale,
 
-      (
-        originY + 0.5
-      ) *
-      scale,
+        LLW.CONFIG.worldCols *
+          scale,
 
-      columns * scale,
-      rows * scale,
+        LLW.CONFIG.worldRows *
+          scale,
 
-      view.offsetX,
-      view.offsetY,
-      view.mapWidth,
-      view.mapHeight
-    );
+        view.offsetX,
+        view.offsetY,
+        view.mapWidth,
+        view.mapHeight
+      );
+
+      ctx.restore();
+      return;
+    }
+
+    // LOCAL MODE FIX:
+    // The old renderer only tinted the formal 12×16 rectangle, while props
+    // and water continued into the unused vertical canvas. Sample the same
+    // world-space terrain across the ENTIRE visible play canvas instead.
+    const visibleLeft =
+      state.camera.x -
+      view.offsetX /
+      view.tileSize;
+
+    const visibleTop =
+      state.camera.y -
+      view.offsetY /
+      view.tileSize;
+
+    const visibleRight =
+      visibleLeft +
+      view.width /
+      view.tileSize;
+
+    const visibleBottom =
+      visibleTop +
+      view.height /
+      view.tileSize;
+
+    const clippedLeft =
+      clamp(
+        visibleLeft,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedTop =
+      clamp(
+        visibleTop,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    const clippedRight =
+      clamp(
+        visibleRight,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedBottom =
+      clamp(
+        visibleBottom,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    if (
+      clippedRight >
+        clippedLeft &&
+      clippedBottom >
+        clippedTop
+    ) {
+      const destinationX =
+        (
+          clippedLeft -
+          visibleLeft
+        ) *
+        view.tileSize;
+
+      const destinationY =
+        (
+          clippedTop -
+          visibleTop
+        ) *
+        view.tileSize;
+
+      const destinationWidth =
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        view.tileSize;
+
+      const destinationHeight =
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        view.tileSize;
+
+      ctx.drawImage(
+        cache,
+
+        (
+          clippedLeft +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedTop +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        scale,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        scale,
+
+        destinationX,
+        destinationY,
+        destinationWidth,
+        destinationHeight
+      );
+    }
 
     ctx.restore();
   }
@@ -415,8 +681,61 @@
     };
   }
 
+  function ensureWaterLayers(
+    width,
+    height
+  ) {
+    if (
+      waterLayers.width ===
+        width &&
+      waterLayers.height ===
+        height &&
+      waterLayers.bankCanvas &&
+      waterLayers.waterCanvas
+    ) {
+      return;
+    }
+
+    function makeCanvas() {
+      const canvas =
+        document.createElement(
+          "canvas"
+        );
+
+      canvas.width = width;
+      canvas.height = height;
+
+      return canvas;
+    }
+
+    const bankCanvas =
+      makeCanvas();
+
+    const waterCanvas =
+      makeCanvas();
+
+    waterLayers = {
+      width,
+      height,
+
+      bankCanvas,
+
+      bankCtx:
+        bankCanvas.getContext(
+          "2d"
+        ),
+
+      waterCanvas,
+
+      waterCtx:
+        waterCanvas.getContext(
+          "2d"
+        )
+    };
+  }
+
   function appendPolygon(
-    ctx,
+    context,
     points,
     view
   ) {
@@ -433,7 +752,7 @@
         view
       );
 
-    ctx.moveTo(
+    context.moveTo(
       first.x,
       first.y
     );
@@ -449,19 +768,75 @@
           view
         );
 
-      ctx.lineTo(
+      context.lineTo(
         point.x,
         point.y
       );
     }
 
-    ctx.closePath();
+    context.closePath();
   }
 
-  function appendAllWaterGeometry(
-    ctx,
+  function fillPolygon(
+    context,
+    points,
     view
   ) {
+    context.beginPath();
+
+    appendPolygon(
+      context,
+      points,
+      view
+    );
+
+    context.fill();
+  }
+
+  function strokePolygon(
+    context,
+    points,
+    view
+  ) {
+    context.beginPath();
+
+    appendPolygon(
+      context,
+      points,
+      view
+    );
+
+    context.stroke();
+  }
+
+  function paintGeometryToLayers(
+    view
+  ) {
+    ensureWaterLayers(
+      view.width,
+      view.height
+    );
+
+    const bank =
+      waterLayers.bankCtx;
+
+    const water =
+      waterLayers.waterCtx;
+
+    bank.clearRect(
+      0,
+      0,
+      view.width,
+      view.height
+    );
+
+    water.clearRect(
+      0,
+      0,
+      view.width,
+      view.height
+    );
+
     const geometry =
       state.landscape.geometry;
 
@@ -469,13 +844,61 @@
       return;
     }
 
+    // OPAQUE construction mask first. Source-over of one solid color means
+    // overlapping ribbons/ponds cannot accumulate transparency darkness.
+    bank.save();
+    bank.fillStyle =
+      "#ffffff";
+
+    bank.strokeStyle =
+      "#ffffff";
+
+    bank.lineJoin =
+      "round";
+
+    bank.lineCap =
+      "round";
+
+    bank.lineWidth =
+      Math.max(
+        2,
+        view.tileSize *
+        0.18
+      );
+
+    water.save();
+
+    water.fillStyle =
+      "#ffffff";
+
+    water.strokeStyle =
+      "#ffffff";
+
+    water.lineJoin =
+      "round";
+
+    water.lineCap =
+      "round";
+
     for (
       const body of
       geometry.waterBodies
     ) {
-      appendPolygon(
-        ctx,
-        body.points,
+      fillPolygon(
+        bank,
+        body.outer,
+        view
+      );
+
+      strokePolygon(
+        bank,
+        body.outer,
+        view
+      );
+
+      fillPolygon(
+        water,
+        body.outer,
         view
       );
     }
@@ -484,12 +907,92 @@
       const channel of
       geometry.channels
     ) {
-      appendPolygon(
-        ctx,
+      fillPolygon(
+        bank,
+        channel.polygon,
+        view
+      );
+
+      strokePolygon(
+        bank,
+        channel.polygon,
+        view
+      );
+
+      fillPolygon(
+        water,
         channel.polygon,
         view
       );
     }
+
+    // Explicit holes are subtracted AFTER the union of outer pond shapes.
+    // This removes the "which side is inside?" ambiguity from v23.
+    bank.globalCompositeOperation =
+      "destination-out";
+
+    water.globalCompositeOperation =
+      "destination-out";
+
+    for (
+      const body of
+      geometry.waterBodies
+    ) {
+      for (
+        const hole of
+        body.holes
+      ) {
+        fillPolygon(
+          bank,
+          hole,
+          view
+        );
+
+        fillPolygon(
+          water,
+          hole,
+          view
+        );
+      }
+    }
+
+    bank.restore();
+    water.restore();
+
+    // Colorize each union mask once.
+    bank.save();
+
+    bank.globalCompositeOperation =
+      "source-in";
+
+    bank.fillStyle =
+      "#477c67";
+
+    bank.fillRect(
+      0,
+      0,
+      view.width,
+      view.height
+    );
+
+    bank.restore();
+
+    water.save();
+
+    water.globalCompositeOperation =
+      "source-in";
+
+    water.fillStyle =
+      "#4599b2";
+
+    water.fillRect(
+      0,
+      0,
+      view.width,
+      view.height
+    );
+
+    water.restore();
   }
 
   function drawWater(
@@ -497,8 +1000,10 @@
     view
   ) {
     if (
-      !LLW.CONFIG.surfaceWaterVisible &&
-      !LLW.CONFIG.channelWaterVisible
+      !LLW.CONFIG
+        .surfaceWaterVisible &&
+      !LLW.CONFIG
+        .channelWaterVisible
     ) {
       return;
     }
@@ -509,75 +1014,46 @@
     if (
       !geometry ||
       (
-        !geometry.waterBodies.length &&
-        !geometry.channels.length
+        !geometry
+          .waterBodies.length &&
+        !geometry
+          .channels.length
       )
     ) {
       return;
     }
 
+    paintGeometryToLayers(
+      view
+    );
+
     ctx.save();
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
 
-    // ONE combined path for all standing and moving water. Overlapping
-    // channels, tributaries and ponds are therefore painted once rather than
-    // darkening every time transparent primitives cross.
-    ctx.beginPath();
-    appendAllWaterGeometry(
-      ctx,
-      view
+    ctx.globalAlpha = 0.30;
+
+    ctx.drawImage(
+      waterLayers.bankCanvas,
+      0,
+      0
     );
 
-    // Saturated bank / wet edge under the water body.
-    ctx.fillStyle =
-      "rgba(72, 123, 99, 0.22)";
+    ctx.globalAlpha = 0.84;
 
-    ctx.strokeStyle =
-      "rgba(72, 123, 99, 0.28)";
-
-    ctx.lineWidth =
-      Math.max(
-        2,
-        view.tileSize * 0.15
-      );
-
-    ctx.fill();
-    ctx.stroke();
-
-    // Rebuild the same path and paint the water exactly once.
-    ctx.beginPath();
-    appendAllWaterGeometry(
-      ctx,
-      view
+    ctx.drawImage(
+      waterLayers.waterCanvas,
+      0,
+      0
     );
-
-    ctx.fillStyle =
-      "rgba(68, 151, 177, 0.78)";
-
-    ctx.fill();
-
-    // Slightly darker single shoreline, still one stroke operation.
-    ctx.strokeStyle =
-      "rgba(49, 122, 142, 0.50)";
-
-    ctx.lineWidth =
-      Math.max(
-        1,
-        view.tileSize * 0.035
-      );
-
-    ctx.stroke();
 
     ctx.restore();
 
-    drawWaterHighlights(
+    drawHighlights(
       ctx,
       view
     );
   }
 
-  function drawWaterHighlights(
+  function drawHighlights(
     ctx,
     view
   ) {
@@ -591,18 +1067,18 @@
     ctx.save();
 
     ctx.strokeStyle =
-      "rgba(204, 232, 225, 0.34)";
+      "rgba(209, 234, 226, 0.40)";
 
-    ctx.lineCap = "round";
+    ctx.lineCap =
+      "round";
 
     ctx.lineWidth =
       Math.max(
         1,
-        view.tileSize * 0.022
+        view.tileSize *
+        0.024
       );
 
-    // One or two glints per actual water body, positioned from its vector
-    // bounds rather than one glint per simulation cell.
     for (
       const body of
       geometry.waterBodies
@@ -615,25 +1091,30 @@
         body.bounds.maxY -
         body.bounds.minY;
 
-      const center = {
-        x:
-          (
-            body.bounds.minX +
-            body.bounds.maxX
-          ) *
-          0.5,
+      if (
+        width < 0.8 ||
+        height < 0.6
+      ) {
+        continue;
+      }
 
-        y:
-          (
-            body.bounds.minY +
-            body.bounds.maxY
-          ) *
-          0.5
-      };
+      const centerX =
+        (
+          body.bounds.minX +
+          body.bounds.maxX
+        ) *
+        0.5;
+
+      const centerY =
+        (
+          body.bounds.minY +
+          body.bounds.maxY
+        ) *
+        0.5;
 
       const count =
-        width > 3.2 ||
-        height > 3.2
+        width > 3 ||
+        height > 3
           ? 2
           : 1;
 
@@ -642,8 +1123,8 @@
         i < count;
         i++
       ) {
-        const worldY =
-          center.y +
+        const y =
+          centerY +
           (
             i -
             (
@@ -651,19 +1132,22 @@
             ) *
             0.5
           ) *
-          0.68;
+          0.72;
+
+        const half =
+          Math.min(
+            0.62,
+            width * 0.18
+          );
 
         const left =
           worldPointToPixel(
             {
               x:
-                center.x -
-                Math.min(
-                  0.58,
-                  width * 0.18
-                ),
+                centerX -
+                half,
 
-              y: worldY
+              y
             },
             view
           );
@@ -672,13 +1156,10 @@
           worldPointToPixel(
             {
               x:
-                center.x +
-                Math.min(
-                  0.58,
-                  width * 0.18
-                ),
+                centerX +
+                half,
 
-              y: worldY
+              y
             },
             view
           );
@@ -696,9 +1177,11 @@
             right.x
           ) *
           0.5,
+
           left.y -
-            view.tileSize *
-            0.035,
+          view.tileSize *
+          0.035,
+
           right.x,
           right.y
         );
@@ -707,8 +1190,6 @@
       }
     }
 
-    // Sparse creek glints use the already interpolated centerline geometry,
-    // not tiny repeated round-capped segments.
     for (
       const channel of
       geometry.channels
@@ -717,16 +1198,18 @@
         channel.centerline;
 
       if (
-        points.length < 10 ||
-        channel.maxWidth < 0.34
+        points.length < 12 ||
+        channel.maxWidth <
+          0.38
       ) {
         continue;
       }
 
       for (
-        let i = 5;
-        i < points.length - 2;
-        i += 15
+        let i = 7;
+        i <
+          points.length - 2;
+        i += 19
       ) {
         const a =
           worldPointToPixel(
@@ -739,21 +1222,24 @@
             points[
               Math.min(
                 points.length - 1,
-                i + 2
+                i + 3
               )
             ],
             view
           );
 
         ctx.beginPath();
+
         ctx.moveTo(
           a.x,
           a.y
         );
+
         ctx.lineTo(
           b.x,
           b.y
         );
+
         ctx.stroke();
       }
     }
@@ -764,9 +1250,6 @@
   LLW.landscapeRenderer = {
     drawTerrain,
 
-    // render.js still calls channels then surface water. The combined water
-    // body must only paint once, so channels owns the unified draw and the
-    // surface-water call is intentionally a no-op compatibility seam.
     drawChannels(
       ctx,
       view
@@ -777,6 +1260,7 @@
       );
     },
 
+    // render.js still calls this separately; water is already one union draw.
     drawSurfaceWater() {}
   };
 })();
