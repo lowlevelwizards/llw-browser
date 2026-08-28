@@ -414,16 +414,16 @@
       );
 
     const low =
-      [62, 123, 100];
+      [74, 132, 104];
 
     const lowerMid =
-      [111, 158, 103];
+      [125, 170, 104];
 
     const upperMid =
-      [165, 185, 103];
+      [182, 197, 112];
 
     const high =
-      [218, 203, 116];
+      [228, 210, 124];
 
     let from;
     let to;
@@ -482,44 +482,86 @@
         local
       );
 
+    const openWarmth =
+      smoothstep(
+        (1 - shade) *
+          0.95
+      ) *
+      0.10;
+
     const woodlandMix =
       smoothstep(
         (
           woodland -
-          0.22
+          0.16
         ) /
-        0.66
+        0.70
       ) *
-      0.30;
+      0.38;
 
     const shadeMix =
       smoothstep(
         (
           shade -
-          0.10
+          0.06
         ) /
-        0.72
+        0.76
       ) *
-      0.28;
+      0.48;
+
+    const deepShadeMix =
+      smoothstep(
+        (
+          shade -
+          0.42
+        ) /
+        0.40
+      ) *
+      0.30;
 
     const moistureMix =
       smoothstep(
         (
           moisture -
-          0.42
+          0.44
         ) /
         0.34
       ) *
-      0.10;
+      0.14;
+
+    const sunnyWarm =
+      [203, 199, 112];
 
     const woodlandFloor =
-      [86, 132, 86];
+      [103, 147, 95];
 
     const shadeFloor =
-      [70, 113, 79];
+      [70, 118, 88];
+
+    const deepShadeFloor =
+      [60, 104, 88];
 
     const dampFloor =
-      [91, 132, 98];
+      [82, 126, 98];
+
+    r =
+      lerp(
+        r,
+        sunnyWarm[0],
+        openWarmth
+      );
+    g =
+      lerp(
+        g,
+        sunnyWarm[1],
+        openWarmth
+      );
+    b =
+      lerp(
+        b,
+        sunnyWarm[2],
+        openWarmth
+      );
 
     r =
       lerp(
@@ -557,6 +599,25 @@
         b,
         shadeFloor[2],
         shadeMix
+      );
+
+    r =
+      lerp(
+        r,
+        deepShadeFloor[0],
+        deepShadeMix
+      );
+    g =
+      lerp(
+        g,
+        deepShadeFloor[1],
+        deepShadeMix
+      );
+    b =
+      lerp(
+        b,
+        deepShadeFloor[2],
+        deepShadeMix
       );
 
     r =

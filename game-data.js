@@ -74,10 +74,18 @@
     initialStickMinOpenGround: 0.52,
 
     // Forest-floor clutter and geology.
-    stoneDensity: 0.010,
-    boulderDensity: 0.004,
+    stoneDensity: 0.012,
+    boulderDensity: 0.006,
     fallenLogDensity: 0.005,
     stumpDensity: 0.005,
+
+    // Non-interactive forest-floor presentation.
+    groundLeafLitterDensity: 0.28,
+    groundGrassTuftDensity: 0.22,
+    groundMossPatchDensity: 0.16,
+    groundCloverPatchDensity: 0.12,
+    groundWildflowerPatchDensity: 0.08,
+    groundPebblePatchDensity: 0.10,
 
     // Understory establishment.
     bushMinSuitability: 0.31,
@@ -273,6 +281,12 @@
     boulders: [],
     fallenLogs: [],
     stumps: [],
+    leafLitterPatches: [],
+    cloverPatches: [],
+    mossPatches: [],
+    wildflowerPatches: [],
+    grassTufts: [],
+    pebblePatches: [],
     items: []
   };
 
@@ -286,6 +300,12 @@
   let nextBoulderId = 1;
   let nextFallenLogId = 1;
   let nextStumpId = 1;
+  let nextLeafLitterPatchId = 1;
+  let nextCloverPatchId = 1;
+  let nextMossPatchId = 1;
+  let nextWildflowerPatchId = 1;
+  let nextGrassTuftId = 1;
+  let nextPebblePatchId = 1;
   let generationRandom = Math.random;
 
   LLW.worldLocation = function (x, y) {
@@ -509,6 +529,13 @@
   }
 
   function addStone(x, y) {
+    const palette = [
+      { hue: 38, sat: 10, light: 50 },
+      { hue: 30, sat: 13, light: 47 },
+      { hue: 48, sat: 8, light: 56 },
+      { hue: 90, sat: 12, light: 45 }
+    ][Math.floor(generationRandom() * 4)];
+
     const stone = {
       id: `stone_${nextStoneId++}`,
       x,
@@ -518,11 +545,20 @@
       offsetY:
         (generationRandom() - 0.5) * 0.10,
       scale:
-        0.80 +
-        generationRandom() * 0.55,
+        0.92 +
+        generationRandom() * 0.78,
       rotation:
-        (generationRandom() - 0.5) * 1.2,
+        (generationRandom() - 0.5) * 1.4,
+      pebbleCount:
+        2 +
+        Math.floor(generationRandom() * 4),
+      spread:
+        0.08 +
+        generationRandom() * 0.12,
+      palette,
       colorShift:
+        generationRandom() - 0.5,
+      lightShift:
         generationRandom() - 0.5
     };
 
@@ -531,6 +567,13 @@
   }
 
   function addBoulder(x, y) {
+    const palette = [
+      { hue: 34, sat: 9, light: 48 },
+      { hue: 26, sat: 12, light: 45 },
+      { hue: 82, sat: 11, light: 43 },
+      { hue: 16, sat: 10, light: 51 }
+    ][Math.floor(generationRandom() * 4)];
+
     const boulder = {
       id: `boulder_${nextBoulderId++}`,
       x,
@@ -540,17 +583,26 @@
       offsetY:
         (generationRandom() - 0.5) * 0.08,
       scale:
-        0.92 +
-        generationRandom() * 0.46,
+        1.18 +
+        generationRandom() * 0.72,
       widthScale:
-        0.88 +
-        generationRandom() * 0.34,
+        0.96 +
+        generationRandom() * 0.52,
       heightScale:
-        0.86 +
-        generationRandom() * 0.28,
+        0.92 +
+        generationRandom() * 0.42,
       rotation:
-        (generationRandom() - 0.5) * 0.85,
+        (generationRandom() - 0.5) * 0.95,
+      palette,
+      facetShift:
+        generationRandom() - 0.5,
+      mossiness:
+        generationRandom() < 0.34
+          ? generationRandom()
+          : 0,
       colorShift:
+        generationRandom() - 0.5,
+      lightShift:
         generationRandom() - 0.5
     };
 
@@ -559,6 +611,11 @@
   }
 
   function addFallenLog(x, y) {
+    const branchSign =
+      generationRandom() < 0.5
+        ? -1
+        : 1;
+
     const fallenLog = {
       id: `fallen_log_${nextFallenLogId++}`,
       x,
@@ -568,13 +625,31 @@
       offsetY:
         (generationRandom() - 0.5) * 0.06,
       lengthScale:
-        0.94 +
-        generationRandom() * 0.72,
+        0.98 +
+        generationRandom() * 0.86,
       thicknessScale:
-        0.86 +
-        generationRandom() * 0.28,
+        0.88 +
+        generationRandom() * 0.30,
       rotation:
         generationRandom() * Math.PI,
+      branch:
+        generationRandom() < 0.68
+          ? {
+              at:
+                -0.04 +
+                generationRandom() * 0.18,
+              sign: branchSign,
+              angle:
+                branchSign *
+                (0.62 + generationRandom() * 0.36),
+              lengthScale:
+                0.30 +
+                generationRandom() * 0.24,
+              thicknessScale:
+                0.42 +
+                generationRandom() * 0.28
+            }
+          : null,
       colorShift:
         generationRandom() - 0.5
     };
@@ -593,16 +668,189 @@
       offsetY:
         (generationRandom() - 0.5) * 0.06,
       scale:
-        0.86 +
-        generationRandom() * 0.34,
+        1.10 +
+        generationRandom() * 0.48,
+      widthScale:
+        0.96 +
+        generationRandom() * 0.30,
+      heightScale:
+        0.96 +
+        generationRandom() * 0.18,
       rotation:
         (generationRandom() - 0.5) * 0.35,
       colorShift:
+        generationRandom() - 0.5,
+      ringShift:
         generationRandom() - 0.5
     };
 
     LLW.state.stumps.push(stump);
     return stump;
+  }
+
+  function addLeafLitterPatch(x, y) {
+    const patch = {
+      id: `leaf_litter_${nextLeafLitterPatchId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.24,
+      offsetY:
+        (generationRandom() - 0.5) * 0.14,
+      scale:
+        0.84 +
+        generationRandom() * 0.54,
+      rotation:
+        (generationRandom() - 0.5) * 0.8,
+      count:
+        4 +
+        Math.floor(generationRandom() * 6),
+      scatter:
+        0.12 +
+        generationRandom() * 0.12,
+      colorShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.leafLitterPatches.push(patch);
+    return patch;
+  }
+
+  function addCloverPatch(x, y) {
+    const patch = {
+      id: `clover_patch_${nextCloverPatchId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.20,
+      offsetY:
+        (generationRandom() - 0.5) * 0.12,
+      scale:
+        0.86 +
+        generationRandom() * 0.34,
+      count:
+        2 +
+        Math.floor(generationRandom() * 4),
+      scatter:
+        0.10 +
+        generationRandom() * 0.10,
+      colorShift:
+        generationRandom() - 0.5,
+      lightShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.cloverPatches.push(patch);
+    return patch;
+  }
+
+  function addMossPatch(x, y) {
+    const patch = {
+      id: `moss_patch_${nextMossPatchId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.18,
+      offsetY:
+        (generationRandom() - 0.5) * 0.08,
+      scale:
+        0.94 +
+        generationRandom() * 0.44,
+      widthScale:
+        0.92 +
+        generationRandom() * 0.42,
+      heightScale:
+        0.86 +
+        generationRandom() * 0.30,
+      colorShift:
+        generationRandom() - 0.5,
+      lobes:
+        3 +
+        Math.floor(generationRandom() * 3)
+    };
+
+    LLW.state.mossPatches.push(patch);
+    return patch;
+  }
+
+  function addWildflowerPatch(x, y) {
+    const patch = {
+      id: `wildflower_patch_${nextWildflowerPatchId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.20,
+      offsetY:
+        (generationRandom() - 0.5) * 0.10,
+      scale:
+        0.82 +
+        generationRandom() * 0.30,
+      count:
+        2 +
+        Math.floor(generationRandom() * 4),
+      scatter:
+        0.11 +
+        generationRandom() * 0.11,
+      paletteIndex:
+        Math.floor(generationRandom() * 4)
+    };
+
+    LLW.state.wildflowerPatches.push(patch);
+    return patch;
+  }
+
+  function addGrassTuft(x, y) {
+    const patch = {
+      id: `grass_tuft_${nextGrassTuftId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.22,
+      offsetY:
+        (generationRandom() - 0.5) * 0.12,
+      scale:
+        0.88 +
+        generationRandom() * 0.34,
+      count:
+        3 +
+        Math.floor(generationRandom() * 5),
+      scatter:
+        0.10 +
+        generationRandom() * 0.13,
+      colorShift:
+        generationRandom() - 0.5,
+      lightShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.grassTufts.push(patch);
+    return patch;
+  }
+
+  function addPebblePatch(x, y) {
+    const patch = {
+      id: `pebble_patch_${nextPebblePatchId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.22,
+      offsetY:
+        (generationRandom() - 0.5) * 0.10,
+      scale:
+        0.84 +
+        generationRandom() * 0.44,
+      count:
+        2 +
+        Math.floor(generationRandom() * 4),
+      scatter:
+        0.08 +
+        generationRandom() * 0.11,
+      paletteIndex:
+        Math.floor(generationRandom() * 4)
+    };
+
+    LLW.state.pebblePatches.push(patch);
+    return patch;
   }
 
   function addBramblePatch(
@@ -665,6 +913,18 @@
     return occupied;
   }
 
+
+  function generateGroundcover(seed) {
+    LLW.ecology.generateGroundcover({
+      seed,
+      spawnLeafLitterPatch: addLeafLitterPatch,
+      spawnCloverPatch: addCloverPatch,
+      spawnMossPatch: addMossPatch,
+      spawnWildflowerPatch: addWildflowerPatch,
+      spawnGrassTuft: addGrassTuft,
+      spawnPebblePatch: addPebblePatch
+    });
+  }
 
   function generateForestFloorProps(
     occupied,
@@ -752,6 +1012,7 @@
           !cell ||
           cell.surfaceWaterDepth >
             0.00001 ||
+          (cell.visibleWaterFooting || 0) >= 0.18 ||
           cell.openGround <
             LLW.CONFIG
               .initialStickMinOpenGround
@@ -889,6 +1150,10 @@
     // landforms for presentation, Crossroads-style.
     LLW.landscapeGeometry.build();
 
+    // Generation should obey the visible shape of water, not just the dry/wet
+    // truth of a cell center.
+    LLW.ecology.deriveWaterPlacementFields();
+
     // Existing initial props also become repeatable for the same world,
     // without yet making their placement depend on elevation.
     generationRandom =
@@ -905,6 +1170,12 @@
     nextBoulderId = 1;
     nextFallenLogId = 1;
     nextStumpId = 1;
+    nextLeafLitterPatchId = 1;
+    nextCloverPatchId = 1;
+    nextMossPatchId = 1;
+    nextWildflowerPatchId = 1;
+    nextGrassTuftId = 1;
+    nextPebblePatchId = 1;
 
     LLW.state.game.turn = 0;
     LLW.state.game.vitality = LLW.state.game.maxVitality;
@@ -937,6 +1208,12 @@
     LLW.state.boulders = [];
     LLW.state.fallenLogs = [];
     LLW.state.stumps = [];
+    LLW.state.leafLitterPatches = [];
+    LLW.state.cloverPatches = [];
+    LLW.state.mossPatches = [];
+    LLW.state.wildflowerPatches = [];
+    LLW.state.grassTufts = [];
+    LLW.state.pebblePatches = [];
     LLW.state.bramblePatches = [];
     LLW.state.items = [];
 
@@ -944,6 +1221,10 @@
       generateVegetation(
         resolvedSeed
       );
+
+    generateGroundcover(
+      resolvedSeed
+    );
 
     generateForestFloorProps(
       occupied,

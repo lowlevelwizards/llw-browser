@@ -36,6 +36,48 @@
     );
   }
 
+
+  function pointInPolygon(
+    point,
+    polygon
+  ) {
+    let inside = false;
+
+    for (
+      let i = 0,
+        j = polygon.length - 1;
+      i < polygon.length;
+      j = i++
+    ) {
+      const a = polygon[i];
+      const b = polygon[j];
+
+      const intersects =
+        (
+          (a.y > point.y) !==
+          (b.y > point.y)
+        ) &&
+        (
+          point.x <
+          (
+            (b.x - a.x) *
+            (point.y - a.y)
+          ) /
+          (
+            b.y - a.y +
+            Number.EPSILON
+          ) +
+          a.x
+        );
+
+      if (intersects) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  }
+
   function terrainSteepness(
     cell,
     cells
@@ -935,6 +977,150 @@
     );
   }
 
+  function isWaterAtPoint(point) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return false;
+    }
+
+    for (
+      const body of
+      geometry.waterBodies || []
+    ) {
+      if (
+        pointInPolygon(
+          point,
+          body.outer
+        )
+      ) {
+        const inHole =
+          (body.holes || []).some(
+            (hole) =>
+              pointInPolygon(
+                point,
+                hole
+              )
+          );
+
+        if (!inHole) {
+          return true;
+        }
+      }
+    }
+
+    for (
+      const channel of
+      geometry.channels || []
+    ) {
+      if (
+        pointInPolygon(
+          point,
+          channel.polygon
+        )
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function deriveWaterPlacementFields(
+    cells =
+      state.landscape.cells
+  ) {
+    if (!cells.length) {
+      return;
+    }
+
+    const visibleWaterCells =
+      cells.filter(
+        (cell) =>
+          cell.surfaceWaterDepth >
+            EPSILON ||
+          (cell.channelStrength || 0) >=
+            LLW.CONFIG
+              .visibleChannelMinStrength
+      );
+
+    for (const cell of cells) {
+      const samples = [
+        {
+          x:
+            cell.x + 0.50,
+          y:
+            cell.y + 0.78
+        },
+        {
+          x:
+            cell.x + 0.38,
+          y:
+            cell.y + 0.80
+        },
+        {
+          x:
+            cell.x + 0.62,
+          y:
+            cell.y + 0.80
+        },
+        {
+          x:
+            cell.x + 0.50,
+          y:
+            cell.y + 0.66
+        }
+      ];
+
+      let waterHits = 0;
+
+      for (const sample of samples) {
+        if (
+          isWaterAtPoint(sample)
+        ) {
+          waterHits++;
+        }
+      }
+
+      cell.visibleWaterFooting =
+        waterHits /
+        samples.length;
+
+      let nearest = Infinity;
+
+      for (
+        const waterCell of
+        visibleWaterCells
+      ) {
+        const d = distance(
+          cell,
+          waterCell
+        );
+
+        if (d < nearest) {
+          nearest = d;
+        }
+      }
+
+      cell.visibleWaterDistance =
+        nearest;
+
+      cell.riparian =
+        nearest === Infinity
+          ? 0
+          : clamp(
+              smoothstep01(
+                (
+                  2.2 - nearest
+                ) /
+                2.2
+              ) *
+                (1 - cell.visibleWaterFooting)
+            );
+    }
+  }
+
   function isCellBlocked(
     cell,
     occupied
@@ -956,7 +1142,9 @@
 
     if (
       cell.surfaceWaterDepth >
-      EPSILON
+        EPSILON ||
+      (cell.visibleWaterFooting || 0) >=
+        0.18
     ) {
       return true;
     }
@@ -3637,15 +3825,210 @@
     });
   }
 
+  function generateGroundcover({
+    seed,
+    spawnLeafLitterPatch,
+    spawnCloverPatch,
+    spawnMossPatch,
+    spawnWildflowerPatch,
+    spawnGrassTuft,
+    spawnPebblePatch
+  }) {
+    const cells =
+      state.landscape.cells;
+
+    const rng =
+      LLW.pcg.createRng(
+        seed,
+        "groundcover"
+      );
+
+    const fireRing =
+      fireRingSet();
+
+    function dryCell(cell) {
+      return (
+        cell.surfaceWaterDepth <= EPSILON &&
+        (cell.visibleWaterFooting || 0) < 0.18 &&
+        !fireRing.has(
+          LLW.gridKey(
+            cell.x,
+            cell.y
+          )
+        )
+      );
+    }
+
+    for (const cell of cells) {
+      if (!dryCell(cell)) {
+        continue;
+      }
+
+      const key =
+        LLW.gridKey(
+          cell.x,
+          cell.y
+        );
+
+      const openGround =
+        cell.openGround ?? 1;
+      const shade =
+        cell.shade || 0;
+      const woodland =
+        cell.woodlandDensity || 0;
+      const moisture =
+        cell.moisture || 0;
+      const edge =
+        cell.woodlandEdge || 0;
+      const riparian =
+        cell.riparian || 0;
+      const steepness =
+        smoothstep01(
+          (
+            (cell.terrainSteepness || 0) -
+            0.016
+          ) /
+          0.090
+        );
+
+      const leafLitterChance =
+        LLW.CONFIG
+          .groundLeafLitterDensity *
+        clamp(
+          0.18 +
+          shade * 0.44 +
+          woodland * 0.36 +
+          openGround * 0.18 +
+          riparian * 0.08
+        );
+
+      if (rng() < leafLitterChance) {
+        spawnLeafLitterPatch(
+          cell.x,
+          cell.y
+        );
+      }
+
+      const mossChance =
+        LLW.CONFIG
+          .groundMossPatchDensity *
+        clamp(
+          0.06 +
+          shade * 0.42 +
+          bellPreference(
+            moisture,
+            0.62,
+            0.26,
+            0.26
+          ) *
+            0.34 +
+          riparian * 0.24
+        );
+
+      if (rng() < mossChance) {
+        spawnMossPatch(
+          cell.x,
+          cell.y
+        );
+      }
+
+      const cloverChance =
+        LLW.CONFIG
+          .groundCloverPatchDensity *
+        clamp(
+          0.08 +
+          edge * 0.32 +
+          bellPreference(
+            moisture,
+            0.48,
+            0.28,
+            0.24
+          ) *
+            0.26 +
+          openGround * 0.30 +
+          (1 - shade) * 0.12
+        );
+
+      if (rng() < cloverChance) {
+        spawnCloverPatch(
+          cell.x,
+          cell.y
+        );
+      }
+
+      const grassChance =
+        LLW.CONFIG
+          .groundGrassTuftDensity *
+        clamp(
+          0.12 +
+          openGround * 0.44 +
+          edge * 0.26 +
+          woodland * 0.14 +
+          (1 - riparian) * 0.04
+        );
+
+      if (rng() < grassChance) {
+        spawnGrassTuft(
+          cell.x,
+          cell.y
+        );
+      }
+
+      const flowerChance =
+        LLW.CONFIG
+          .groundWildflowerPatchDensity *
+        clamp(
+          0.05 +
+          openGround * 0.46 +
+          (1 - shade) * 0.26 +
+          edge * 0.18 +
+          bellPreference(
+            moisture,
+            0.46,
+            0.30,
+            0.22
+          ) *
+            0.14
+        );
+
+      if (rng() < flowerChance) {
+        spawnWildflowerPatch(
+          cell.x,
+          cell.y
+        );
+      }
+
+      const pebbleChance =
+        LLW.CONFIG
+          .groundPebblePatchDensity *
+        clamp(
+          0.06 +
+          openGround * 0.32 +
+          steepness * 0.28 +
+          edge * 0.14 +
+          riparian * 0.18
+        );
+
+      if (rng() < pebbleChance) {
+        spawnPebblePatch(
+          cell.x,
+          cell.y
+        );
+      }
+    }
+  }
+
   LLW.ecology = {
     deriveWoodlandMatrix,
     deriveTreeSuitability,
+    deriveWaterPlacementFields,
     generateTrees,
     deriveCanopyFields,
     deriveUnderstorySuitability,
     generateBushes,
     generateMushrooms,
     generateBrambles,
+    generateGroundcover,
     generateForestFloorProps
   };
 })();

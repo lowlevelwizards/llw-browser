@@ -1,0 +1,26 @@
+Low Level Wizards HTML Starter v32 — staged implementation notes
+
+Implemented:
+- Larger stumps and boulders, plus more boulders overall.
+- Stones now have more size/color/shape variation.
+- Fallen logs can spawn with a small side branch.
+- Decorative groundcover pass:
+  - leaf litter
+  - clover patches
+  - moss patches
+  - small wildflower patches
+  - pebble patches
+  - rounded grass tufts
+- Placement now respects visible water footprint better:
+  - trees/bushes/mushrooms/props should avoid spawning in visually watery footing.
+- Stronger terrain hue shifting:
+  - lighter terrain reads warmer
+  - darker/shaded terrain reads cooler
+  - wooded/shaded floor differences are more dramatic.
+- Bushes and mushroom piles sit slightly lower visually.
+
+Key changed files:
+- game-data.js
+- ecology.js
+- landscape-render.js
+- render.js

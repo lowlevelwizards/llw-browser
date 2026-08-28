@@ -1175,8 +1175,8 @@
         (0.5 + (bush.offsetX || 0));
 
       const shadowY =
-        p.y + tileSize * 0.83 +
-        tileSize * (bush.offsetY || 0) * 0.45;
+        p.y + tileSize * 0.84 +
+        tileSize * (bush.offsetY || 0) * 0.42;
 
       drawShadow(
         centerX,
@@ -1196,7 +1196,7 @@
       const foliageCenterY =
         p.y +
         tileSize *
-        (0.68 + (bush.offsetY || 0));
+        (0.73 + (bush.offsetY || 0) * 0.82);
 
       ctx.save();
       ctx.translate(
@@ -1446,40 +1446,89 @@
     const baseY =
       p.y +
       tileSize *
-      (0.80 + (stone.offsetY || 0));
+      (0.81 + (stone.offsetY || 0));
 
     drawShadow(
       centerX,
       baseY + tileSize * 0.03,
-      tileSize * 0.20 * (stone.scale || 1),
-      tileSize * 0.07 * (stone.scale || 1)
+      tileSize * 0.24 * (stone.scale || 1),
+      tileSize * 0.08 * (stone.scale || 1)
     );
+
+    const seed = itemSeed(stone);
+    const count =
+      stone.pebbleCount || 3;
+    const spread =
+      stone.spread || 0.11;
+    const palette =
+      stone.palette || {
+        hue: 36,
+        sat: 12,
+        light: 48
+      };
 
     ctx.save();
     ctx.translate(centerX, baseY);
     ctx.rotate(stone.rotation || 0);
     ctx.scale(stone.scale || 1, stone.scale || 1);
 
-    ctx.fillStyle = `hsl(${Math.round(34 + (stone.colorShift || 0) * 8)}, 14%, ${Math.round(48 + (stone.colorShift || 0) * 8)}%)`;
+    for (let i = 0; i < count; i++) {
+      const angle =
+        hash01(seed, i, 1) * Math.PI * 2;
+      const radius =
+        tileSize *
+        (0.02 + hash01(seed, i, 2) * spread);
+      const x =
+        Math.cos(angle) * radius;
+      const y =
+        Math.sin(angle) * radius * 0.72;
+      const rx =
+        tileSize *
+        (0.045 + hash01(seed, i, 3) * 0.050);
+      const ry =
+        rx *
+        (0.68 + hash01(seed, i, 4) * 0.42);
+      const hue =
+        Math.round(
+          palette.hue +
+            (hash01(seed, i, 5) - 0.5) * 14
+        );
+      const sat =
+        Math.round(
+          palette.sat +
+            (hash01(seed, i, 6) - 0.5) * 6
+        );
+      const light =
+        Math.round(
+          palette.light +
+            (hash01(seed, i, 7) - 0.5) * 12
+        );
 
-    const pebbles = [
-      [-tileSize * 0.10, 0, tileSize * 0.08],
-      [ 0, -tileSize * 0.03, tileSize * 0.09],
-      [ tileSize * 0.10, tileSize * 0.01, tileSize * 0.07]
-    ];
-
-    for (const [x, y, r] of pebbles) {
+      ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
       ctx.beginPath();
       ctx.ellipse(
         x,
         y,
-        r,
-        r * 0.72,
-        0,
+        rx,
+        ry,
+        hash01(seed, i, 8) * Math.PI,
         0,
         Math.PI * 2
       );
       ctx.fill();
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      ctx.lineWidth = Math.max(1, tileSize * 0.016);
+      ctx.beginPath();
+      ctx.moveTo(
+        x - rx * 0.35,
+        y - ry * 0.18
+      );
+      ctx.lineTo(
+        x + rx * 0.26,
+        y - ry * 0.28
+      );
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -1507,14 +1556,21 @@
     const baseY =
       p.y +
       tileSize *
-      (0.77 + (boulder.offsetY || 0));
+      (0.79 + (boulder.offsetY || 0));
 
     drawShadow(
       centerX,
       baseY + tileSize * 0.06,
-      tileSize * 0.26 * (boulder.scale || 1),
-      tileSize * 0.10 * (boulder.scale || 1)
+      tileSize * 0.34 * (boulder.scale || 1),
+      tileSize * 0.12 * (boulder.scale || 1)
     );
+
+    const palette =
+      boulder.palette || {
+        hue: 34,
+        sat: 10,
+        light: 47
+      };
 
     ctx.save();
     ctx.translate(centerX, baseY);
@@ -1524,40 +1580,61 @@
       (boulder.scale || 1) * (boulder.heightScale || 1)
     );
 
-    ctx.fillStyle = `hsl(${Math.round(36 + (boulder.colorShift || 0) * 7)}, 12%, ${Math.round(46 + (boulder.colorShift || 0) * 7)}%)`;
+    const hue = Math.round(palette.hue + (boulder.colorShift || 0) * 10);
+    const sat = Math.round(palette.sat + ((boulder.facetShift || 0) * 4));
+    const light = Math.round(palette.light + (boulder.lightShift || 0) * 10);
+
+    ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
     ctx.beginPath();
-    ctx.moveTo(-tileSize * 0.18, tileSize * 0.02);
+    ctx.moveTo(-tileSize * 0.24, tileSize * 0.03);
     ctx.quadraticCurveTo(
-      -tileSize * 0.21,
-      -tileSize * 0.14,
-      -tileSize * 0.05,
-      -tileSize * 0.22
-    );
-    ctx.quadraticCurveTo(
-      tileSize * 0.08,
-      -tileSize * 0.26,
-      tileSize * 0.18,
-      -tileSize * 0.10
-    );
-    ctx.quadraticCurveTo(
-      tileSize * 0.23,
-      tileSize * 0.05,
-      tileSize * 0.11,
-      tileSize * 0.14
-    );
-    ctx.quadraticCurveTo(
-      -tileSize * 0.05,
-      tileSize * 0.18,
+      -tileSize * 0.28,
       -tileSize * 0.18,
-      tileSize * 0.02
+      -tileSize * 0.08,
+      -tileSize * 0.28
+    );
+    ctx.quadraticCurveTo(
+      tileSize * 0.11,
+      -tileSize * 0.30,
+      tileSize * 0.25,
+      -tileSize * 0.12
+    );
+    ctx.quadraticCurveTo(
+      tileSize * 0.31,
+      tileSize * 0.06,
+      tileSize * 0.16,
+      tileSize * 0.18
+    );
+    ctx.quadraticCurveTo(
+      -tileSize * 0.07,
+      tileSize * 0.22,
+      -tileSize * 0.24,
+      tileSize * 0.03
     );
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.20)";
-    ctx.lineWidth = Math.max(1, tileSize * 0.028);
+    ctx.fillStyle = `hsla(${Math.max(70, hue + 42)}, 22%, 36%, ${0.20 + (boulder.mossiness || 0) * 0.28})`;
+    if ((boulder.mossiness || 0) > 0) {
+      ctx.beginPath();
+      ctx.ellipse(
+        -tileSize * 0.05,
+        -tileSize * 0.03,
+        tileSize * 0.12,
+        tileSize * 0.07,
+        -0.15,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+    ctx.lineWidth = Math.max(1, tileSize * 0.026);
     ctx.beginPath();
-    ctx.moveTo(-tileSize * 0.06, -tileSize * 0.12);
-    ctx.lineTo(tileSize * 0.08, -tileSize * 0.16);
+    ctx.moveTo(-tileSize * 0.08, -tileSize * 0.16);
+    ctx.lineTo(tileSize * 0.09, -tileSize * 0.20);
+    ctx.moveTo(tileSize * 0.04, -tileSize * 0.08);
+    ctx.lineTo(tileSize * 0.16, -tileSize * 0.02);
     ctx.stroke();
 
     ctx.restore();
@@ -1585,12 +1662,12 @@
     const centerY =
       p.y +
       tileSize *
-      (0.76 + (log.offsetY || 0));
+      (0.77 + (log.offsetY || 0));
 
     drawShadow(
       centerX,
       centerY + tileSize * 0.08,
-      tileSize * 0.30 * (log.lengthScale || 1),
+      tileSize * 0.34 * (log.lengthScale || 1),
       tileSize * 0.09 * (log.thicknessScale || 1)
     );
 
@@ -1608,21 +1685,43 @@
       37
     );
     roundedCapsule(
-      -tileSize * 0.28,
-      -tileSize * 0.07,
-      tileSize * 0.56,
-      tileSize * 0.14,
-      tileSize * 0.06
+      -tileSize * 0.30,
+      -tileSize * 0.075,
+      tileSize * 0.60,
+      tileSize * 0.15,
+      tileSize * 0.065
     );
     ctx.fill();
 
-    ctx.fillStyle = "rgba(233, 223, 188, 0.85)";
+    if (log.branch) {
+      ctx.save();
+      ctx.translate(
+        tileSize * (log.branch.at || 0),
+        -tileSize * 0.01
+      );
+      ctx.rotate(log.branch.angle || 0);
+      ctx.scale(
+        log.branch.lengthScale || 0.4,
+        log.branch.thicknessScale || 0.5
+      );
+      roundedCapsule(
+        0,
+        -tileSize * 0.045,
+        tileSize * 0.24,
+        tileSize * 0.09,
+        tileSize * 0.04
+      );
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.fillStyle = "rgba(233, 223, 188, 0.88)";
     ctx.beginPath();
     ctx.ellipse(
-      tileSize * 0.22,
+      tileSize * 0.24,
       0,
-      tileSize * 0.05,
-      tileSize * 0.07,
+      tileSize * 0.055,
+      tileSize * 0.075,
       0,
       0,
       Math.PI * 2
@@ -1632,10 +1731,10 @@
     ctx.strokeStyle = "rgba(86, 59, 35, 0.22)";
     ctx.lineWidth = Math.max(1, tileSize * 0.024);
     ctx.beginPath();
-    ctx.moveTo(-tileSize * 0.15, -tileSize * 0.03);
-    ctx.lineTo(tileSize * 0.12, -tileSize * 0.03);
-    ctx.moveTo(-tileSize * 0.10, tileSize * 0.02);
-    ctx.lineTo(tileSize * 0.08, tileSize * 0.02);
+    ctx.moveTo(-tileSize * 0.17, -tileSize * 0.03);
+    ctx.lineTo(tileSize * 0.15, -tileSize * 0.03);
+    ctx.moveTo(-tileSize * 0.12, tileSize * 0.02);
+    ctx.lineTo(tileSize * 0.10, tileSize * 0.02);
     ctx.stroke();
 
     ctx.restore();
@@ -1663,19 +1762,22 @@
     const baseY =
       p.y +
       tileSize *
-      (0.79 + (stump.offsetY || 0));
+      (0.80 + (stump.offsetY || 0));
 
     drawShadow(
       centerX,
       baseY + tileSize * 0.05,
-      tileSize * 0.20 * (stump.scale || 1),
-      tileSize * 0.08 * (stump.scale || 1)
+      tileSize * 0.24 * (stump.scale || 1),
+      tileSize * 0.09 * (stump.scale || 1)
     );
 
     ctx.save();
     ctx.translate(centerX, baseY);
     ctx.rotate(stump.rotation || 0);
-    ctx.scale(stump.scale || 1, stump.scale || 1);
+    ctx.scale(
+      (stump.scale || 1) * (stump.widthScale || 1),
+      (stump.scale || 1) * (stump.heightScale || 1)
+    );
 
     ctx.fillStyle = woodColor(
       26,
@@ -1683,40 +1785,334 @@
       40
     );
     roundedCapsule(
-      -tileSize * 0.11,
-      -tileSize * 0.18,
+      -tileSize * 0.14,
+      -tileSize * 0.22,
+      tileSize * 0.28,
       tileSize * 0.22,
-      tileSize * 0.18,
-      tileSize * 0.05
+      tileSize * 0.06
     );
     ctx.fill();
 
-    ctx.fillStyle = "rgba(224, 205, 166, 0.95)";
+    ctx.fillStyle = "rgba(224, 205, 166, 0.96)";
     ctx.beginPath();
     ctx.ellipse(
       0,
-      -tileSize * 0.18,
-      tileSize * 0.12,
-      tileSize * 0.05,
+      -tileSize * 0.22,
+      tileSize * 0.15,
+      tileSize * 0.065,
       0,
       0,
       Math.PI * 2
     );
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(116, 88, 58, 0.30)";
+    ctx.strokeStyle = "rgba(116, 88, 58, 0.34)";
     ctx.lineWidth = Math.max(1, tileSize * 0.02);
     ctx.beginPath();
     ctx.arc(
       0,
-      -tileSize * 0.18,
-      tileSize * 0.04,
+      -tileSize * 0.22,
+      tileSize * 0.055,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(
+      0,
+      -tileSize * 0.22,
+      tileSize * 0.027,
       0,
       Math.PI * 2
     );
     ctx.stroke();
 
     ctx.restore();
+  }
+
+  function drawLeafLitterPatch(
+    patch,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      patch.x,
+      patch.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX =
+      p.x +
+      tileSize *
+      (0.5 + (patch.offsetX || 0));
+    const centerY =
+      p.y +
+      tileSize *
+      (0.80 + (patch.offsetY || 0));
+
+    const seed = itemSeed(patch);
+    const count = patch.count || 6;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(patch.rotation || 0);
+    ctx.scale(patch.scale || 1, patch.scale || 1);
+
+    for (let i = 0; i < count; i++) {
+      const angle = hash01(seed, i, 11) * Math.PI * 2;
+      const radius = tileSize * (hash01(seed, i, 12) * (patch.scatter || 0.16));
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius * 0.68;
+      const w = tileSize * (0.032 + hash01(seed, i, 13) * 0.028);
+      const h = tileSize * (0.014 + hash01(seed, i, 14) * 0.012);
+      const hue = Math.round(28 + (patch.colorShift || 0) * 8 + hash01(seed, i, 15) * 14);
+      const sat = Math.round(20 + hash01(seed, i, 16) * 14);
+      const light = Math.round(34 + hash01(seed, i, 17) * 12);
+      ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.78)`;
+      ctx.beginPath();
+      ctx.ellipse(x, y, w, h, hash01(seed, i, 18) * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawMossPatch(
+    patch,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      patch.x,
+      patch.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX = p.x + tileSize * (0.5 + (patch.offsetX || 0));
+    const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
+    const seed = itemSeed(patch);
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale((patch.scale || 1) * (patch.widthScale || 1), (patch.scale || 1) * (patch.heightScale || 1));
+
+    const count = patch.lobes || 4;
+    for (let i = 0; i < count; i++) {
+      const angle = hash01(seed, i, 21) * Math.PI * 2;
+      const radius = tileSize * (0.02 + hash01(seed, i, 22) * 0.08);
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius * 0.72;
+      const rx = tileSize * (0.08 + hash01(seed, i, 23) * 0.06);
+      const ry = tileSize * (0.04 + hash01(seed, i, 24) * 0.04);
+      const hue = Math.round(105 + (patch.colorShift || 0) * 12 + hash01(seed, i, 25) * 8);
+      const light = Math.round(34 + hash01(seed, i, 26) * 8);
+      ctx.fillStyle = `hsla(${hue}, 28%, ${light}%, 0.82)`;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, hash01(seed, i, 27) * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawGrassTuftPatch(
+    patch,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(patch.x, patch.y, tileSize, offsetX, offsetY);
+    const centerX = p.x + tileSize * (0.5 + (patch.offsetX || 0));
+    const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
+    const seed = itemSeed(patch);
+    const count = patch.count || 4;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(patch.scale || 1, patch.scale || 1);
+
+    for (let i = 0; i < count; i++) {
+      const offset = (i - (count - 1) / 2) * tileSize * 0.045;
+      const height = tileSize * (0.08 + hash01(seed, i, 31) * 0.08);
+      const width = tileSize * (0.018 + hash01(seed, i, 32) * 0.018);
+      const bend = (hash01(seed, i, 33) - 0.5) * tileSize * 0.028;
+      const hue = Math.round(105 + (patch.colorShift || 0) * 12 + hash01(seed, i, 34) * 10);
+      const light = Math.round(40 + (patch.lightShift || 0) * 6 + hash01(seed, i, 35) * 10);
+      ctx.fillStyle = `hsla(${hue}, 30%, ${light}%, 0.70)`;
+      ctx.beginPath();
+      ctx.moveTo(offset, 0);
+      ctx.quadraticCurveTo(offset + bend, -height * 0.75, offset + bend, -height);
+      ctx.quadraticCurveTo(offset + bend + width, -height * 0.45, offset + width, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawCloverPatch(
+    patch,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(patch.x, patch.y, tileSize, offsetX, offsetY);
+    const centerX = p.x + tileSize * (0.5 + (patch.offsetX || 0));
+    const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
+    const seed = itemSeed(patch);
+    const count = patch.count || 3;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(patch.scale || 1, patch.scale || 1);
+
+    for (let i = 0; i < count; i++) {
+      const angle = hash01(seed, i, 41) * Math.PI * 2;
+      const radius = tileSize * (hash01(seed, i, 42) * (patch.scatter || 0.12));
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius * 0.72;
+      const size = tileSize * (0.026 + hash01(seed, i, 43) * 0.018);
+      const hue = Math.round(108 + (patch.colorShift || 0) * 10 + hash01(seed, i, 44) * 8);
+      const light = Math.round(43 + (patch.lightShift || 0) * 6 + hash01(seed, i, 45) * 8);
+      ctx.fillStyle = `hsla(${hue}, 34%, ${light}%, 0.78)`;
+      [[0, -1], [0.9, 0.4], [-0.9, 0.4]].forEach(([cx, cy]) => {
+        ctx.beginPath();
+        ctx.arc(x + cx * size * 0.7, y + cy * size * 0.7, size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    ctx.restore();
+  }
+
+  function drawWildflowerPatch(
+    patch,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const palettes = [
+      ["#efe8cc", "#d1aa3f"],
+      ["#e8d7ef", "#9250a8"],
+      ["#f5dec0", "#d98b3a"],
+      ["#efe6f7", "#b06bc8"]
+    ];
+
+    const p = gridToPixel(patch.x, patch.y, tileSize, offsetX, offsetY);
+    const centerX = p.x + tileSize * (0.5 + (patch.offsetX || 0));
+    const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
+    const seed = itemSeed(patch);
+    const count = patch.count || 3;
+    const palette = palettes[patch.paletteIndex || 0];
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(patch.scale || 1, patch.scale || 1);
+
+    for (let i = 0; i < count; i++) {
+      const angle = hash01(seed, i, 51) * Math.PI * 2;
+      const radius = tileSize * (hash01(seed, i, 52) * (patch.scatter || 0.12));
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius * 0.70;
+      const stemHeight = tileSize * (0.03 + hash01(seed, i, 53) * 0.04);
+      ctx.strokeStyle = "rgba(88, 124, 74, 0.60)";
+      ctx.lineWidth = Math.max(1, tileSize * 0.012);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y - stemHeight);
+      ctx.stroke();
+      ctx.fillStyle = palette[0];
+      const petal = tileSize * 0.016;
+      [[0, -1], [1, 0], [0, 1], [-1, 0]].forEach(([px, py]) => {
+        ctx.beginPath();
+        ctx.arc(x + px * petal, y - stemHeight + py * petal, petal, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.fillStyle = palette[1];
+      ctx.beginPath();
+      ctx.arc(x, y - stemHeight, petal * 0.72, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawPebblePatch(
+    patch,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const palettes = [
+      { hue: 34, sat: 10, light: 48 },
+      { hue: 22, sat: 12, light: 45 },
+      { hue: 46, sat: 8, light: 56 },
+      { hue: 85, sat: 10, light: 43 }
+    ];
+
+    const p = gridToPixel(patch.x, patch.y, tileSize, offsetX, offsetY);
+    const centerX = p.x + tileSize * (0.5 + (patch.offsetX || 0));
+    const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
+    const seed = itemSeed(patch);
+    const palette = palettes[patch.paletteIndex || 0];
+    const count = patch.count || 3;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(patch.scale || 1, patch.scale || 1);
+
+    for (let i = 0; i < count; i++) {
+      const angle = hash01(seed, i, 61) * Math.PI * 2;
+      const radius = tileSize * (hash01(seed, i, 62) * (patch.scatter || 0.10));
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius * 0.74;
+      const rx = tileSize * (0.025 + hash01(seed, i, 63) * 0.022);
+      const ry = rx * (0.62 + hash01(seed, i, 64) * 0.34);
+      const hue = Math.round(palette.hue + (hash01(seed, i, 65) - 0.5) * 10);
+      const light = Math.round(palette.light + (hash01(seed, i, 66) - 0.5) * 10);
+      ctx.fillStyle = `hsla(${hue}, ${palette.sat}%, ${light}%, 0.74)`;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, hash01(seed, i, 67) * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawGroundcover(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    for (const patch of state.mossPatches || []) {
+      drawMossPatch(patch, tileSize, offsetX, offsetY);
+    }
+
+    for (const patch of state.leafLitterPatches || []) {
+      drawLeafLitterPatch(patch, tileSize, offsetX, offsetY);
+    }
+
+    for (const patch of state.grassTufts || []) {
+      drawGrassTuftPatch(patch, tileSize, offsetX, offsetY);
+    }
+
+    for (const patch of state.cloverPatches || []) {
+      drawCloverPatch(patch, tileSize, offsetX, offsetY);
+    }
+
+    for (const patch of state.wildflowerPatches || []) {
+      drawWildflowerPatch(patch, tileSize, offsetX, offsetY);
+    }
+
+    for (const patch of state.pebblePatches || []) {
+      drawPebblePatch(patch, tileSize, offsetX, offsetY);
+    }
   }
 
   function drawGroundScenery(
@@ -2018,7 +2414,7 @@
       // ahead of a lerping/cooking item.
       drawShadow(
         p.x + tileSize * 0.5,
-        p.y + tileSize * 0.86,
+        p.y + tileSize * 0.88,
         tileSize *
           (
             0.20 +
@@ -2054,7 +2450,7 @@
 
           const baseY =
             p.y +
-            tileSize * 0.82 +
+            tileSize * 0.85 +
             offset.y;
 
           if (
@@ -2919,6 +3315,12 @@
     );
 
     drawResolvedDrainageDebug(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawGroundcover(
       tileSize,
       offsetX,
       offsetY
