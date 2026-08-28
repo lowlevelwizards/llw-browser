@@ -18,7 +18,17 @@
     pcgDebugBasins: true,
     pcgDebugSpillPoints: true,
     pcgDebugResolvedDrainage: true,
-    pcgDebugSurfaceWater: true,
+
+    // Player-facing landscape presentation.
+    terrainElevationShading: true,
+    surfaceWaterVisible: true,
+    channelWaterVisible: true,
+
+    // A visible channel begins once roughly this fraction of the world has
+    // contributed runoff through a cell. Strength reaches 1 around the
+    // second ratio. Ratios keep this stable if world dimensions change.
+    channelStartAreaRatio: 0.015,
+    channelFullAreaRatio: 0.12,
 
     // Static prototype runoff. This is a relative volume per landscape cell,
     // not literal rainfall yet.
@@ -83,7 +93,8 @@
     landscape: {
       seed: null,
       cells: [],
-      catchments: []
+      catchments: [],
+      channelEdges: []
     },
 
     game: {

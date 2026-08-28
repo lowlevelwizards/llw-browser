@@ -191,15 +191,34 @@
     offsetX,
     offsetY
   ) {
+    if (!state.landscape.cells.length) {
+      return;
+    }
+
+    const overview =
+      LLW.camera.isOverview();
+
     if (
-      !LLW.CONFIG.pcgDebugElevation ||
-      !state.landscape.cells.length
+      overview &&
+      !LLW.CONFIG.pcgDebugElevation
+    ) {
+      return;
+    }
+
+    if (
+      !overview &&
+      !LLW.CONFIG.terrainElevationShading
     ) {
       return;
     }
 
     const low = [86, 132, 106];
     const high = [205, 205, 133];
+
+    const layerAlpha =
+      overview
+        ? 0.58
+        : 0.24;
 
     ctx.save();
 
@@ -235,7 +254,7 @@
       );
 
       ctx.fillStyle =
-        `rgba(${r}, ${g}, ${b}, 0.58)`;
+        `rgba(${r}, ${g}, ${b}, ${layerAlpha})`;
 
       ctx.fillRect(
         p.x,
@@ -253,6 +272,10 @@
     offsetX,
     offsetY
   ) {
+    if (!LLW.camera.isOverview()) {
+      return;
+    }
+
     if (
       !LLW.CONFIG.pcgDebugBasins ||
       !state.landscape.catchments.length
@@ -335,7 +358,7 @@
     offsetY
   ) {
     if (
-      !LLW.CONFIG.pcgDebugSurfaceWater ||
+      !LLW.CONFIG.surfaceWaterVisible ||
       !state.landscape.cells.length
     ) {
       return;
@@ -433,6 +456,10 @@
     offsetX,
     offsetY
   ) {
+    if (!LLW.camera.isOverview()) {
+      return;
+    }
+
     if (
       !LLW.CONFIG.pcgDebugSpillPoints ||
       !state.landscape.catchments.length
@@ -543,6 +570,10 @@
     offsetX,
     offsetY
   ) {
+    if (!LLW.camera.isOverview()) {
+      return;
+    }
+
     if (
       !LLW.CONFIG.pcgDebugFlow ||
       !state.landscape.cells.length
@@ -765,6 +796,10 @@
     offsetX,
     offsetY
   ) {
+    if (!LLW.camera.isOverview()) {
+      return;
+    }
+
     if (
       !LLW.CONFIG.pcgDebugResolvedDrainage ||
       !state.landscape.catchments.length
@@ -970,11 +1005,219 @@
     ctx.restore();
   }
 
+  function drawChannels(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (
+      !LLW.CONFIG.channelWaterVisible ||
+      !state.landscape.channelEdges.length
+    ) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (
+      const edge of
+      state.landscape.channelEdges
+    ) {
+      const from =
+        state.landscape.cells[
+          edge.fromIndex
+        ];
+
+      const to =
+        state.landscape.cells[
+          edge.toIndex
+        ];
+
+      if (!from || !to) {
+        continue;
+      }
+
+      if (
+        !LLW.camera.isTileVisible(
+          from.x,
+          from.y,
+          1
+        ) &&
+        !LLW.camera.isTileVisible(
+          to.x,
+          to.y,
+          1
+        )
+      ) {
+        continue;
+      }
+
+      const a = gridToPixel(
+        from.x,
+        from.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const b = gridToPixel(
+        to.x,
+        to.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const ax =
+        a.x + tileSize * 0.5;
+
+      const ay =
+        a.y + tileSize * 0.5;
+
+      const bx =
+        b.x + tileSize * 0.5;
+
+      const by =
+        b.y + tileSize * 0.5;
+
+      const dx = bx - ax;
+      const dy = by - ay;
+      const length =
+        Math.max(
+          0.0001,
+          Math.hypot(dx, dy)
+        );
+
+      const normalX =
+        -dy / length;
+
+      const normalY =
+        dx / length;
+
+      // Deterministic, tiny side-to-side variation breaks the rigid grid
+      // without pretending the underlying channel is sub-tile simulation.
+      const bend =
+        (
+          hash01(
+            from.x,
+            from.y,
+            to.index + 211
+          ) -
+          0.5
+        ) *
+        tileSize *
+        0.20 *
+        (
+          0.45 +
+          edge.strength * 0.55
+        );
+
+      const midX =
+        (ax + bx) * 0.5 +
+        normalX * bend;
+
+      const midY =
+        (ay + by) * 0.5 +
+        normalY * bend;
+
+      const width =
+        tileSize *
+        (
+          0.055 +
+          edge.strength * 0.16
+        );
+
+      // Soft dark bank / depth edge.
+      ctx.strokeStyle =
+        `rgba(43, 111, 128, ${
+          0.34 +
+          edge.strength * 0.32
+        })`;
+
+      ctx.lineWidth =
+        Math.max(
+          1.5,
+          width * 1.35
+        );
+
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo(
+        midX,
+        midY,
+        bx,
+        by
+      );
+      ctx.stroke();
+
+      // Brighter water core.
+      ctx.strokeStyle =
+        `rgba(91, 170, 190, ${
+          0.62 +
+          edge.strength * 0.24
+        })`;
+
+      ctx.lineWidth =
+        Math.max(
+          1,
+          width
+        );
+
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo(
+        midX,
+        midY,
+        bx,
+        by
+      );
+      ctx.stroke();
+
+      // Occasional pale glint, strongest on established channels.
+      if (
+        edge.strength > 0.36
+      ) {
+        ctx.strokeStyle =
+          `rgba(197, 229, 225, ${
+            0.18 +
+            edge.strength * 0.20
+          })`;
+
+        ctx.lineWidth =
+          Math.max(
+            0.8,
+            width * 0.24
+          );
+
+        ctx.beginPath();
+        ctx.moveTo(
+          LLW.lerp(ax, midX, 0.45),
+          LLW.lerp(ay, midY, 0.45)
+        );
+        ctx.quadraticCurveTo(
+          midX,
+          midY,
+          LLW.lerp(midX, bx, 0.58),
+          LLW.lerp(midY, by, 0.58)
+        );
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
   function drawGrid(
     tileSize,
     offsetX,
     offsetY
   ) {
+    if (!LLW.camera.isOverview()) {
+      return;
+    }
+
     const columns =
       LLW.camera.getColumns();
 
@@ -2496,6 +2739,12 @@
     );
 
     drawPotentialBasinsDebug(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawChannels(
       tileSize,
       offsetX,
       offsetY

@@ -1077,6 +1077,250 @@
     );
   }
 
+
+  function smoothstep01(value) {
+    const t =
+      Math.max(
+        0,
+        Math.min(1, value)
+      );
+
+    return (
+      t *
+      t *
+      (3 - 2 * t)
+    );
+  }
+
+  function propagateOverflowThroughCells(
+    cells,
+    catchments
+  ) {
+    for (
+      const catchment of
+      catchments
+    ) {
+      const overflow =
+        catchment.overflowWaterVolume;
+
+      if (overflow <= EPSILON) {
+        continue;
+      }
+
+      const outletIndex =
+        catchment.resolvedOutletCellIndex;
+
+      if (
+        outletIndex !== null &&
+        outletIndex !== undefined
+      ) {
+        cells[outletIndex].waterThroughput +=
+          overflow;
+      }
+
+      let currentIndex =
+        catchment.resolvedOutletNeighborIndex;
+
+      const visited =
+        new Set();
+
+      while (
+        currentIndex !== null &&
+        currentIndex !== undefined
+      ) {
+        if (
+          visited.has(currentIndex)
+        ) {
+          throw new Error(
+            "Overflow cell routing cycle detected."
+          );
+        }
+
+        visited.add(currentIndex);
+
+        const cell =
+          cells[currentIndex];
+
+        if (!cell) {
+          break;
+        }
+
+        cell.waterThroughput +=
+          overflow;
+
+        currentIndex =
+          cell.downhillIndex;
+      }
+    }
+  }
+
+  function calculateChannelStrength(
+    throughput
+  ) {
+    const worldArea =
+      LLW.CONFIG.worldCols *
+      LLW.CONFIG.worldRows;
+
+    const contributingArea =
+      LLW.CONFIG.runoffPerCell > EPSILON
+        ? throughput /
+          LLW.CONFIG.runoffPerCell
+        : 0;
+
+    const startArea =
+      worldArea *
+      LLW.CONFIG.channelStartAreaRatio;
+
+    const fullArea =
+      Math.max(
+        startArea + 1,
+        worldArea *
+          LLW.CONFIG.channelFullAreaRatio
+      );
+
+    if (
+      contributingArea <
+      startArea
+    ) {
+      return 0;
+    }
+
+    return (
+      0.16 +
+      smoothstep01(
+        (
+          contributingArea -
+          startArea
+        ) /
+        (
+          fullArea -
+          startArea
+        )
+      ) *
+      0.84
+    );
+  }
+
+  function extractChannels(
+    cells,
+    catchments
+  ) {
+    const edges = [];
+    const seenEdges = new Set();
+
+    for (const cell of cells) {
+      cell.channelStrength =
+        calculateChannelStrength(
+          cell.waterThroughput
+        );
+
+      cell.isChannel =
+        cell.channelStrength > 0;
+    }
+
+    function addEdge(
+      fromIndex,
+      toIndex,
+      throughput
+    ) {
+      if (
+        fromIndex === null ||
+        fromIndex === undefined ||
+        toIndex === null ||
+        toIndex === undefined
+      ) {
+        return;
+      }
+
+      const from =
+        cells[fromIndex];
+
+      const to =
+        cells[toIndex];
+
+      if (!from || !to) {
+        return;
+      }
+
+      const strength =
+        calculateChannelStrength(
+          throughput
+        );
+
+      if (strength <= 0) {
+        return;
+      }
+
+      // Standing water already visually represents the connected surface.
+      // Channels enter/leave it, but do not draw redundant lines through it.
+      if (
+        from.surfaceWaterDepth > EPSILON &&
+        to.surfaceWaterDepth > EPSILON
+      ) {
+        return;
+      }
+
+      const key =
+        `${fromIndex}>${toIndex}`;
+
+      if (seenEdges.has(key)) {
+        return;
+      }
+
+      seenEdges.add(key);
+
+      edges.push({
+        fromIndex,
+        toIndex,
+        throughput,
+        strength
+      });
+    }
+
+    // Ordinary steepest-descent channels.
+    for (const cell of cells) {
+      if (
+        cell.downhillIndex === null
+      ) {
+        continue;
+      }
+
+      addEdge(
+        cell.index,
+        cell.downhillIndex,
+        cell.waterThroughput
+      );
+    }
+
+    // Explicit basin overflow crossings bridge full ponds / local sinks into
+    // the next catchment. Once across the saddle, ordinary downhill edges
+    // carry the injected overflow onward.
+    for (
+      const catchment of
+      catchments
+    ) {
+      if (
+        catchment.overflowWaterVolume <=
+          EPSILON ||
+        catchment.resolvedOutletNeighborIndex ===
+          null ||
+        catchment.resolvedOutletNeighborIndex ===
+          undefined
+      ) {
+        continue;
+      }
+
+      addEdge(
+        catchment.resolvedOutletCellIndex,
+        catchment.resolvedOutletNeighborIndex,
+        catchment.overflowWaterVolume
+      );
+    }
+
+    state.landscape.channelEdges =
+      edges;
+  }
+
   function calculateSurfaceWater(
     cells,
     catchments
@@ -1088,6 +1332,9 @@
       cell.waterThroughput =
         cell.flowAccumulation *
         LLW.CONFIG.runoffPerCell;
+
+      cell.channelStrength = 0;
+      cell.isChannel = false;
     }
 
     const byId =
@@ -1183,22 +1430,6 @@
         }
       }
 
-      const outletCell =
-        cells[
-          catchment.resolvedOutletCellIndex
-        ];
-
-      if (
-        outletCell &&
-        overflow > 0
-      ) {
-        outletCell.waterThroughput =
-          Math.max(
-            outletCell.waterThroughput,
-            overflow
-          );
-      }
-
       if (
         overflow > 0 &&
         catchment.downstreamCatchmentId
@@ -1214,6 +1445,16 @@
         }
       }
     }
+
+    propagateOverflowThroughCells(
+      cells,
+      catchments
+    );
+
+    extractChannels(
+      cells,
+      catchments
+    );
   }
 
   LLW.hydrology = {
