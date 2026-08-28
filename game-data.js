@@ -11,6 +11,7 @@
     elevationSmoothPasses: 4,
     pcgDebugElevation: true,
     pcgDebugFlow: true,
+    pcgDebugFlowNumbers: false,
 
     mushroomCount: 3,
 
@@ -64,7 +65,8 @@
   LLW.state = {
     landscape: {
       seed: null,
-      cells: []
+      cells: [],
+      catchments: []
     },
 
     game: {

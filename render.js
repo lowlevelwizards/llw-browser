@@ -225,13 +225,19 @@
       return;
     }
 
+    const maxFlow = Math.max(
+      1,
+      ...state.landscape.cells.map(
+        (cell) =>
+          cell.flowAccumulation || 1
+      )
+    );
+
+    const logMaxFlow =
+      Math.log2(maxFlow + 1);
+
     ctx.save();
     ctx.lineCap = "round";
-    ctx.lineWidth =
-      Math.max(
-        1,
-        tileSize * 0.022
-      );
 
     for (
       const cell of
@@ -251,14 +257,36 @@
       const startY =
         from.y + tileSize * 0.5;
 
+      const flow =
+        cell.flowAccumulation || 1;
+
+      const flowStrength =
+        logMaxFlow <= 0
+          ? 0
+          : Math.log2(flow + 1) /
+            logMaxFlow;
+
       const downhill =
         LLW.pcg.getDownhillCell(cell);
 
       if (!downhill) {
-        // A small cool dot marks a local depression: the first places
-        // future water accumulation can care about.
+        // Sink size now tells us how much of the landscape ultimately
+        // drains here. Large dots are genuine catchment centers.
+        const sinkRadius =
+          tileSize *
+          (
+            0.045 +
+            Math.sqrt(
+              flow / maxFlow
+            ) *
+            0.12
+          );
+
         ctx.fillStyle =
-          "rgba(48, 82, 85, 0.50)";
+          `rgba(40, 79, 91, ${
+            0.42 +
+            flowStrength * 0.40
+          })`;
 
         ctx.beginPath();
         ctx.arc(
@@ -266,12 +294,36 @@
           startY,
           Math.max(
             1.5,
-            tileSize * 0.055
+            sinkRadius
           ),
           0,
           Math.PI * 2
         );
         ctx.fill();
+
+        if (
+          LLW.CONFIG.pcgDebugFlowNumbers
+        ) {
+          ctx.fillStyle =
+            "rgba(30, 60, 68, 0.82)";
+
+          ctx.font =
+            `${Math.max(
+              7,
+              tileSize * 0.17
+            )}px Arial`;
+
+          ctx.textAlign = "center";
+          ctx.textBaseline = "bottom";
+
+          ctx.fillText(
+            String(flow),
+            startX,
+            startY -
+              sinkRadius -
+              tileSize * 0.04
+          );
+        }
 
         continue;
       }
@@ -290,24 +342,42 @@
       const targetY =
         to.y + tileSize * 0.5;
 
-      // Don't draw a full center-to-center arrow. A short directional
-      // stroke is enough to reveal the flow field underneath the game.
+      // As accumulation increases the directional mark becomes longer,
+      // thicker and cooler. We still stop short of drawing "water":
+      // this is drainage truth, not yet a stream feature.
+      const reach =
+        0.28 +
+        flowStrength * 0.28;
+
       const endX =
         LLW.lerp(
           startX,
           targetX,
-          0.34
+          reach
         );
 
       const endY =
         LLW.lerp(
           startY,
           targetY,
-          0.34
+          reach
+        );
+
+      ctx.lineWidth =
+        Math.max(
+          1,
+          tileSize *
+            (
+              0.018 +
+              flowStrength * 0.085
+            )
         );
 
       ctx.strokeStyle =
-        "rgba(43, 76, 67, 0.27)";
+        `rgba(43, 84, 91, ${
+          0.18 +
+          flowStrength * 0.58
+        })`;
 
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -315,7 +385,10 @@
       ctx.stroke();
 
       ctx.fillStyle =
-        "rgba(43, 76, 67, 0.34)";
+        `rgba(43, 84, 91, ${
+          0.22 +
+          flowStrength * 0.50
+        })`;
 
       ctx.beginPath();
       ctx.arc(
@@ -323,12 +396,40 @@
         endY,
         Math.max(
           1,
-          tileSize * 0.025
+          tileSize *
+            (
+              0.018 +
+              flowStrength * 0.035
+            )
         ),
         0,
         Math.PI * 2
       );
       ctx.fill();
+
+      if (
+        LLW.CONFIG.pcgDebugFlowNumbers &&
+        flow > 1
+      ) {
+        ctx.fillStyle =
+          "rgba(32, 65, 72, 0.74)";
+
+        ctx.font =
+          `${Math.max(
+            7,
+            tileSize * 0.15
+          )}px Arial`;
+
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        ctx.fillText(
+          String(flow),
+          startX,
+          startY -
+            tileSize * 0.17
+        );
+      }
     }
 
     ctx.restore();
