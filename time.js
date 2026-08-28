@@ -153,64 +153,58 @@
     getSunState(turn = state.game.turn) {
       const { hourFloat } = this.getClock(turn);
 
+      // This is intentionally an art-direction sun, not an astronomical one.
+      // Its job is to make morning/noon/evening unmistakable at phone scale.
       const sunrise = 5.25;
       const sunset = 19.75;
       const daylightSpan = sunset - sunrise;
-      const daylightT = clamp(
+      const rawDaylightT =
         (hourFloat - sunrise) /
-        Math.max(0.001, daylightSpan)
-      );
+        Math.max(0.001, daylightSpan);
+      const visible =
+        rawDaylightT > 0 &&
+        rawDaylightT < 1;
+      const daylightT = clamp(rawDaylightT);
 
-      const altitude =
-        Math.sin(
-          daylightT * Math.PI
-        );
+      const altitude = visible
+        ? Math.sin(daylightT * Math.PI)
+        : 0;
 
-      const visible = altitude > 0.001;
-
+      // Morning shadows travel left/west, evening shadows right/east.
+      // A modest downward component keeps them readable in the top-down view.
       const rawShadowX =
-        -Math.cos(
-          daylightT * Math.PI
-        );
-
+        -Math.cos(daylightT * Math.PI);
       const rawShadowY =
-        0.22 +
-        (1 - altitude) * 0.30;
-
+        0.30 +
+        (1 - altitude) * 0.24;
       const magnitude = Math.max(
         0.001,
-        Math.hypot(
-          rawShadowX,
-          rawShadowY
-        )
+        Math.hypot(rawShadowX, rawShadowY)
       );
+      const shadowX = rawShadowX / magnitude;
+      const shadowY = rawShadowY / magnitude;
 
-      const shadowX =
-        rawShadowX / magnitude;
-      const shadowY =
-        rawShadowY / magnitude;
+      // v44 is deliberately graphic: at morning/evening a tall tree can throw
+      // a one-to-two-tile papercraft shadow. Around noon it pulls close.
+      const lengthFactor = visible
+        ? 0.30 +
+          Math.pow(1 - altitude, 1.18) * 2.35
+        : 0;
 
-      const horizonWeight = clamp(
-        (altitude + 0.12) / 1.12
-      );
+      const castAlpha = visible
+        ? 0.17 +
+          Math.pow(1 - altitude, 0.85) * 0.11
+        : 0;
 
-      const castAlpha =
-        visible
-          ? (
-              0.08 +
-              (1 - altitude) * 0.14
-            ) * horizonWeight
-          : 0;
+      const contactAlpha = visible
+        ? 0.13 +
+          (1 - altitude) * 0.035
+        : 0.12;
 
-      const contactAlpha =
-        0.12 +
-        (1 - altitude) * 0.06;
-
-      const receiveAlpha =
-        visible
-          ? 0.16 +
-            (1 - altitude) * 0.24
-          : 0;
+      const receiveAlpha = visible
+        ? 0.30 +
+          (1 - altitude) * 0.20
+        : 0;
 
       return {
         visible,
@@ -220,9 +214,7 @@
         shadowX,
         shadowY,
         angle: Math.atan2(shadowY, shadowX),
-        lengthFactor:
-          0.18 +
-          (1 - altitude) * 1.55,
+        lengthFactor,
         castAlpha,
         contactAlpha,
         receiveAlpha

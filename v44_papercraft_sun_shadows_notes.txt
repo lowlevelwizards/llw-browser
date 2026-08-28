@@ -1,0 +1,35 @@
+Low Level Wizards — v44 Papercraft Sun Shadows
+
+Purpose
+Make the time-of-day shadow experiment unmistakable at phone scale, while keeping the renderer painterly and cheap.
+
+Changes
+- Retuned the 2D art-direction sun model:
+  - long morning/evening shadows
+  - compact noon shadows
+  - stronger cool blue-green cast-shadow value
+- Trees now cast a layered papercraft canopy silhouette rather than a single timid fuzzy ellipse.
+- Tree shadow lobes preserve the crown's chunky layered character.
+- Bush, boulder, stump, fallen-log, bramble, bridge, and stepping-stone cast shadows were strengthened proportionally.
+- Shadows are rendered above water/terrain/ambient groundcover but below physical props, preserving the rule that shadows darken the ground rather than painting over objects.
+- Grass now responds to both persistent ecological shade/canopy and current moving sun shadow.
+- The player still receives current cast shade when walking through it.
+- Added explicit cache-busting in index.html:
+  - time.js?v=44
+  - render.js?v=44
+
+Expected visual test
+- Around 08:00: tree shadows should clearly lean left/west and extend roughly around a tile or more.
+- Around noon: shadows should pull close beneath trees.
+- Around 16:00–18:00: shadows should clearly swing right/east and lengthen again.
+- Grass under woodland canopy should no longer remain bright yellow-green in deep tree shade.
+
+Files changed
+- index.html
+- time.js
+- render.js
+- v44_papercraft_sun_shadows_notes.txt
+
+Validation
+- All JavaScript files passed node --check.
+- Sun-state tuning was numerically checked at 06:00, 08:00, 09:36, 12:30, 16:00, and 18:30.

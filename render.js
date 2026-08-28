@@ -174,7 +174,9 @@
   }
 
   function shadowTint(alpha) {
-    return `rgba(68, 80, 88, ${Math.max(0, alpha)})`;
+    // Cool, mossy blue-green rather than neutral black. The shadows are meant
+    // to feel like translucent cut paper laid over the painted ground.
+    return `rgba(48, 67, 70, ${Math.max(0, alpha)})`;
   }
 
   function drawSoftShadowEllipse(
@@ -197,14 +199,14 @@
 
     const layers = [
       {
-        scaleX: 1.72,
-        scaleY: 1.92,
-        alpha: alpha * 0.18
+        scaleX: 1.24,
+        scaleY: 1.30,
+        alpha: alpha * 0.16
       },
       {
-        scaleX: 1.34,
-        scaleY: 1.46,
-        alpha: alpha * 0.36
+        scaleX: 1.10,
+        scaleY: 1.13,
+        alpha: alpha * 0.30
       },
       {
         scaleX: 1,
@@ -273,6 +275,93 @@
     );
   }
 
+  function drawTreePapercraftShadow(
+    tree,
+    sun,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (!sun.visible) {
+      return;
+    }
+
+    const p = gridToPixel(
+      tree.x,
+      tree.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const scale = tree.scale || 1;
+    const centerX =
+      p.x +
+      tileSize * (0.5 + (tree.offsetX || 0));
+    const baseY =
+      p.y +
+      tileSize * (0.89 + (tree.offsetY || 0));
+
+    const crownScaleX = tree.crownScaleX || 1;
+    const crownScaleY = tree.crownScaleY || 1;
+    const crownRotation = tree.crownRotation || 0;
+    const cos = Math.cos(crownRotation);
+    const sin = Math.sin(crownRotation);
+
+    const trunkHeightFactor =
+      (tree.trunkHeight || 1) * scale;
+    const projection =
+      tileSize *
+      (0.62 + trunkHeightFactor * 0.18) *
+      sun.lengthFactor;
+
+    // A soft shared under-shape joins the lobes into one readable cast mass.
+    drawSoftShadowEllipse(
+      centerX + sun.shadowX * projection,
+      baseY + sun.shadowY * projection,
+      tileSize * 0.44 * scale * crownScaleX *
+        (1 + sun.lengthFactor * 0.11),
+      tileSize * 0.22 * scale * crownScaleY *
+        (1 + sun.lengthFactor * 0.08),
+      sun.angle * 0.28,
+      sun.castAlpha * 0.44
+    );
+
+    const lobes = treeLobes(tree, tileSize);
+
+    for (let i = 0; i < lobes.length; i++) {
+      const [lx, ly, radius] = lobes[i];
+
+      const localX = lx * scale * crownScaleX;
+      const localY = ly * scale * crownScaleY * 0.42;
+
+      const rotatedX =
+        localX * cos - localY * sin;
+      const rotatedY =
+        localX * sin + localY * cos;
+
+      const lobeProjection =
+        projection *
+        (0.93 + hash01(i, tree.family || 0, 802) * 0.12);
+
+      drawSoftShadowEllipse(
+        centerX +
+          rotatedX +
+          sun.shadowX * lobeProjection,
+        baseY +
+          rotatedY +
+          sun.shadowY * lobeProjection,
+        radius * scale * crownScaleX *
+          (1.02 + sun.lengthFactor * 0.12),
+        radius * scale * crownScaleY *
+          (0.56 + sun.lengthFactor * 0.045),
+        sun.angle * 0.20 + crownRotation * 0.22,
+        sun.castAlpha *
+          (0.72 + hash01(i, tree.family || 0, 803) * 0.16)
+      );
+    }
+  }
+
   function pointShadowInfluence(
     pointX,
     pointY,
@@ -330,16 +419,13 @@
       const scale = tree.scale || 1;
       const centerX =
         p.x +
-        tileSize *
-        (0.5 + (tree.offsetX || 0) + (tree.crownOffsetX || 0));
-      const centerY =
+        tileSize * (0.5 + (tree.offsetX || 0));
+      const baseY =
         p.y +
+        tileSize * (0.89 + (tree.offsetY || 0));
+      const projection =
         tileSize *
-        (0.55 + (tree.offsetY || 0) + (tree.crownOffsetY || 0) * 0.4);
-      const spread = tileSize * 0.26 * scale;
-      const distance =
-        tileSize *
-        (0.30 + scale * 0.18) *
+        (0.62 + (tree.trunkHeight || 1) * scale * 0.18) *
         sun.lengthFactor;
 
       shade = Math.max(
@@ -347,12 +433,12 @@
         pointShadowInfluence(
           pointX,
           pointY,
-          centerX + sun.shadowX * distance,
-          centerY + sun.shadowY * distance,
-          spread * 1.75,
-          spread * 0.98,
-          sun.angle * 0.4
-        ) * 0.95
+          centerX + sun.shadowX * projection,
+          baseY + sun.shadowY * projection,
+          tileSize * 0.54 * scale * (tree.crownScaleX || 1),
+          tileSize * 0.29 * scale * (tree.crownScaleY || 1),
+          sun.angle * 0.25
+        )
       );
     }
 
@@ -2582,6 +2668,8 @@
     );
     const dryGround =
       groundCell?.dryGroundAmount || 0;
+    const ecologicalShade =
+      groundCell?.shade || 0;
 
     const projectedShade = sampleProjectedShadeAt(
       centerX,
@@ -2621,10 +2709,15 @@
         hash01(seed, i, 35) * 10
       );
       const saturation = Math.round(
-        30 - dryGround * 6 - projectedShade * 8
+        30 -
+        dryGround * 6 -
+        ecologicalShade * 4 -
+        projectedShade * 10
       );
       const shadedLight = Math.round(
-        light - projectedShade * 18
+        light -
+        ecologicalShade * 8 -
+        projectedShade * 22
       );
 
       ctx.fillStyle =
@@ -2910,60 +3003,32 @@
     const sun = LLW.time.getSunState();
 
     for (const tree of state.trees || []) {
-      const p = gridToPixel(tree.x, tree.y, tileSize, offsetX, offsetY);
+      const p = gridToPixel(
+        tree.x,
+        tree.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
       const scale = tree.scale || 1;
-      const trunkX = p.x + tileSize * (0.5 + (tree.offsetX || 0));
-      const trunkY = p.y + tileSize * (0.89 + (tree.offsetY || 0));
+      const trunkX =
+        p.x + tileSize * (0.5 + (tree.offsetX || 0));
+      const trunkY =
+        p.y + tileSize * (0.89 + (tree.offsetY || 0));
+
       drawShadow(
         trunkX,
         trunkY,
-        tileSize * 0.46 * scale,
-        tileSize * 0.16 * scale
+        tileSize * 0.43 * scale,
+        tileSize * 0.145 * scale
       );
 
-      const crownX =
-        p.x +
-        tileSize *
-        (0.5 + (tree.offsetX || 0) + (tree.crownOffsetX || 0));
-      const crownY =
-        p.y +
-        tileSize *
-        (0.56 + (tree.offsetY || 0) + (tree.crownOffsetY || 0) * 0.45);
-      const crownSpread = tileSize * 0.26 * scale;
-      const crownDistance = tileSize * (0.28 + scale * 0.18);
-
-      drawProjectedShadowBlob(
+      drawTreePapercraftShadow(
+        tree,
         sun,
-        crownX,
-        crownY,
-        crownSpread * 1.15,
-        crownSpread * 0.72,
-        crownDistance,
-        0.95,
-        sun.angle * 0.36,
-        1.25
-      );
-      drawProjectedShadowBlob(
-        sun,
-        crownX - tileSize * 0.16 * scale,
-        crownY + tileSize * 0.02 * scale,
-        crownSpread * 0.82,
-        crownSpread * 0.56,
-        crownDistance * 1.04,
-        0.72,
-        sun.angle * 0.32,
-        1.05
-      );
-      drawProjectedShadowBlob(
-        sun,
-        crownX + tileSize * 0.17 * scale,
-        crownY + tileSize * 0.03 * scale,
-        crownSpread * 0.78,
-        crownSpread * 0.54,
-        crownDistance * 0.96,
-        0.68,
-        sun.angle * 0.32,
-        1.00
+        tileSize,
+        offsetX,
+        offsetY
       );
     }
 
@@ -2986,8 +3051,8 @@
         centerY - tileSize * 0.10,
         tileSize * 0.26 * scale,
         tileSize * 0.10 * scale,
-        tileSize * 0.16,
-        0.54,
+        tileSize * 0.24,
+        0.72,
         sun.angle * 0.28,
         0.85
       );
@@ -3011,8 +3076,8 @@
         centerY - tileSize * 0.10,
         tileSize * 0.18 * scale,
         tileSize * 0.07 * scale,
-        tileSize * 0.11,
-        0.36,
+        tileSize * 0.17,
+        0.48,
         sun.angle * 0.18,
         0.66
       );
@@ -3036,8 +3101,8 @@
         centerY - tileSize * 0.15,
         tileSize * 0.26 * scale,
         tileSize * 0.095 * scale,
-        tileSize * 0.15,
-        0.44,
+        tileSize * 0.24,
+        0.62,
         sun.angle * 0.24,
         0.80
       );
@@ -3064,8 +3129,8 @@
         centerY - tileSize * 0.08,
         tileSize * 0.33 * lengthScale,
         tileSize * 0.075 * thicknessScale,
-        tileSize * 0.13,
-        0.40,
+        tileSize * 0.21,
+        0.56,
         (log.rotation || 0) * 0.78 + sun.angle * 0.18,
         0.95
       );
@@ -3082,8 +3147,8 @@
           centerY - tileSize * 0.05,
           tileSize * 0.20,
           tileSize * 0.06,
-          tileSize * 0.06,
-          0.24,
+          tileSize * 0.10,
+          0.36,
           sun.angle * 0.24,
           0.60
         );
@@ -4861,6 +4926,13 @@
       offsetY
     );
 
+    drawMajorShadows(
+      now,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
     drawCrossings(
       tileSize,
       offsetX,
@@ -4895,13 +4967,6 @@
     );
 
     drawWorldItems(
-      now,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-
-    drawMajorShadows(
       now,
       tileSize,
       offsetX,
