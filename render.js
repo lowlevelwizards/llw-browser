@@ -956,17 +956,15 @@
 
     const tileOffsetX =
       (hash01(x, y, 1) - 0.5) *
-      tileSize *
-      0.12;
+      tileSize * 0.12;
 
     const tileOffsetY =
       (hash01(x, y, 2) - 0.5) *
-      tileSize *
-      0.10;
+      tileSize * 0.10;
 
     const tileRotation =
       (hash01(x, y, 3) - 0.5) *
-      0.24;
+      0.18;
 
     const centerX =
       p.x +
@@ -975,7 +973,7 @@
 
     const centerY =
       p.y +
-      tileSize * 0.64 +
+      tileSize * 0.66 +
       tileOffsetY;
 
     const groundY =
@@ -986,8 +984,8 @@
     drawShadow(
       centerX,
       groundY,
-      tileSize * 0.40,
-      tileSize * 0.10
+      tileSize * 0.41,
+      tileSize * 0.105
     );
 
     const wiggle =
@@ -1010,36 +1008,30 @@
       wiggle.scale
     );
 
-    // A bramble is now a low tangled plant first, hazard glyph second. The
-    // cool leafy mass keeps it in the woodland vocabulary while wine-colored
-    // thorn canes preserve immediate danger/readability at phone scale.
-    const foliageLobes = [
-      [-0.24,  0.05, 0.17, 0.10],
-      [-0.08, -0.03, 0.20, 0.12],
-      [ 0.10, -0.05, 0.19, 0.11],
-      [ 0.25,  0.05, 0.15, 0.09],
-      [ 0.00,  0.11, 0.22, 0.10]
+    // v41: one integrated thorn thicket. A dark leafy interior is laid down
+    // first, woody canes grow through it, then foreground leaves overlap the
+    // canes again. That interleaving is what makes the stems feel embedded in
+    // a plant instead of a bundle of sticks placed on top of a bush sprite.
+    const backLobes = [
+      [-0.27,  0.04, 0.18, 0.115],
+      [-0.12, -0.04, 0.22, 0.135],
+      [ 0.06, -0.055, 0.23, 0.14],
+      [ 0.24,  0.025, 0.18, 0.115],
+      [-0.03,  0.105, 0.25, 0.12]
     ];
 
-    for (
-      let i = 0;
-      i < foliageLobes.length;
-      i++
-    ) {
-      const [lx, ly, rx, ry] =
-        foliageLobes[i];
-      const local =
-        hash01(x, y, 120 + i) - 0.5;
-
+    for (let i = 0; i < backLobes.length; i++) {
+      const [lx, ly, rx, ry] = backLobes[i];
+      const local = hash01(x, y, 120 + i) - 0.5;
       ctx.fillStyle =
-        `hsla(${Math.round(112 + local * 12)}, ${34 + Math.round(local * 5)}%, ${34 + Math.round(local * 6)}%, 0.86)`;
+        `hsla(${Math.round(111 + local * 8)}, ${32 + Math.round(local * 4)}%, ${30 + Math.round(local * 5)}%, 0.92)`;
       ctx.beginPath();
       ctx.ellipse(
-        tileSize * (lx + local * 0.025),
-        tileSize * (ly + local * 0.018),
+        tileSize * (lx + local * 0.018),
+        tileSize * (ly + local * 0.012),
         tileSize * rx,
         tileSize * ry,
-        local * 0.55,
+        local * 0.42,
         0,
         Math.PI * 2
       );
@@ -1047,71 +1039,105 @@
     }
 
     const caneColors = [
-      "rgba(106, 69, 89, 0.94)",
-      "rgba(126, 73, 78, 0.92)",
-      "rgba(91, 63, 78, 0.92)"
+      "rgba(104, 76, 75, 0.88)",
+      "rgba(118, 77, 82, 0.86)",
+      "rgba(91, 72, 74, 0.88)"
     ];
 
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.lineWidth =
-      Math.max(2, tileSize * 0.043);
+      Math.max(1.5, tileSize * 0.030);
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
+      const direction = i % 2 === 0 ? 1 : -1;
       const startX =
-        (-0.28 + i * 0.11) * tileSize;
+        tileSize *
+        (
+          -0.08 +
+          (hash01(x, y, 210 + i) - 0.5) * 0.18
+        );
       const startY =
-        (0.10 +
-          (hash01(x, y, 210 + i) - 0.5) * 0.08) *
-        tileSize;
+        tileSize *
+        (
+          0.09 +
+          (hash01(x, y, 220 + i) - 0.5) * 0.07
+        );
       const endX =
-        (0.22 - i * 0.08 +
-          (hash01(x, y, 220 + i) - 0.5) * 0.18) *
-        tileSize;
+        tileSize *
+        direction *
+        (
+          0.27 +
+          hash01(x, y, 230 + i) * 0.11
+        );
       const endY =
-        (-0.15 +
-          (hash01(x, y, 230 + i) - 0.5) * 0.18) *
-        tileSize;
-      const controlX =
-        (startX + endX) * 0.5 +
-        (hash01(x, y, 240 + i) - 0.5) *
-          tileSize * 0.16;
-      const controlY =
-        (startY + endY) * 0.5 +
-        (hash01(x, y, 250 + i) - 0.5) *
-          tileSize * 0.14;
+        tileSize *
+        (
+          -0.08 +
+          (hash01(x, y, 240 + i) - 0.5) * 0.18
+        );
+      const arch =
+        tileSize *
+        (
+          0.13 +
+          hash01(x, y, 250 + i) * 0.09
+        );
 
       ctx.strokeStyle =
         caneColors[(i + x + y) % caneColors.length];
       ctx.beginPath();
       ctx.moveTo(startX, startY);
       ctx.quadraticCurveTo(
-        controlX,
-        controlY,
+        (startX + endX) * 0.5,
+        Math.min(startY, endY) - arch,
         endX,
         endY
       );
       ctx.stroke();
 
-      if (i % 2 === 0) {
-        const tx =
-          (startX + endX) * 0.54;
-        const ty =
-          (startY + endY) * 0.54;
-        ctx.strokeStyle =
-          "rgba(221, 190, 166, 0.54)";
-        ctx.lineWidth =
-          Math.max(1, tileSize * 0.016);
+      // Tiny thorn nubs: visible enough to communicate snag without turning
+      // the whole patch back into a crossed-stick hazard glyph.
+      if (i < 3) {
+        const t = 0.68;
+        const thornX = startX + (endX - startX) * t;
+        const thornY = startY + (endY - startY) * t - arch * 0.36;
+        ctx.strokeStyle = "rgba(191, 157, 135, 0.46)";
+        ctx.lineWidth = Math.max(1, tileSize * 0.012);
         ctx.beginPath();
-        ctx.moveTo(tx, ty);
+        ctx.moveTo(thornX, thornY);
         ctx.lineTo(
-          tx + tileSize * 0.045,
-          ty - tileSize * 0.045
+          thornX + direction * tileSize * 0.035,
+          thornY - tileSize * 0.035
         );
         ctx.stroke();
-        ctx.lineWidth =
-          Math.max(2, tileSize * 0.043);
+        ctx.lineWidth = Math.max(1.5, tileSize * 0.030);
       }
+    }
+
+    const frontLobes = [
+      [-0.22, 0.055, 0.105, 0.070],
+      [-0.08, 0.015, 0.125, 0.080],
+      [ 0.08, 0.035, 0.120, 0.078],
+      [ 0.22, 0.070, 0.100, 0.066],
+      [ 0.00, 0.115, 0.145, 0.070]
+    ];
+
+    for (let i = 0; i < frontLobes.length; i++) {
+      const [lx, ly, rx, ry] = frontLobes[i];
+      const local = hash01(x, y, 310 + i) - 0.5;
+      ctx.fillStyle =
+        `hsla(${Math.round(108 + local * 10)}, ${35 + Math.round(local * 4)}%, ${36 + Math.round(local * 6)}%, 0.94)`;
+      ctx.beginPath();
+      ctx.ellipse(
+        tileSize * (lx + local * 0.018),
+        tileSize * (ly + local * 0.012),
+        tileSize * rx,
+        tileSize * ry,
+        local * 0.38,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
     }
 
     ctx.restore();
@@ -1512,8 +1538,11 @@
     const maxY = Math.max(...lobes.map((lobe) => lobe[1]));
     const minY = Math.min(...lobes.map((lobe) => lobe[1]));
 
-    // Lower/crowded foliage first: darker and cooler. Upper lobes get warmer
-    // highlights, so even a flat-shape tree carries a little vertical light.
+    // v41 keeps the useful gradient idea but restores clear structural
+    // banding. The crown has three value/temperature tiers first (low/mid/top),
+    // then each blob receives only a restrained internal gradient. This keeps
+    // the chunky stacked-foliage read instead of blending the tree into one
+    // airbrushed green cloud.
     const sortedLobes = [...lobes].sort(
       (a, b) => b[1] - a[1]
     );
@@ -1523,36 +1552,48 @@
         const vertical =
           (maxY - y) /
           Math.max(0.001, maxY - minY);
+
+        const tier =
+          vertical < 0.34
+            ? 0
+            : vertical < 0.68
+              ? 1
+              : 2;
+
         const localJitter =
           hash01(
             Math.floor((tree.lobeSeed || 0) * 10000),
             index,
             431
           ) - 0.5;
+
+        const tierHueShift = [8, 0, -7][tier];
+        const tierLight = [38.5, 43.5, 48.5][tier];
+
         const hue =
           116 +
-          treeShade * 15 -
-          vertical * 11 +
-          localJitter * 6;
+          treeShade * 12 +
+          tierHueShift +
+          localJitter * 4;
+
         const lightShift =
           (tree.lightShift || 0) -
-          treeShade * 0.62 +
-          vertical * 0.68 +
-          localJitter * 0.22;
+          treeShade * 0.48 +
+          localJitter * 0.16;
 
         const lobeColorShift =
           (tree.colorShift || 0) +
-          localJitter * 0.22;
-        const lobeSaturation =
-          36 + treeShade * 6;
-        const lobeLightness =
-          44 -
-          treeShade * 5 +
-          vertical * 5;
+          localJitter * 0.18;
 
-        // Keep every tree's rolled local palette, then apply the same material
-        // grammar that made the boulders work: each individual foliage blob
-        // warms/lifts toward its top and cools/deepens toward its underside.
+        const lobeSaturation =
+          37 +
+          treeShade * 5 +
+          tier;
+
+        const lobeLightness =
+          tierLight -
+          treeShade * 4.5;
+
         const lobeGradient =
           ctx.createLinearGradient(
             x,
@@ -1560,18 +1601,19 @@
             x,
             y + r
           );
+
         lobeGradient.addColorStop(
           0,
           foliageColor(
-            hue - 6,
+            hue - 2,
             lobeColorShift,
-            lightShift + 0.72,
-            lobeSaturation + 2,
-            lobeLightness + 4
+            lightShift + 0.22,
+            lobeSaturation,
+            lobeLightness + 1.2
           )
         );
         lobeGradient.addColorStop(
-          0.52,
+          0.58,
           foliageColor(
             hue,
             lobeColorShift,
@@ -1583,11 +1625,11 @@
         lobeGradient.addColorStop(
           1,
           foliageColor(
-            hue + 10,
+            hue + 3,
             lobeColorShift,
-            lightShift - 0.66,
-            lobeSaturation + 3,
-            lobeLightness - 4
+            lightShift - 0.24,
+            lobeSaturation + 1,
+            lobeLightness - 1.4
           )
         );
 
@@ -1595,6 +1637,22 @@
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
+
+        // A faint cool underside at the bottom of each mass keeps adjacent
+        // tiers legible without drawing a hard cartoon outline around them.
+        ctx.strokeStyle =
+          `rgba(42, 88, 57, ${tier === 2 ? 0.09 : 0.13})`;
+        ctx.lineWidth =
+          Math.max(1, tileSize * 0.010);
+        ctx.beginPath();
+        ctx.arc(
+          x,
+          y + r * 0.055,
+          r * 0.93,
+          Math.PI * 0.12,
+          Math.PI * 0.88
+        );
+        ctx.stroke();
       }
     );
 
@@ -2269,10 +2327,18 @@
     ctx.scale(patch.scale || 1, patch.scale || 1);
 
     for (let i = 0; i < count; i++) {
-      const offset = (i - (count - 1) / 2) * tileSize * 0.045;
-      const height = tileSize * (0.08 + hash01(seed, i, 31) * 0.08);
-      const width = tileSize * (0.018 + hash01(seed, i, 32) * 0.018);
-      const bend = (hash01(seed, i, 33) - 0.5) * tileSize * 0.028;
+      const offset =
+        (i - (count - 1) / 2) *
+        tileSize * 0.052;
+      const height =
+        tileSize *
+        (0.075 + hash01(seed, i, 31) * 0.065);
+      const width =
+        tileSize *
+        (0.035 + hash01(seed, i, 32) * 0.020);
+      const bend =
+        (hash01(seed, i, 33) - 0.5) *
+        tileSize * 0.035;
       const hue = Math.round(
         105 -
         dryGround * 26 +
@@ -2288,11 +2354,38 @@
       const saturation = Math.round(
         30 - dryGround * 6
       );
-      ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${light}%, 0.70)`;
+
+      ctx.fillStyle =
+        `hsla(${hue}, ${saturation}%, ${light}%, 0.72)`;
+
+      // Thick, blunt little blades: flat at the soil and rounded at the tip.
+      // The overlap makes the patch read as one bubbly tuft instead of a row
+      // of tapered needles.
       ctx.beginPath();
-      ctx.moveTo(offset, 0);
-      ctx.quadraticCurveTo(offset + bend, -height * 0.75, offset + bend, -height);
-      ctx.quadraticCurveTo(offset + bend + width, -height * 0.45, offset + width, 0);
+      ctx.moveTo(
+        offset - width * 0.5,
+        0
+      );
+      ctx.lineTo(
+        offset + bend - width * 0.5,
+        -height + width * 0.52
+      );
+      ctx.quadraticCurveTo(
+        offset + bend - width * 0.5,
+        -height,
+        offset + bend,
+        -height
+      );
+      ctx.quadraticCurveTo(
+        offset + bend + width * 0.5,
+        -height,
+        offset + bend + width * 0.5,
+        -height + width * 0.52
+      );
+      ctx.lineTo(
+        offset + width * 0.5,
+        0
+      );
       ctx.closePath();
       ctx.fill();
     }
@@ -2700,17 +2793,66 @@
         const t = i / (count + 1);
         const jitter =
           (hash01(i, crossing.variation || 0, 921) - 0.5) *
-          tileSize * 0.07;
+          tileSize * 0.065;
         const x = a.x + dx * t + perpX * jitter;
         const y = a.y + dy * t + perpY * jitter;
-        const r = tileSize * (0.11 + hash01(i, count, 922) * 0.025);
-        const rock = ctx.createLinearGradient(x, y - r, x, y + r);
-        rock.addColorStop(0, "#a89a7f");
-        rock.addColorStop(1, "#746e63");
+        const r =
+          tileSize *
+          (0.155 + hash01(i, count, 922) * 0.035);
+        const stoneAngle =
+          angle * 0.18 +
+          (hash01(i, crossing.variation || 0, 923) - 0.5) * 0.24;
+
+        // Crossing stones need to read as usable footing, not as another
+        // decorative pebble cluster. A broader shadow and larger warm top make
+        // the sequence legible at phone scale.
+        ctx.fillStyle = "rgba(56, 67, 58, 0.20)";
+        ctx.beginPath();
+        ctx.ellipse(
+          x + tileSize * 0.018,
+          y + tileSize * 0.045,
+          r * 1.02,
+          r * 0.55,
+          stoneAngle,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+
+        const rock =
+          ctx.createLinearGradient(
+            x - r * 0.18,
+            y - r,
+            x + r * 0.12,
+            y + r
+          );
+        rock.addColorStop(0, "#b7aa8a");
+        rock.addColorStop(0.55, "#958a76");
+        rock.addColorStop(1, "#706c62");
         ctx.fillStyle = rock;
         ctx.beginPath();
-        ctx.ellipse(x, y, r, r * 0.68, angle * 0.22, 0, Math.PI * 2);
+        ctx.ellipse(
+          x,
+          y,
+          r,
+          r * 0.70,
+          stoneAngle,
+          0,
+          Math.PI * 2
+        );
         ctx.fill();
+
+        ctx.strokeStyle = "rgba(226, 214, 184, 0.24)";
+        ctx.lineWidth = Math.max(1, tileSize * 0.012);
+        ctx.beginPath();
+        ctx.arc(
+          x - r * 0.05,
+          y - r * 0.05,
+          r * 0.58,
+          Math.PI * 1.10,
+          Math.PI * 1.72
+        );
+        ctx.stroke();
       }
     }
   }
@@ -2804,7 +2946,7 @@
     const capHeight = tileSize * 0.12;
     const capY = -stemHeight * 0.94;
 
-    ctx.fillStyle = cooked ? "#9f503a" : "#c63c36";
+    ctx.fillStyle = cooked ? "#8f5742" : "#b45543";
     ctx.beginPath();
     ctx.moveTo(-capHalfWidth, capY);
     ctx.quadraticCurveTo(

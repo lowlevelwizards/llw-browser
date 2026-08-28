@@ -50,7 +50,9 @@
     bankCanvas: null,
     bankCtx: null,
     waterCanvas: null,
-    waterCtx: null
+    waterCtx: null,
+    shallowCanvas: null,
+    shallowCtx: null
   };
 
   function clamp(
@@ -4177,7 +4179,8 @@
       waterLayers.height ===
         height &&
       waterLayers.bankCanvas &&
-      waterLayers.waterCanvas
+      waterLayers.waterCanvas &&
+      waterLayers.shallowCanvas
     ) {
       return;
     }
@@ -4200,6 +4203,9 @@
     const waterCanvas =
       makeCanvas();
 
+    const shallowCanvas =
+      makeCanvas();
+
     waterLayers = {
       width,
       height,
@@ -4215,6 +4221,13 @@
 
       waterCtx:
         waterCanvas.getContext(
+          "2d"
+        ),
+
+      shallowCanvas,
+
+      shallowCtx:
+        shallowCanvas.getContext(
           "2d"
         )
     };
@@ -4339,6 +4352,9 @@
     const water =
       waterLayers.waterCtx;
 
+    const shallow =
+      waterLayers.shallowCtx;
+
     bank.clearRect(
       0,
       0,
@@ -4353,6 +4369,13 @@
       view.height
     );
 
+    shallow.clearRect(
+      0,
+      0,
+      view.width,
+      view.height
+    );
+
     const geometry =
       state.landscape.geometry;
 
@@ -4360,41 +4383,25 @@
       return;
     }
 
-    // OPAQUE construction mask first. Source-over of one solid color means
-    // overlapping ribbons/ponds cannot accumulate transparency darkness.
+    // Build one opaque union for land-water contact and one exact union for
+    // the water itself. The bank is deliberately broader than v40: it is a
+    // strip of damp/silty ground, not a bright outline painted on the pond.
     bank.save();
-    bank.fillStyle =
-      "#ffffff";
-
-    bank.strokeStyle =
-      "#ffffff";
-
-    bank.lineJoin =
-      "round";
-
-    bank.lineCap =
-      "round";
-
+    bank.fillStyle = "#ffffff";
+    bank.strokeStyle = "#ffffff";
+    bank.lineJoin = "round";
+    bank.lineCap = "round";
     bank.lineWidth =
       Math.max(
         2,
-        view.tileSize *
-        0.18
+        view.tileSize * 0.30
       );
 
     water.save();
-
-    water.fillStyle =
-      "#ffffff";
-
-    water.strokeStyle =
-      "#ffffff";
-
-    water.lineJoin =
-      "round";
-
-    water.lineCap =
-      "round";
+    water.fillStyle = "#ffffff";
+    water.strokeStyle = "#ffffff";
+    water.lineJoin = "round";
+    water.lineCap = "round";
 
     for (
       const body of
@@ -4405,13 +4412,11 @@
         body.outer,
         view
       );
-
       strokePolygon(
         bank,
         body.outer,
         view
       );
-
       fillPolygon(
         water,
         body.outer,
@@ -4428,13 +4433,11 @@
         channel.polygon,
         view
       );
-
       strokePolygon(
         bank,
         channel.polygon,
         view
       );
-
       fillPolygon(
         water,
         channel.polygon,
@@ -4452,13 +4455,13 @@
         bank,
         firstSample,
         view,
-        view.tileSize * 0.09
+        view.tileSize * 0.15
       );
       fillChannelCap(
         bank,
         lastSample,
         view,
-        view.tileSize * 0.09
+        view.tileSize * 0.15
       );
       fillChannelCap(
         water,
@@ -4472,11 +4475,9 @@
       );
     }
 
-    // Explicit holes are subtracted AFTER the union of outer pond shapes.
-    // This removes the "which side is inside?" ambiguity from v23.
+    // Explicit holes are subtracted after the outer union.
     bank.globalCompositeOperation =
       "destination-out";
-
     water.globalCompositeOperation =
       "destination-out";
 
@@ -4493,7 +4494,6 @@
           hole,
           view
         );
-
         fillPolygon(
           water,
           hole,
@@ -4505,9 +4505,10 @@
     bank.restore();
     water.restore();
 
-    // Colorize each union mask once.
+    // The outer bank moves from sun-warmed silt into cooler damp earth. It is
+    // deliberately earthy rather than white so the shoreline belongs to the
+    // surrounding ground instead of separating from it like a sticker edge.
     bank.save();
-
     bank.globalCompositeOperation =
       "source-in";
 
@@ -4515,50 +4516,115 @@
       bank.createLinearGradient(
         0,
         0,
-        view.width,
+        view.width * 0.75,
         view.height
       );
-    bankGradient.addColorStop(0, "#aa9a70");
-    bankGradient.addColorStop(0.55, "#928660");
-    bankGradient.addColorStop(1, "#768064");
+    bankGradient.addColorStop(0, "#a89c70");
+    bankGradient.addColorStop(0.52, "#8f8b67");
+    bankGradient.addColorStop(1, "#6f7d64");
     bank.fillStyle = bankGradient;
-
     bank.fillRect(
       0,
       0,
       view.width,
       view.height
     );
-
     bank.restore();
 
+    // Main body: mostly opaque, with a restrained warm/light -> cool/deep
+    // directional shift. The water should read as a material before any
+    // surface marks are added.
     water.save();
-
     water.globalCompositeOperation =
       "source-in";
 
-    // Shared light grammar with the land/rocks: slightly warmer/lighter
-    // toward the upper-lit side, cooler/deeper away from it.
     const waterGradient =
       water.createLinearGradient(
         0,
         0,
-        view.width * 0.72,
+        view.width * 0.70,
         view.height
       );
-    waterGradient.addColorStop(0, "#58aabd");
-    waterGradient.addColorStop(0.52, "#489bb3");
-    waterGradient.addColorStop(1, "#3f8ca8");
+    waterGradient.addColorStop(0, "#61a9b2");
+    waterGradient.addColorStop(0.48, "#4e98a8");
+    waterGradient.addColorStop(1, "#3d8297");
     water.fillStyle = waterGradient;
-
     water.fillRect(
       0,
       0,
       view.width,
       view.height
     );
-
     water.restore();
+
+    // Shallows are a broad INNER edge, clipped to the exact water union. This
+    // provides a visible depth transition without tracing every pond in white.
+    shallow.save();
+    shallow.strokeStyle = "#ffffff";
+    shallow.fillStyle = "#ffffff";
+    shallow.lineJoin = "round";
+    shallow.lineCap = "round";
+    shallow.lineWidth =
+      Math.max(
+        2,
+        view.tileSize * 0.26
+      );
+
+    for (const body of geometry.waterBodies) {
+      strokePolygon(
+        shallow,
+        body.outer,
+        view
+      );
+      for (const hole of body.holes || []) {
+        strokePolygon(
+          shallow,
+          hole,
+          view
+        );
+      }
+    }
+
+    for (const channel of geometry.channels) {
+      strokePolygon(
+        shallow,
+        channel.polygon,
+        view
+      );
+    }
+    shallow.restore();
+
+    shallow.save();
+    shallow.globalCompositeOperation =
+      "destination-in";
+    shallow.drawImage(
+      waterLayers.waterCanvas,
+      0,
+      0
+    );
+    shallow.restore();
+
+    shallow.save();
+    shallow.globalCompositeOperation =
+      "source-in";
+    const shallowGradient =
+      shallow.createLinearGradient(
+        0,
+        0,
+        view.width,
+        view.height
+      );
+    shallowGradient.addColorStop(0, "#82b7a8");
+    shallowGradient.addColorStop(0.55, "#6eab9f");
+    shallowGradient.addColorStop(1, "#5a9995");
+    shallow.fillStyle = shallowGradient;
+    shallow.fillRect(
+      0,
+      0,
+      view.width,
+      view.height
+    );
+    shallow.restore();
   }
 
   function drawMudTerminalDitches(
@@ -4707,7 +4773,7 @@
     ctx.restore();
   }
 
-  function drawShoreEdge(
+  function drawWaterDepth(
     ctx,
     view
   ) {
@@ -4718,26 +4784,80 @@
       return;
     }
 
-    ctx.save();
-    ctx.strokeStyle =
-      "rgba(218, 231, 203, 0.34)";
-    ctx.lineWidth =
-      Math.max(1, view.tileSize * 0.075);
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-
     for (const body of geometry.waterBodies) {
-      strokePolygon(ctx, body.outer, view);
-      for (const hole of body.holes || []) {
-        strokePolygon(ctx, hole, view);
+      const width =
+        body.bounds.maxX -
+        body.bounds.minX;
+      const height =
+        body.bounds.maxY -
+        body.bounds.minY;
+
+      if (width < 0.75 || height < 0.55) {
+        continue;
       }
-    }
 
-    for (const channel of geometry.channels) {
-      strokePolygon(ctx, channel.polygon, view);
-    }
+      const center =
+        worldPointToPixel(
+          {
+            x:
+              (body.bounds.minX + body.bounds.maxX) * 0.5,
+            y:
+              (body.bounds.minY + body.bounds.maxY) * 0.5
+          },
+          view
+        );
 
-    ctx.restore();
+      const radius =
+        Math.max(width, height) *
+        view.tileSize *
+        0.60;
+
+      ctx.save();
+      ctx.beginPath();
+      appendPolygon(
+        ctx,
+        body.outer,
+        view
+      );
+      for (const hole of body.holes || []) {
+        appendPolygon(
+          ctx,
+          hole,
+          view
+        );
+      }
+      ctx.clip("evenodd");
+
+      const depth =
+        ctx.createRadialGradient(
+          center.x + view.tileSize * 0.08,
+          center.y + view.tileSize * 0.10,
+          0,
+          center.x,
+          center.y,
+          radius
+        );
+      depth.addColorStop(
+        0,
+        "rgba(37, 83, 103, 0.16)"
+      );
+      depth.addColorStop(
+        0.52,
+        "rgba(38, 88, 106, 0.08)"
+      );
+      depth.addColorStop(
+        1,
+        "rgba(38, 88, 106, 0)"
+      );
+      ctx.fillStyle = depth;
+      ctx.fillRect(
+        center.x - radius,
+        center.y - radius,
+        radius * 2,
+        radius * 2
+      );
+      ctx.restore();
+    }
   }
 
   function drawWater(
@@ -4779,29 +4899,36 @@
     );
 
     ctx.save();
-
-    ctx.globalAlpha = 0.34;
-
+    ctx.globalAlpha = 0.44;
     ctx.drawImage(
       waterLayers.bankCanvas,
       0,
       0
     );
-
     ctx.restore();
 
-    // Draw the pale shoreline before the blue body, leaving only the soft
-    // outer half visible instead of outlining the water like a sticker.
-    drawShoreEdge(ctx, view);
-
     ctx.save();
-    ctx.globalAlpha = 0.90;
+    ctx.globalAlpha = 0.98;
     ctx.drawImage(
       waterLayers.waterCanvas,
       0,
       0
     );
     ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    ctx.drawImage(
+      waterLayers.shallowCanvas,
+      0,
+      0
+    );
+    ctx.restore();
+
+    drawWaterDepth(
+      ctx,
+      view
+    );
 
     drawHighlights(
       ctx,
@@ -4822,198 +4949,188 @@
       return;
     }
 
-    ctx.save();
-
-    ctx.strokeStyle =
-      "rgba(209, 234, 226, 0.40)";
-
-    ctx.lineCap =
-      "round";
-
-    ctx.lineWidth =
-      Math.max(
-        1,
-        view.tileSize *
-        0.024
-      );
-
-    for (
-      const body of
-      geometry.waterBodies
-    ) {
+    // Pond reflections are sparse and irregular. They are clipped to each
+    // water body so they feel like light caught by a surface, not icon lines
+    // stamped across the map.
+    for (const body of geometry.waterBodies) {
       const width =
         body.bounds.maxX -
         body.bounds.minX;
-
       const height =
         body.bounds.maxY -
         body.bounds.minY;
 
-      if (
-        width < 0.8 ||
-        height < 0.6
-      ) {
+      if (width < 0.85 || height < 0.62) {
         continue;
       }
 
       const centerX =
-        (
-          body.bounds.minX +
-          body.bounds.maxX
-        ) *
-        0.5;
-
+        (body.bounds.minX + body.bounds.maxX) * 0.5;
       const centerY =
-        (
-          body.bounds.minY +
-          body.bounds.maxY
-        ) *
-        0.5;
+        (body.bounds.minY + body.bounds.maxY) * 0.5;
 
       const count =
-        width > 4 || height > 4
-          ? 4
-          : width > 2 || height > 2
-            ? 3
-            : 2;
+        width > 4.2 || height > 4.2
+          ? 3
+          : width > 2.2 || height > 2.0
+            ? 2
+            : 1;
 
       const rippleSeed =
         Number(
           String(body.id || "1").replace(/\D/g, "")
         ) || 1;
 
-      for (
-        let i = 0;
-        i < count;
-        i++
-      ) {
+      ctx.save();
+      ctx.beginPath();
+      appendPolygon(
+        ctx,
+        body.outer,
+        view
+      );
+      for (const hole of body.holes || []) {
+        appendPolygon(
+          ctx,
+          hole,
+          view
+        );
+      }
+      ctx.clip("evenodd");
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      for (let i = 0; i < count; i++) {
         const phase =
-          now * 0.00055 +
-          rippleSeed * 0.41 +
-          i * 1.73;
+          now * 0.00020 +
+          rippleSeed * 0.29 +
+          i * 2.13;
 
         const y =
           centerY +
-          (
-            i -
-            (
-              count - 1
-            ) *
-            0.5
-          ) *
-          0.54 +
-          Math.sin(phase) * 0.055;
+          (i - (count - 1) * 0.5) * 0.64 +
+          (hash01(rippleSeed, i, 731) - 0.5) * 0.18 +
+          Math.sin(phase) * 0.025;
+
+        const xShift =
+          (hash01(rippleSeed, i, 732) - 0.5) *
+          Math.min(0.46, width * 0.14);
 
         const half =
           Math.min(
-            0.72,
+            0.64,
             width *
-              (0.13 +
-                hash01(rippleSeed, i, 730) * 0.06)
+              (0.105 +
+                hash01(rippleSeed, i, 733) * 0.055)
           );
 
         const left =
           worldPointToPixel(
             {
-              x:
-                centerX -
-                half +
-                Math.cos(phase * 0.83) * 0.045,
-
+              x: centerX + xShift - half,
               y
             },
             view
           );
-
         const right =
           worldPointToPixel(
             {
-              x:
-                centerX +
-                half +
-                Math.cos(phase * 0.83) * 0.045,
-
+              x: centerX + xShift + half,
               y
             },
             view
           );
 
-        ctx.beginPath();
-
-        ctx.moveTo(
-          left.x,
-          left.y
-        );
-
-        ctx.quadraticCurveTo(
-          (
-            left.x +
-            right.x
-          ) *
-          0.5,
-
-          left.y -
+        const bow =
           view.tileSize *
-          0.035,
+          (0.018 +
+            hash01(rippleSeed, i, 734) * 0.022);
+        const lean =
+          (hash01(rippleSeed, i, 735) - 0.5) *
+          view.tileSize * 0.035;
 
+        ctx.strokeStyle =
+          `rgba(220, 236, 224, ${(
+            0.16 +
+            hash01(rippleSeed, i, 736) * 0.08
+          ).toFixed(3)})`;
+        ctx.lineWidth =
+          Math.max(
+            1,
+            view.tileSize *
+              (0.015 +
+                hash01(rippleSeed, i, 737) * 0.006)
+          );
+
+        ctx.beginPath();
+        ctx.moveTo(left.x, left.y);
+        ctx.bezierCurveTo(
+          left.x + (right.x - left.x) * 0.30,
+          left.y - bow + lean,
+          left.x + (right.x - left.x) * 0.68,
+          right.y + bow * 0.28 - lean,
           right.x,
           right.y
         );
-
         ctx.stroke();
       }
+
+      ctx.restore();
     }
 
-    for (
-      const channel of
-      geometry.channels
-    ) {
-      const points =
-        channel.centerline;
+    // Creeks get only occasional small glints, aligned with their flow. Wide
+    // repeated stripes made narrow channels look diagrammatic in v40.
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle =
+      "rgba(220, 236, 224, 0.15)";
+    ctx.lineWidth =
+      Math.max(1, view.tileSize * 0.014);
+
+    for (const channel of geometry.channels) {
+      const points = channel.centerline;
 
       if (
-        points.length < 12 ||
-        channel.maxWidth <
-          0.38
+        points.length < 16 ||
+        channel.maxWidth < 0.44
       ) {
         continue;
       }
 
-      for (
-        let i = 7;
-        i <
-          points.length - 2;
-        i += 19
-      ) {
-        const a =
-          worldPointToPixel(
-            points[i],
-            view
-          );
-
-        const b =
-          worldPointToPixel(
-            points[
-              Math.min(
-                points.length - 1,
-                i + 3
-              )
-            ],
-            view
-          );
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-          a.x,
-          a.y
+      const first =
+        9 +
+        Math.floor(
+          hash01(points.length, Math.round(channel.maxWidth * 100), 741) *
+          7
         );
 
-        ctx.lineTo(
+      for (
+        let i = first;
+        i < points.length - 4;
+        i += 30
+      ) {
+        const a =
+          worldPointToPixel(points[i], view);
+        const b =
+          worldPointToPixel(
+            points[Math.min(points.length - 1, i + 3)],
+            view
+          );
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.max(0.001, Math.hypot(dx, dy));
+        const nx = -dy / len;
+        const ny = dx / len;
+        const bend = view.tileSize * 0.025;
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(
+          (a.x + b.x) * 0.5 + nx * bend,
+          (a.y + b.y) * 0.5 + ny * bend,
           b.x,
           b.y
         );
-
         ctx.stroke();
       }
     }
