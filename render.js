@@ -173,9 +173,8 @@
   }
 
   function shadowTint(alpha) {
-    // Push the cast shadows away from grey-black and toward a cool mossy teal.
-    // This keeps them readable without feeling like soot stains on the map.
-    return `rgba(66, 106, 104, ${Math.max(0, alpha)})`;
+    // Cool mossy teal rather than neutral grey-black.
+    return `rgba(60, 104, 101, ${Math.max(0, alpha)})`;
   }
 
   function drawSoftShadowEllipse(
@@ -200,17 +199,17 @@
       {
         scaleX: 1.20,
         scaleY: 1.24,
-        alpha: alpha * 0.13
+        alpha: alpha * 0.18
       },
       {
         scaleX: 1.08,
         scaleY: 1.11,
-        alpha: alpha * 0.27
+        alpha: alpha * 0.34
       },
       {
         scaleX: 1,
         scaleY: 1,
-        alpha: alpha * 0.86
+        alpha: alpha * 1.00
       }
     ];
 
@@ -229,6 +228,40 @@
       ctx.fill();
     }
 
+    ctx.restore();
+  }
+
+  function drawShadowConnector(
+    startX,
+    startY,
+    endX,
+    endY,
+    width,
+    alpha
+  ) {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.hypot(dx, dy);
+
+    if (length <= 1) {
+      return;
+    }
+
+    ctx.save();
+    ctx.translate(
+      (startX + endX) * 0.5,
+      (startY + endY) * 0.5
+    );
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.fillStyle = shadowTint(alpha);
+    roundedCapsule(
+      -length * 0.5,
+      -width * 0.5,
+      length,
+      width,
+      width * 0.36
+    );
+    ctx.fill();
     ctx.restore();
   }
 
@@ -311,29 +344,34 @@
       (tree.trunkHeight || 1) * scale;
     const projection =
       tileSize *
-      (0.50 + trunkHeightFactor * 0.15) *
+      (0.52 + trunkHeightFactor * 0.15) *
       sun.lengthFactor;
+
+    const canopyCenterX =
+      centerX + sun.shadowX * projection;
+    const canopyCenterY =
+      baseY + sun.shadowY * projection;
 
     // Base canopy mass.
     drawSoftShadowEllipse(
-      centerX + sun.shadowX * projection,
-      baseY + sun.shadowY * projection,
+      canopyCenterX,
+      canopyCenterY,
       tileSize * 0.40 * scale * crownScaleX *
         (1 + sun.lengthFactor * 0.07),
       tileSize * 0.20 * scale * crownScaleY *
         (1 + sun.lengthFactor * 0.05),
       sun.angle * 0.22,
-      sun.castAlpha * 0.26
+      sun.castAlpha * 0.34
     );
 
-    // Narrow trunk shadow so the canopy does not feel disconnected.
-    drawSoftShadowEllipse(
-      centerX + sun.shadowX * (projection * 0.58),
-      baseY + sun.shadowY * (projection * 0.58),
-      tileSize * 0.14 * scale,
-      tileSize * 0.08 * scale,
-      sun.angle * 0.26,
-      sun.castAlpha * 0.28
+    // Connector from trunk base to canopy shadow so the shadow does not float.
+    drawShadowConnector(
+      centerX,
+      baseY,
+      centerX + sun.shadowX * (projection * 0.82),
+      baseY + sun.shadowY * (projection * 0.82),
+      tileSize * 0.16 * scale,
+      sun.castAlpha * 0.42
     );
 
     const lobes = treeLobes(tree, tileSize)
@@ -353,14 +391,14 @@
         localX * sin + localY * cos;
 
       drawSoftShadowEllipse(
-        centerX + rotatedX + sun.shadowX * projection,
-        baseY + rotatedY + sun.shadowY * projection,
+        canopyCenterX + rotatedX,
+        canopyCenterY + rotatedY,
         radius * scale * crownScaleX *
-          (0.92 + sun.lengthFactor * 0.08),
+          (0.94 + sun.lengthFactor * 0.08),
         radius * scale * crownScaleY *
-          (0.44 + sun.lengthFactor * 0.03),
+          (0.45 + sun.lengthFactor * 0.03),
         sun.angle * 0.16 + crownRotation * 0.14,
-        sun.castAlpha * (0.20 + i * 0.035)
+        sun.castAlpha * (0.24 + i * 0.045)
       );
     }
   }
