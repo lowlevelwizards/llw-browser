@@ -43,6 +43,9 @@
   const moistureToggleButton =
     document.getElementById("moistureToggleButton");
 
+  const treeSuitabilityToggleButton =
+    document.getElementById("treeSuitabilityToggleButton");
+
   const pocketButtons = [
     ...document.querySelectorAll(
       ".pocket-slot"
@@ -282,6 +285,28 @@
     moistureToggleButton.setAttribute(
       "aria-pressed",
       moistureOn
+        ? "true"
+        : "false"
+    );
+
+    const treeSuitabilityOn =
+      Boolean(
+        LLW.state.debug.treeSuitability
+      );
+
+    treeSuitabilityToggleButton.textContent =
+      treeSuitabilityOn
+        ? "Trees: On"
+        : "Trees: Off";
+
+    treeSuitabilityToggleButton.classList.toggle(
+      "active",
+      treeSuitabilityOn
+    );
+
+    treeSuitabilityToggleButton.setAttribute(
+      "aria-pressed",
+      treeSuitabilityOn
         ? "true"
         : "false"
     );
@@ -628,8 +653,34 @@
   bindPress(
     moistureToggleButton,
     () => {
-      LLW.state.debug.moisture =
+      const next =
         !LLW.state.debug.moisture;
+
+      LLW.state.debug.moisture =
+        next;
+
+      if (next) {
+        LLW.state.debug.treeSuitability =
+          false;
+      }
+
+      syncSeedUI();
+    }
+  );
+
+  bindPress(
+    treeSuitabilityToggleButton,
+    () => {
+      const next =
+        !LLW.state.debug.treeSuitability;
+
+      LLW.state.debug.treeSuitability =
+        next;
+
+      if (next) {
+        LLW.state.debug.moisture =
+          false;
+      }
 
       syncSeedUI();
     }

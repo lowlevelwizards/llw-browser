@@ -49,6 +49,16 @@
     bushDensity: 0.031,
     mushroomDensity: 0.016,
 
+    // First ecological establishment rules.
+    treeAnchorMinCount: 3,
+    treeAnchorMaxCount: 6,
+    treeAverageClusterSize: 4.5,
+    treeAnchorMinSuitability: 0.48,
+    treeAnchorMinSpacing: 4.2,
+    treeGrowthMinSuitability: 0.31,
+    treeFallbackMinSuitability: 0.38,
+    treeClusterMaxRadius: 4.6,
+
     fireStartSticks: 3,
     fireMaxSticks: 5,
     fireBurnTurnsPerStick: 8,
@@ -100,7 +110,8 @@
     },
 
     debug: {
-      moisture: false
+      moisture: false,
+      treeSuitability: false
     },
 
     landscape: {
@@ -113,6 +124,12 @@
         max: 0,
         mean: 0
       },
+      treeSuitabilityStats: {
+        min: 0,
+        max: 0,
+        mean: 0
+      },
+      treeAnchors: [],
       geometry: {
         seed: null,
         waterBodies: [],
@@ -348,21 +365,15 @@
     return bush;
   }
 
-  function generateTreesAndBushes() {
-    const occupied = buildBaseOccupiedSet();
+  function generateTreesAndBushes(
+    seed
+  ) {
+    const occupied =
+      buildBaseOccupiedSet();
 
     const worldArea =
       LLW.CONFIG.worldCols *
       LLW.CONFIG.worldRows;
-
-    const targetTreeCount =
-      Math.max(
-        1,
-        Math.round(
-          worldArea *
-          LLW.CONFIG.treeDensity
-        )
-      );
 
     const targetBushCount =
       Math.max(
@@ -373,51 +384,48 @@
         )
       );
 
-    // A couple of camp-adjacent props remain authored only so the current
-    // interaction loop is reliably testable while ecology is still scatter.
-    const fixedTree = {
-      x: LLW.state.firepit.x + 4,
-      y: LLW.state.firepit.y - 5
-    };
+    // Tree placement now belongs to ecology: suitability chooses where a
+    // stand can establish, and local growth turns anchors into small clusters.
+    LLW.ecology.generateTrees({
+      seed,
+      occupied,
+      spawnTree: addTree
+    });
 
-    if (
-      fixedTree.x >= 0 &&
-      fixedTree.y >= 0 &&
-      fixedTree.x < LLW.CONFIG.worldCols &&
-      fixedTree.y < LLW.CONFIG.worldRows
-    ) {
-      const key =
-        LLW.gridKey(
-          fixedTree.x,
-          fixedTree.y
-        );
-
-      if (!occupied.has(key)) {
-        addTree(
-          fixedTree.x,
-          fixedTree.y
-        );
-        occupied.add(key);
-      }
-    }
-
+    // Bushes remain deliberately unchanged in this pass so the effect of
+    // ecological tree placement can be judged in isolation.
     const fixedBushes = [
       {
-        x: LLW.state.firepit.x - 4,
-        y: LLW.state.firepit.y - 3
+        x:
+          LLW.state.firepit.x -
+          4,
+
+        y:
+          LLW.state.firepit.y -
+          3
       },
       {
-        x: LLW.state.firepit.x - 2,
-        y: LLW.state.firepit.y - 6
+        x:
+          LLW.state.firepit.x -
+          2,
+
+        y:
+          LLW.state.firepit.y -
+          6
       }
     ];
 
-    for (const bush of fixedBushes) {
+    for (
+      const bush of
+      fixedBushes
+    ) {
       if (
         bush.x < 0 ||
         bush.y < 0 ||
-        bush.x >= LLW.CONFIG.worldCols ||
-        bush.y >= LLW.CONFIG.worldRows
+        bush.x >=
+          LLW.CONFIG.worldCols ||
+        bush.y >=
+          LLW.CONFIG.worldRows
       ) {
         continue;
       }
@@ -428,40 +436,16 @@
           bush.y
         );
 
-      if (!occupied.has(key)) {
+      if (
+        !occupied.has(key)
+      ) {
         addBush(
           bush.x,
           bush.y
         );
+
         occupied.add(key);
       }
-    }
-
-    while (
-      LLW.state.trees.length <
-      targetTreeCount
-    ) {
-      const tile =
-        findRandomClearTile(
-          occupied,
-          {
-            margin: 1,
-            avoidFireRing: true
-          }
-        );
-
-      if (!tile) {
-        break;
-      }
-
-      addTree(tile.x, tile.y);
-
-      occupied.add(
-        LLW.gridKey(
-          tile.x,
-          tile.y
-        )
-      );
     }
 
     while (
@@ -478,7 +462,10 @@
         break;
       }
 
-      addBush(tile.x, tile.y);
+      addBush(
+        tile.x,
+        tile.y
+      );
 
       occupied.add(
         LLW.gridKey(
@@ -594,6 +581,10 @@
     // that already exist in the terrain and hydrology?
     LLW.moisture.derive();
 
+    // Second ecological truth: where could a generic woodland tree
+    // plausibly establish given moisture, terrain and active drainage?
+    LLW.ecology.deriveTreeSuitability();
+
     // Hydrology stays discrete. Compile it once into connected vector
     // landforms for presentation, Crossroads-style.
     LLW.landscapeGeometry.build();
@@ -639,7 +630,10 @@
     LLW.state.bushes = [];
     LLW.state.items = [];
 
-    const occupied = generateTreesAndBushes();
+    const occupied =
+      generateTreesAndBushes(
+        resolvedSeed
+      );
 
     generateSticksAroundTrees(occupied);
     generateMushrooms(occupied);

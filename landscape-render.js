@@ -14,6 +14,12 @@
     pixelsPerTile: 7
   };
 
+  let treeSuitabilityCache = {
+    key: null,
+    canvas: null,
+    pixelsPerTile: 7
+  };
+
   let waterLayers = {
     width: 0,
     height: 0,
@@ -534,6 +540,11 @@
         view
       );
 
+      drawTreeSuitabilityDebug(
+        ctx,
+        view
+      );
+
       return;
     }
 
@@ -660,6 +671,11 @@
     ctx.restore();
 
     drawMoistureDebug(
+      ctx,
+      view
+    );
+
+    drawTreeSuitabilityDebug(
       ctx,
       view
     );
@@ -939,6 +955,466 @@
 
     const scale =
       moistureCache
+        .pixelsPerTile;
+
+    const overview =
+      LLW.camera.isOverview();
+
+    ctx.save();
+
+    ctx.globalAlpha =
+      overview
+        ? 0.66
+        : 0.58;
+
+    ctx.imageSmoothingEnabled =
+      true;
+
+    ctx.imageSmoothingQuality =
+      "high";
+
+    if (overview) {
+      ctx.drawImage(
+        cache,
+
+        0.5 * scale,
+        0.5 * scale,
+
+        LLW.CONFIG.worldCols *
+          scale,
+
+        LLW.CONFIG.worldRows *
+          scale,
+
+        view.offsetX,
+        view.offsetY,
+        view.mapWidth,
+        view.mapHeight
+      );
+
+      ctx.restore();
+      return;
+    }
+
+    const visibleLeft =
+      state.camera.x -
+      view.offsetX /
+      view.tileSize;
+
+    const visibleTop =
+      state.camera.y -
+      view.offsetY /
+      view.tileSize;
+
+    const visibleRight =
+      visibleLeft +
+      view.width /
+      view.tileSize;
+
+    const visibleBottom =
+      visibleTop +
+      view.height /
+      view.tileSize;
+
+    const clippedLeft =
+      clamp(
+        visibleLeft,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedTop =
+      clamp(
+        visibleTop,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    const clippedRight =
+      clamp(
+        visibleRight,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedBottom =
+      clamp(
+        visibleBottom,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    if (
+      clippedRight >
+        clippedLeft &&
+      clippedBottom >
+        clippedTop
+    ) {
+      ctx.drawImage(
+        cache,
+
+        (
+          clippedLeft +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedTop +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        scale,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        scale,
+
+        (
+          clippedLeft -
+          visibleLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedTop -
+          visibleTop
+        ) *
+        view.tileSize,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        view.tileSize
+      );
+    }
+
+    ctx.restore();
+  }
+
+  function sampleTreeSuitability(
+    worldX,
+    worldY
+  ) {
+    const x0 =
+      Math.floor(worldX);
+
+    const y0 =
+      Math.floor(worldY);
+
+    const x1 =
+      x0 + 1;
+
+    const y1 =
+      y0 + 1;
+
+    const tx =
+      worldX - x0;
+
+    const ty =
+      worldY - y0;
+
+    const a =
+      getCellClamped(
+        x0,
+        y0
+      );
+
+    const b =
+      getCellClamped(
+        x1,
+        y0
+      );
+
+    const c =
+      getCellClamped(
+        x0,
+        y1
+      );
+
+    const d =
+      getCellClamped(
+        x1,
+        y1
+      );
+
+    if (
+      !a ||
+      !b ||
+      !c ||
+      !d
+    ) {
+      return 0;
+    }
+
+    return lerp(
+      lerp(
+        a.treeSuitability || 0,
+        b.treeSuitability || 0,
+        tx
+      ),
+
+      lerp(
+        c.treeSuitability || 0,
+        d.treeSuitability || 0,
+        tx
+      ),
+
+      ty
+    );
+  }
+
+  function treeSuitabilityColor(
+    suitability
+  ) {
+    const poor =
+      [184, 146, 102];
+
+    const possible =
+      [150, 174, 101];
+
+    const good =
+      [72, 130, 85];
+
+    if (
+      suitability <
+      0.5
+    ) {
+      const t =
+        suitability /
+        0.5;
+
+      return [
+        Math.round(
+          lerp(
+            poor[0],
+            possible[0],
+            t
+          )
+        ),
+
+        Math.round(
+          lerp(
+            poor[1],
+            possible[1],
+            t
+          )
+        ),
+
+        Math.round(
+          lerp(
+            poor[2],
+            possible[2],
+            t
+          )
+        )
+      ];
+    }
+
+    const t =
+      (
+        suitability -
+        0.5
+      ) /
+      0.5;
+
+    return [
+      Math.round(
+        lerp(
+          possible[0],
+          good[0],
+          t
+        )
+      ),
+
+      Math.round(
+        lerp(
+          possible[1],
+          good[1],
+          t
+        )
+      ),
+
+      Math.round(
+        lerp(
+          possible[2],
+          good[2],
+          t
+        )
+      )
+    ];
+  }
+
+  function ensureTreeSuitabilityCache() {
+    if (
+      typeof document ===
+        "undefined" ||
+      !state.landscape.cells.length
+    ) {
+      return null;
+    }
+
+    const scale =
+      treeSuitabilityCache
+        .pixelsPerTile;
+
+    const key =
+      [
+        state.landscape.seed,
+        LLW.CONFIG.worldCols,
+        LLW.CONFIG.worldRows,
+        scale
+      ].join(":");
+
+    if (
+      treeSuitabilityCache.key ===
+        key &&
+      treeSuitabilityCache.canvas
+    ) {
+      return (
+        treeSuitabilityCache.canvas
+      );
+    }
+
+    const canvas =
+      document.createElement(
+        "canvas"
+      );
+
+    canvas.width =
+      (
+        LLW.CONFIG.worldCols +
+        1
+      ) *
+      scale;
+
+    canvas.height =
+      (
+        LLW.CONFIG.worldRows +
+        1
+      ) *
+      scale;
+
+    const context =
+      canvas.getContext(
+        "2d"
+      );
+
+    const image =
+      context.createImageData(
+        canvas.width,
+        canvas.height
+      );
+
+    for (
+      let py = 0;
+      py <
+        canvas.height;
+      py++
+    ) {
+      const worldY =
+        py /
+        scale -
+        0.5;
+
+      for (
+        let px = 0;
+        px <
+          canvas.width;
+        px++
+      ) {
+        const worldX =
+          px /
+          scale -
+          0.5;
+
+        const [
+          r,
+          g,
+          b
+        ] =
+          treeSuitabilityColor(
+            sampleTreeSuitability(
+              worldX,
+              worldY
+            )
+          );
+
+        const index =
+          (
+            py *
+            canvas.width +
+            px
+          ) *
+          4;
+
+        image.data[
+          index
+        ] = r;
+
+        image.data[
+          index + 1
+        ] = g;
+
+        image.data[
+          index + 2
+        ] = b;
+
+        image.data[
+          index + 3
+        ] = 255;
+      }
+    }
+
+    context.putImageData(
+      image,
+      0,
+      0
+    );
+
+    treeSuitabilityCache = {
+      ...treeSuitabilityCache,
+      key,
+      canvas
+    };
+
+    return canvas;
+  }
+
+  function drawTreeSuitabilityDebug(
+    ctx,
+    view
+  ) {
+    if (
+      !state.debug
+        .treeSuitability
+    ) {
+      return;
+    }
+
+    const cache =
+      ensureTreeSuitabilityCache();
+
+    if (!cache) {
+      return;
+    }
+
+    const scale =
+      treeSuitabilityCache
         .pixelsPerTile;
 
     const overview =

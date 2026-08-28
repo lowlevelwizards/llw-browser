@@ -201,7 +201,7 @@ button {
 }
 
 .seed-menu-actions button,
-.moisture-toggle-button {
+.debug-layer-button {
   min-height: 32px;
   appearance: none;
   border: 1.5px solid rgba(124, 109, 82, 0.62);
@@ -219,18 +219,24 @@ button {
 }
 
 .seed-menu-actions button:active,
-.moisture-toggle-button:active {
+.debug-layer-button:active {
   transform: translateY(1px);
   box-shadow: 0 1px 0 rgba(77, 64, 43, 0.12);
 }
 
-.moisture-toggle-button {
-  width: 100%;
+.debug-layer-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
   margin-top: 7px;
+}
+
+.debug-layer-button {
+  width: 100%;
   background: #b9c99d;
 }
 
-.moisture-toggle-button.active {
+.debug-layer-button.active {
   background: #7eada3;
 }
 

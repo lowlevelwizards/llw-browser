@@ -69,14 +69,25 @@
           <button id="randomSeedButton" type="button">Random</button>
         </div>
 
-        <button
-          id="moistureToggleButton"
-          class="moisture-toggle-button"
-          type="button"
-          aria-pressed="false"
-        >
-          Moisture: Off
-        </button>
+        <div class="debug-layer-buttons">
+          <button
+            id="moistureToggleButton"
+            class="debug-layer-button"
+            type="button"
+            aria-pressed="false"
+          >
+            Moisture: Off
+          </button>
+
+          <button
+            id="treeSuitabilityToggleButton"
+            class="debug-layer-button"
+            type="button"
+            aria-pressed="false"
+          >
+            Trees: Off
+          </button>
+        </div>
       </div>
 
       <div class="hud hud-top-right">
@@ -155,6 +166,7 @@
   <script src="pcg.js"></script>
   <script src="hydrology.js"></script>
   <script src="moisture.js"></script>
+  <script src="ecology.js"></script>
   <script src="landscape-geometry.js"></script>
   <script src="camera.js"></script>
   <script src="juice.js"></script>
