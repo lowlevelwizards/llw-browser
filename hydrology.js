@@ -106,7 +106,13 @@
         escapeElevation: null,
         routeDepth: 0,
         routedFlow: 0,
-        upstreamCatchmentIds: []
+        upstreamCatchmentIds: [],
+
+        localRunoffVolume: 0,
+        incomingWaterVolume: 0,
+        storedWaterVolume: 0,
+        overflowWaterVolume: 0,
+        waterSurfaceElevation: null
       })
     );
 
@@ -181,9 +187,9 @@
       cell.x === 0 ||
       cell.y === 0 ||
       cell.x ===
-        LLW.CONFIG.cols - 1 ||
+        LLW.CONFIG.worldCols - 1 ||
       cell.y ===
-        LLW.CONFIG.rows - 1
+        LLW.CONFIG.worldRows - 1
     );
   }
 
@@ -989,6 +995,227 @@
     }
   }
 
+
+  function volumeAtSurface(
+    catchment,
+    cells,
+    surfaceElevation
+  ) {
+    let volume = 0;
+
+    for (
+      const cellIndex of
+      catchment.floodedCellIndexes
+    ) {
+      const cell =
+        cells[cellIndex];
+
+      if (
+        cell.elevation <
+        surfaceElevation
+      ) {
+        volume +=
+          surfaceElevation -
+          cell.elevation;
+      }
+    }
+
+    return volume;
+  }
+
+  function solveWaterSurface(
+    catchment,
+    cells,
+    storedVolume
+  ) {
+    if (
+      storedVolume <= EPSILON ||
+      catchment.potentialVolume <=
+        EPSILON ||
+      catchment.depressionDepth <=
+        EPSILON
+    ) {
+      return null;
+    }
+
+    if (
+      storedVolume >=
+      catchment.potentialVolume -
+        EPSILON
+    ) {
+      return (
+        catchment.spillElevation
+      );
+    }
+
+    let low =
+      catchment.sinkElevation;
+
+    let high =
+      catchment.spillElevation;
+
+    for (let i = 0; i < 28; i++) {
+      const mid =
+        (low + high) * 0.5;
+
+      const volume =
+        volumeAtSurface(
+          catchment,
+          cells,
+          mid
+        );
+
+      if (volume < storedVolume) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    return (
+      (low + high) * 0.5
+    );
+  }
+
+  function calculateSurfaceWater(
+    cells,
+    catchments
+  ) {
+    for (const cell of cells) {
+      cell.surfaceWaterDepth = 0;
+
+      // Moving-water quantity remains separate from stored surface water.
+      cell.waterThroughput =
+        cell.flowAccumulation *
+        LLW.CONFIG.runoffPerCell;
+    }
+
+    const byId =
+      new Map(
+        catchments.map(
+          (catchment) => [
+            catchment.id,
+            catchment
+          ]
+        )
+      );
+
+    for (const catchment of catchments) {
+      catchment.localRunoffVolume =
+        catchment.cellCount *
+        LLW.CONFIG.runoffPerCell;
+
+      catchment.incomingWaterVolume =
+        catchment.localRunoffVolume;
+
+      catchment.storedWaterVolume = 0;
+      catchment.overflowWaterVolume = 0;
+      catchment.waterSurfaceElevation =
+        null;
+    }
+
+    const upstreamToDownstream =
+      [...catchments].sort(
+        (a, b) =>
+          b.routeDepth -
+            a.routeDepth ||
+          a.id.localeCompare(b.id)
+      );
+
+    for (
+      const catchment of
+      upstreamToDownstream
+    ) {
+      const capacity =
+        Math.max(
+          0,
+          catchment.potentialVolume
+        );
+
+      const incoming =
+        Math.max(
+          0,
+          catchment.incomingWaterVolume
+        );
+
+      const stored =
+        Math.min(
+          incoming,
+          capacity
+        );
+
+      const overflow =
+        Math.max(
+          0,
+          incoming - stored
+        );
+
+      catchment.storedWaterVolume =
+        stored;
+
+      catchment.overflowWaterVolume =
+        overflow;
+
+      catchment.waterSurfaceElevation =
+        solveWaterSurface(
+          catchment,
+          cells,
+          stored
+        );
+
+      if (
+        catchment.waterSurfaceElevation !==
+        null
+      ) {
+        for (
+          const cellIndex of
+          catchment.floodedCellIndexes
+        ) {
+          const cell =
+            cells[cellIndex];
+
+          cell.surfaceWaterDepth =
+            Math.max(
+              0,
+              catchment.waterSurfaceElevation -
+                cell.elevation
+            );
+        }
+      }
+
+      const outletCell =
+        cells[
+          catchment.resolvedOutletCellIndex
+        ];
+
+      if (
+        outletCell &&
+        overflow > 0
+      ) {
+        outletCell.waterThroughput =
+          Math.max(
+            outletCell.waterThroughput,
+            overflow
+          );
+      }
+
+      if (
+        overflow > 0 &&
+        catchment.downstreamCatchmentId
+      ) {
+        const downstream =
+          byId.get(
+            catchment.downstreamCatchmentId
+          );
+
+        if (downstream) {
+          downstream.incomingWaterVolume +=
+            overflow;
+        }
+      }
+    }
+  }
+
   LLW.hydrology = {
     derive(cells) {
       calculateDownhill(cells);
@@ -1005,6 +1232,11 @@
       );
 
       resolveEscapeRoutes(
+        cells,
+        catchments
+      );
+
+      calculateSurfaceWater(
         cells,
         catchments
       );

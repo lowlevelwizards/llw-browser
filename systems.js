@@ -138,13 +138,13 @@
     const nextX = LLW.clamp(
       player.x + dx,
       0,
-      LLW.CONFIG.cols - 1
+      LLW.CONFIG.worldCols - 1
     );
 
     const nextY = LLW.clamp(
       player.y + dy,
       0,
-      LLW.CONFIG.rows - 1
+      LLW.CONFIG.worldRows - 1
     );
 
     if (nextX === player.x && nextY === player.y) {

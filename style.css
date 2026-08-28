@@ -82,6 +82,34 @@ button {
   right: 10px;
 }
 
+
+.overview-button {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 12;
+  transform: translateX(-50%);
+  min-height: 32px;
+  appearance: none;
+  border: 1.5px solid rgba(124, 109, 82, 0.68);
+  border-radius: 999px;
+  background: rgba(243, 237, 220, 0.88);
+  color: #344322;
+  box-shadow: 0 2px 0 rgba(77, 64, 43, 0.16);
+  padding: 6px 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  backdrop-filter: blur(3px);
+}
+
+.overview-button:active {
+  transform: translateX(-50%) translateY(1px);
+}
+
 .vitality-pips {
   display: inline-flex;
   gap: 5px;
@@ -395,6 +423,10 @@ button {
 
   .hud-top-right {
     right: 14px;
+  }
+
+  .overview-button {
+    top: 14px;
   }
 
   .dpad {

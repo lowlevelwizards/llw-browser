@@ -27,28 +27,50 @@
   };
 
   function getLayout() {
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
+    const width =
+      canvas.clientWidth;
 
-    const tileSize = Math.floor(
-      Math.min(
-        width / LLW.CONFIG.cols,
-        height / LLW.CONFIG.rows
-      )
-    );
+    const height =
+      canvas.clientHeight;
 
-    const mapWidth = tileSize * LLW.CONFIG.cols;
-    const mapHeight = tileSize * LLW.CONFIG.rows;
+    const columns =
+      LLW.camera.getColumns();
+
+    const rows =
+      LLW.camera.getRows();
+
+    const tileSize =
+      Math.max(
+        1,
+        Math.floor(
+          Math.min(
+            width / columns,
+            height / rows
+          )
+        )
+      );
+
+    const mapWidth =
+      tileSize * columns;
+
+    const mapHeight =
+      tileSize * rows;
 
     const offsetX =
-      Math.floor((width - mapWidth) / 2);
+      Math.floor(
+        (width - mapWidth) / 2
+      );
 
     const offsetY =
-      Math.floor((height - mapHeight) / 2);
+      Math.floor(
+        (height - mapHeight) / 2
+      );
 
     return {
       width,
       height,
+      columns,
+      rows,
       tileSize,
       mapWidth,
       mapHeight,
@@ -64,9 +86,22 @@
     offsetX,
     offsetY
   ) {
+    const view =
+      LLW.camera.worldToView(
+        x,
+        y
+      );
+
     return {
-      x: offsetX + x * tileSize,
-      y: offsetY + y * tileSize
+      x:
+        offsetX +
+        view.x *
+        tileSize,
+
+      y:
+        offsetY +
+        view.y *
+        tileSize
     };
   }
 
@@ -289,6 +324,105 @@
           tileSize
         );
       }
+    }
+
+    ctx.restore();
+  }
+
+  function drawSurfaceWater(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (
+      !LLW.CONFIG.pcgDebugSurfaceWater ||
+      !state.landscape.cells.length
+    ) {
+      return;
+    }
+
+    const wetCells =
+      state.landscape.cells.filter(
+        (cell) =>
+          cell.surfaceWaterDepth >
+          0.00001
+      );
+
+    if (!wetCells.length) {
+      return;
+    }
+
+    const maxDepth =
+      Math.max(
+        0.00001,
+        ...wetCells.map(
+          (cell) =>
+            cell.surfaceWaterDepth
+        )
+      );
+
+    ctx.save();
+
+    for (const cell of wetCells) {
+      if (
+        !LLW.camera.isTileVisible(
+          cell.x,
+          cell.y,
+          0
+        )
+      ) {
+        continue;
+      }
+
+      const p = gridToPixel(
+        cell.x,
+        cell.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const depthStrength =
+        Math.sqrt(
+          cell.surfaceWaterDepth /
+          maxDepth
+        );
+
+      ctx.fillStyle =
+        `rgba(67, 151, 177, ${
+          0.28 +
+          depthStrength * 0.34
+        })`;
+
+      ctx.fillRect(
+        p.x,
+        p.y,
+        tileSize,
+        tileSize
+      );
+
+      ctx.strokeStyle =
+        `rgba(181, 224, 224, ${
+          0.18 +
+          depthStrength * 0.28
+        })`;
+
+      ctx.lineWidth =
+        Math.max(
+          1,
+          tileSize * 0.025
+        );
+
+      ctx.beginPath();
+      ctx.moveTo(
+        p.x + tileSize * 0.14,
+        p.y + tileSize * 0.24
+      );
+      ctx.lineTo(
+        p.x + tileSize * 0.72,
+        p.y + tileSize * 0.24
+      );
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -841,39 +975,51 @@
     offsetX,
     offsetY
   ) {
+    const columns =
+      LLW.camera.getColumns();
+
+    const rows =
+      LLW.camera.getRows();
+
     ctx.strokeStyle =
       "rgba(48, 73, 28, 0.18)";
+
     ctx.lineWidth = 1;
 
     for (
       let x = 0;
-      x <= LLW.CONFIG.cols;
+      x <= columns;
       x++
     ) {
-      const px = offsetX + x * tileSize;
+      const px =
+        offsetX +
+        x * tileSize;
 
       ctx.beginPath();
       ctx.moveTo(px, offsetY);
       ctx.lineTo(
         px,
         offsetY +
-          LLW.CONFIG.rows * tileSize
+          rows * tileSize
       );
       ctx.stroke();
     }
 
     for (
       let y = 0;
-      y <= LLW.CONFIG.rows;
+      y <= rows;
       y++
     ) {
-      const py = offsetY + y * tileSize;
+      const py =
+        offsetY +
+        y * tileSize;
 
       ctx.beginPath();
       ctx.moveTo(offsetX, py);
       ctx.lineTo(
         offsetX +
-          LLW.CONFIG.cols * tileSize,
+          columns *
+          tileSize,
         py
       );
       ctx.stroke();
@@ -2315,7 +2461,10 @@
       return;
     }
 
-    const walkT = LLW.updatePlayer(now);
+    const walkT =
+      LLW.updatePlayer(now);
+
+    LLW.camera.update();
 
     const {
       width,
@@ -2347,6 +2496,12 @@
     );
 
     drawPotentialBasinsDebug(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawSurfaceWater(
       tileSize,
       offsetX,
       offsetY

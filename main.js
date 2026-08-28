@@ -16,6 +16,9 @@
   const restButton =
     document.getElementById("restButton");
 
+  const overviewButton =
+    document.getElementById("overviewButton");
+
   const pocketButtons = [
     ...document.querySelectorAll(
       ".pocket-slot"
@@ -370,6 +373,26 @@
     LLW.fire.rest.bind(LLW.fire)
   );
 
+  bindPress(
+    overviewButton,
+    () => {
+      const mode =
+        LLW.camera.toggleOverview();
+
+      overviewButton.textContent =
+        mode === "overview"
+          ? "Local"
+          : "World";
+
+      overviewButton.setAttribute(
+        "aria-label",
+        mode === "overview"
+          ? "Return to local player view"
+          : "Show full generated world"
+      );
+    }
+  );
+
   pocketButtons.forEach((button) => {
     const pocketIndex =
       Number(button.dataset.pocket);
@@ -509,6 +532,7 @@
   }
 
   LLW.createWorld();
+  LLW.camera.snapToPlayer();
   LLW.initRenderer(canvas);
   refreshUI();
   requestAnimationFrame(animate);

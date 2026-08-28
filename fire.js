@@ -41,8 +41,8 @@
         if (
           x < 0 ||
           y < 0 ||
-          x >= LLW.CONFIG.cols ||
-          y >= LLW.CONFIG.rows ||
+          x >= LLW.CONFIG.worldCols ||
+          y >= LLW.CONFIG.worldRows ||
           LLW.getTreeAt(x, y) ||
           LLW.getBramblePatchAt(x, y)
         ) {

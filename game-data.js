@@ -2,8 +2,11 @@
   const LLW = (window.LLW = window.LLW || {});
 
   LLW.CONFIG = {
-    cols: 12,
-    rows: 16,
+    worldCols: 24,
+    worldRows: 32,
+
+    viewportCols: 12,
+    viewportRows: 16,
 
     // First PCG atoms. Change this number, or append ?seed=1234 to the URL,
     // to inspect another deterministic little landscape.
@@ -15,12 +18,17 @@
     pcgDebugBasins: true,
     pcgDebugSpillPoints: true,
     pcgDebugResolvedDrainage: true,
+    pcgDebugSurfaceWater: true,
 
-    mushroomCount: 3,
+    // Static prototype runoff. This is a relative volume per landscape cell,
+    // not literal rainfall yet.
+    runoffPerCell: 0.0025,
 
-    // Keep one familiar tree/bush, then add a few generated ones.
-    randomTreeCount: 4,
-    randomBushCount: 4,
+    // Placeholder ecology scales with world area until habitat rules replace
+    // random placement.
+    treeDensity: 0.026,
+    bushDensity: 0.031,
+    mushroomDensity: 0.016,
 
     fireStartSticks: 3,
     fireMaxSticks: 5,
@@ -66,6 +74,12 @@
   };
 
   LLW.state = {
+    camera: {
+      mode: "local",
+      x: 0,
+      y: 0
+    },
+
     landscape: {
       seed: null,
       cells: [],
@@ -82,22 +96,22 @@
 
     player: {
       id: "player",
-      x: 2,
-      y: 13,
-      renderX: 2,
-      renderY: 13,
-      startX: 2,
-      startY: 13,
-      targetX: 2,
-      targetY: 13,
+      x: 12,
+      y: 16,
+      renderX: 12,
+      renderY: 16,
+      startX: 12,
+      startY: 16,
+      targetX: 12,
+      targetY: 16,
       moving: false,
       moveStartedAt: 0,
       moveDuration: 190
     },
 
     firepit: {
-      x: 2,
-      y: 14,
+      x: 12,
+      y: 17,
       sticks: 0,
       isLit: false,
       burnTurnsRemaining: 0,
@@ -108,10 +122,10 @@
       {
         id: "bramble_patch_1",
         tiles: [
-          { x: 6, y: 8 }, { x: 7, y: 8 }, { x: 8, y: 8 },
-          { x: 6, y: 9 }, { x: 7, y: 9 }, { x: 8, y: 9 },
-          { x: 6, y: 10 }, { x: 7, y: 10 }, { x: 8, y: 10 },
-          { x: 6, y: 11 }, { x: 7, y: 11 }, { x: 8, y: 11 }
+          { x: 16, y: 11 }, { x: 17, y: 11 }, { x: 18, y: 11 },
+          { x: 16, y: 12 }, { x: 17, y: 12 }, { x: 18, y: 12 },
+          { x: 16, y: 13 }, { x: 17, y: 13 }, { x: 18, y: 13 },
+          { x: 16, y: 14 }, { x: 17, y: 14 }, { x: 18, y: 14 }
         ]
       }
     ],
@@ -247,11 +261,11 @@
     for (let tries = 0; tries < 300; tries++) {
       const x = LLW.randomInt(
         margin,
-        LLW.CONFIG.cols - 1 - margin
+        LLW.CONFIG.worldCols - 1 - margin
       );
       const y = LLW.randomInt(
         margin,
-        LLW.CONFIG.rows - 1 - margin
+        LLW.CONFIG.worldRows - 1 - margin
       );
 
       const key = LLW.gridKey(x, y);
@@ -303,53 +317,141 @@
   function generateTreesAndBushes() {
     const occupied = buildBaseOccupiedSet();
 
-    // Reserve the familiar hand-placed props first so random generation
-    // never quietly deletes them.
-    const fixedTree = { x: 8, y: 4 };
-    if (!occupied.has(LLW.gridKey(fixedTree.x, fixedTree.y))) {
-      addTree(fixedTree.x, fixedTree.y);
-      occupied.add(LLW.gridKey(fixedTree.x, fixedTree.y));
-    }
+    const worldArea =
+      LLW.CONFIG.worldCols *
+      LLW.CONFIG.worldRows;
 
-    const fixedBushes = [
-      { x: 3, y: 6 },
-      { x: 2, y: 11 }
-    ];
+    const targetTreeCount =
+      Math.max(
+        1,
+        Math.round(
+          worldArea *
+          LLW.CONFIG.treeDensity
+        )
+      );
 
-    for (const bush of fixedBushes) {
-      const key = LLW.gridKey(bush.x, bush.y);
+    const targetBushCount =
+      Math.max(
+        1,
+        Math.round(
+          worldArea *
+          LLW.CONFIG.bushDensity
+        )
+      );
+
+    // A couple of camp-adjacent props remain authored only so the current
+    // interaction loop is reliably testable while ecology is still scatter.
+    const fixedTree = {
+      x: LLW.state.firepit.x + 4,
+      y: LLW.state.firepit.y - 5
+    };
+
+    if (
+      fixedTree.x >= 0 &&
+      fixedTree.y >= 0 &&
+      fixedTree.x < LLW.CONFIG.worldCols &&
+      fixedTree.y < LLW.CONFIG.worldRows
+    ) {
+      const key =
+        LLW.gridKey(
+          fixedTree.x,
+          fixedTree.y
+        );
 
       if (!occupied.has(key)) {
-        addBush(bush.x, bush.y);
+        addTree(
+          fixedTree.x,
+          fixedTree.y
+        );
         occupied.add(key);
       }
     }
 
-    // Then add a few generated trees.
-    for (let i = 0; i < LLW.CONFIG.randomTreeCount; i++) {
-      const tile = findRandomClearTile(occupied, {
-        margin: 1,
-        avoidFireRing: true
-      });
+    const fixedBushes = [
+      {
+        x: LLW.state.firepit.x - 4,
+        y: LLW.state.firepit.y - 3
+      },
+      {
+        x: LLW.state.firepit.x - 2,
+        y: LLW.state.firepit.y - 6
+      }
+    ];
+
+    for (const bush of fixedBushes) {
+      if (
+        bush.x < 0 ||
+        bush.y < 0 ||
+        bush.x >= LLW.CONFIG.worldCols ||
+        bush.y >= LLW.CONFIG.worldRows
+      ) {
+        continue;
+      }
+
+      const key =
+        LLW.gridKey(
+          bush.x,
+          bush.y
+        );
+
+      if (!occupied.has(key)) {
+        addBush(
+          bush.x,
+          bush.y
+        );
+        occupied.add(key);
+      }
+    }
+
+    while (
+      LLW.state.trees.length <
+      targetTreeCount
+    ) {
+      const tile =
+        findRandomClearTile(
+          occupied,
+          {
+            margin: 1,
+            avoidFireRing: true
+          }
+        );
 
       if (!tile) {
         break;
       }
 
       addTree(tile.x, tile.y);
-      occupied.add(LLW.gridKey(tile.x, tile.y));
+
+      occupied.add(
+        LLW.gridKey(
+          tile.x,
+          tile.y
+        )
+      );
     }
 
-    // And generated bushes after the trees have claimed their solid tiles.
-    for (let i = 0; i < LLW.CONFIG.randomBushCount; i++) {
-      const tile = findRandomClearTile(occupied, { margin: 0 });
+    while (
+      LLW.state.bushes.length <
+      targetBushCount
+    ) {
+      const tile =
+        findRandomClearTile(
+          occupied,
+          { margin: 0 }
+        );
 
       if (!tile) {
         break;
       }
 
       addBush(tile.x, tile.y);
-      occupied.add(LLW.gridKey(tile.x, tile.y));
+
+      occupied.add(
+        LLW.gridKey(
+          tile.x,
+          tile.y
+        )
+      );
     }
 
     return occupied;
@@ -383,8 +485,8 @@
         if (
           x < 0 ||
           y < 0 ||
-          x >= LLW.CONFIG.cols ||
-          y >= LLW.CONFIG.rows
+          x >= LLW.CONFIG.worldCols ||
+          y >= LLW.CONFIG.worldRows
         ) {
           continue;
         }
@@ -403,8 +505,26 @@
   }
 
   function generateMushrooms(occupied) {
-    for (let i = 0; i < LLW.CONFIG.mushroomCount; i++) {
-      const tile = findRandomClearTile(occupied, { margin: 0 });
+    const targetCount =
+      Math.max(
+        1,
+        Math.round(
+          LLW.CONFIG.worldCols *
+          LLW.CONFIG.worldRows *
+          LLW.CONFIG.mushroomDensity
+        )
+      );
+
+    for (
+      let i = 0;
+      i < targetCount;
+      i++
+    ) {
+      const tile =
+        findRandomClearTile(
+          occupied,
+          { margin: 0 }
+        );
 
       if (!tile) {
         break;
@@ -412,10 +532,18 @@
 
       LLW.spawnItem(
         "mushroom",
-        LLW.worldLocation(tile.x, tile.y)
+        LLW.worldLocation(
+          tile.x,
+          tile.y
+        )
       );
 
-      occupied.add(LLW.gridKey(tile.x, tile.y));
+      occupied.add(
+        LLW.gridKey(
+          tile.x,
+          tile.y
+        )
+      );
     }
   }
 
@@ -445,14 +573,19 @@
     LLW.state.game.preparedVitality = 0;
 
     const player = LLW.state.player;
-    player.x = 2;
-    player.y = 13;
-    player.renderX = 2;
-    player.renderY = 13;
-    player.startX = 2;
-    player.startY = 13;
-    player.targetX = 2;
-    player.targetY = 13;
+
+    player.x =
+      LLW.state.firepit.x;
+
+    player.y =
+      LLW.state.firepit.y - 1;
+
+    player.renderX = player.x;
+    player.renderY = player.y;
+    player.startX = player.x;
+    player.startY = player.y;
+    player.targetX = player.x;
+    player.targetY = player.y;
     player.moving = false;
 
     LLW.state.firepit.sticks = 0;

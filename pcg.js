@@ -49,8 +49,8 @@
   }
 
   function buildNeighborIndexes(cells) {
-    const cols = LLW.CONFIG.cols;
-    const rows = LLW.CONFIG.rows;
+    const cols = LLW.CONFIG.worldCols;
+    const rows = LLW.CONFIG.worldRows;
 
     for (const cell of cells) {
       cell.neighborIndexes = [];
@@ -153,15 +153,15 @@
       if (
         x < 0 ||
         y < 0 ||
-        x >= LLW.CONFIG.cols ||
-        y >= LLW.CONFIG.rows
+        x >= LLW.CONFIG.worldCols ||
+        y >= LLW.CONFIG.worldRows
       ) {
         return null;
       }
 
       return (
         state.landscape.cells[
-          y * LLW.CONFIG.cols + x
+          y * LLW.CONFIG.worldCols + x
         ] || null
       );
     },
@@ -184,8 +184,8 @@
       const resolvedSeed =
         this.resolveSeed(seed);
 
-      const cols = LLW.CONFIG.cols;
-      const rows = LLW.CONFIG.rows;
+      const cols = LLW.CONFIG.worldCols;
+      const rows = LLW.CONFIG.worldRows;
 
       const elevationRng =
         this.createRng(
