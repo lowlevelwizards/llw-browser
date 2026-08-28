@@ -186,86 +186,6 @@
     return value - Math.floor(value);
   }
 
-  function drawElevationDebug(
-    tileSize,
-    offsetX,
-    offsetY
-  ) {
-    if (!state.landscape.cells.length) {
-      return;
-    }
-
-    const overview =
-      LLW.camera.isOverview();
-
-    if (
-      overview &&
-      !LLW.CONFIG.pcgDebugElevation
-    ) {
-      return;
-    }
-
-    if (
-      !overview &&
-      !LLW.CONFIG.terrainElevationShading
-    ) {
-      return;
-    }
-
-    const low = [86, 132, 106];
-    const high = [205, 205, 133];
-
-    const layerAlpha =
-      overview
-        ? 0.58
-        : 0.24;
-
-    ctx.save();
-
-    for (
-      const cell of
-      state.landscape.cells
-    ) {
-      const p = gridToPixel(
-        cell.x,
-        cell.y,
-        tileSize,
-        offsetX,
-        offsetY
-      );
-
-      // Smooth interpolation keeps this readable as terrain rather than
-      // turning the debug view into hard biome bands.
-      const t =
-        cell.elevation *
-        cell.elevation *
-        (3 - 2 * cell.elevation);
-
-      const r = Math.round(
-        LLW.lerp(low[0], high[0], t)
-      );
-
-      const g = Math.round(
-        LLW.lerp(low[1], high[1], t)
-      );
-
-      const b = Math.round(
-        LLW.lerp(low[2], high[2], t)
-      );
-
-      ctx.fillStyle =
-        `rgba(${r}, ${g}, ${b}, ${layerAlpha})`;
-
-      ctx.fillRect(
-        p.x,
-        p.y,
-        tileSize,
-        tileSize
-      );
-    }
-
-    ctx.restore();
-  }
 
   function drawPotentialBasinsDebug(
     tileSize,
@@ -352,104 +272,6 @@
     ctx.restore();
   }
 
-  function drawSurfaceWater(
-    tileSize,
-    offsetX,
-    offsetY
-  ) {
-    if (
-      !LLW.CONFIG.surfaceWaterVisible ||
-      !state.landscape.cells.length
-    ) {
-      return;
-    }
-
-    const wetCells =
-      state.landscape.cells.filter(
-        (cell) =>
-          cell.surfaceWaterDepth >
-          0.00001
-      );
-
-    if (!wetCells.length) {
-      return;
-    }
-
-    const maxDepth =
-      Math.max(
-        0.00001,
-        ...wetCells.map(
-          (cell) =>
-            cell.surfaceWaterDepth
-        )
-      );
-
-    ctx.save();
-
-    for (const cell of wetCells) {
-      if (
-        !LLW.camera.isTileVisible(
-          cell.x,
-          cell.y,
-          0
-        )
-      ) {
-        continue;
-      }
-
-      const p = gridToPixel(
-        cell.x,
-        cell.y,
-        tileSize,
-        offsetX,
-        offsetY
-      );
-
-      const depthStrength =
-        Math.sqrt(
-          cell.surfaceWaterDepth /
-          maxDepth
-        );
-
-      ctx.fillStyle =
-        `rgba(67, 151, 177, ${
-          0.28 +
-          depthStrength * 0.34
-        })`;
-
-      ctx.fillRect(
-        p.x,
-        p.y,
-        tileSize,
-        tileSize
-      );
-
-      ctx.strokeStyle =
-        `rgba(181, 224, 224, ${
-          0.18 +
-          depthStrength * 0.28
-        })`;
-
-      ctx.lineWidth =
-        Math.max(
-          1,
-          tileSize * 0.025
-        );
-
-      ctx.beginPath();
-      ctx.moveTo(
-        p.x + tileSize * 0.14,
-        p.y + tileSize * 0.24
-      );
-      ctx.lineTo(
-        p.x + tileSize * 0.72,
-        p.y + tileSize * 0.24
-      );
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
 
   function drawSpillPointsDebug(
     tileSize,
@@ -1005,209 +827,6 @@
     ctx.restore();
   }
 
-  function drawChannels(
-    tileSize,
-    offsetX,
-    offsetY
-  ) {
-    if (
-      !LLW.CONFIG.channelWaterVisible ||
-      !state.landscape.channelEdges.length
-    ) {
-      return;
-    }
-
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    for (
-      const edge of
-      state.landscape.channelEdges
-    ) {
-      const from =
-        state.landscape.cells[
-          edge.fromIndex
-        ];
-
-      const to =
-        state.landscape.cells[
-          edge.toIndex
-        ];
-
-      if (!from || !to) {
-        continue;
-      }
-
-      if (
-        !LLW.camera.isTileVisible(
-          from.x,
-          from.y,
-          1
-        ) &&
-        !LLW.camera.isTileVisible(
-          to.x,
-          to.y,
-          1
-        )
-      ) {
-        continue;
-      }
-
-      const a = gridToPixel(
-        from.x,
-        from.y,
-        tileSize,
-        offsetX,
-        offsetY
-      );
-
-      const b = gridToPixel(
-        to.x,
-        to.y,
-        tileSize,
-        offsetX,
-        offsetY
-      );
-
-      const ax =
-        a.x + tileSize * 0.5;
-
-      const ay =
-        a.y + tileSize * 0.5;
-
-      const bx =
-        b.x + tileSize * 0.5;
-
-      const by =
-        b.y + tileSize * 0.5;
-
-      const dx = bx - ax;
-      const dy = by - ay;
-      const length =
-        Math.max(
-          0.0001,
-          Math.hypot(dx, dy)
-        );
-
-      const normalX =
-        -dy / length;
-
-      const normalY =
-        dx / length;
-
-      // Deterministic, tiny side-to-side variation breaks the rigid grid
-      // without pretending the underlying channel is sub-tile simulation.
-      const bend =
-        (
-          hash01(
-            from.x,
-            from.y,
-            to.index + 211
-          ) -
-          0.5
-        ) *
-        tileSize *
-        0.20 *
-        (
-          0.45 +
-          edge.strength * 0.55
-        );
-
-      const midX =
-        (ax + bx) * 0.5 +
-        normalX * bend;
-
-      const midY =
-        (ay + by) * 0.5 +
-        normalY * bend;
-
-      const width =
-        tileSize *
-        (
-          0.055 +
-          edge.strength * 0.16
-        );
-
-      // Soft dark bank / depth edge.
-      ctx.strokeStyle =
-        `rgba(43, 111, 128, ${
-          0.34 +
-          edge.strength * 0.32
-        })`;
-
-      ctx.lineWidth =
-        Math.max(
-          1.5,
-          width * 1.35
-        );
-
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.quadraticCurveTo(
-        midX,
-        midY,
-        bx,
-        by
-      );
-      ctx.stroke();
-
-      // Brighter water core.
-      ctx.strokeStyle =
-        `rgba(91, 170, 190, ${
-          0.62 +
-          edge.strength * 0.24
-        })`;
-
-      ctx.lineWidth =
-        Math.max(
-          1,
-          width
-        );
-
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.quadraticCurveTo(
-        midX,
-        midY,
-        bx,
-        by
-      );
-      ctx.stroke();
-
-      // Occasional pale glint, strongest on established channels.
-      if (
-        edge.strength > 0.36
-      ) {
-        ctx.strokeStyle =
-          `rgba(197, 229, 225, ${
-            0.18 +
-            edge.strength * 0.20
-          })`;
-
-        ctx.lineWidth =
-          Math.max(
-            0.8,
-            width * 0.24
-          );
-
-        ctx.beginPath();
-        ctx.moveTo(
-          LLW.lerp(ax, midX, 0.45),
-          LLW.lerp(ay, midY, 0.45)
-        );
-        ctx.quadraticCurveTo(
-          midX,
-          midY,
-          LLW.lerp(midX, bx, 0.58),
-          LLW.lerp(midY, by, 0.58)
-        );
-        ctx.stroke();
-      }
-    }
-
-    ctx.restore();
-  }
 
   function drawGrid(
     tileSize,
@@ -2732,10 +2351,18 @@
       mapHeight
     );
 
-    drawElevationDebug(
+    const landscapeView = {
       tileSize,
       offsetX,
-      offsetY
+      offsetY,
+      mapWidth,
+      mapHeight,
+      gridToPixel
+    };
+
+    LLW.landscapeRenderer.drawTerrain(
+      ctx,
+      landscapeView
     );
 
     drawPotentialBasinsDebug(
@@ -2744,16 +2371,14 @@
       offsetY
     );
 
-    drawChannels(
-      tileSize,
-      offsetX,
-      offsetY
+    LLW.landscapeRenderer.drawChannels(
+      ctx,
+      landscapeView
     );
 
-    drawSurfaceWater(
-      tileSize,
-      offsetX,
-      offsetY
+    LLW.landscapeRenderer.drawSurfaceWater(
+      ctx,
+      landscapeView
     );
 
     drawDownhillDebug(
