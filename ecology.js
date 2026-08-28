@@ -1141,9 +1141,1046 @@
     };
   }
 
+
+  function bellPreference(
+    value,
+    ideal,
+    lowerSpan,
+    upperSpan
+  ) {
+    const normalized =
+      value < ideal
+        ? (
+            ideal - value
+          ) /
+          lowerSpan
+        : (
+            value - ideal
+          ) /
+          upperSpan;
+
+    return smoothstep01(
+      1 -
+      clamp(normalized)
+    );
+  }
+
+  function deriveUnderstorySuitability(
+    cells =
+      state.landscape.cells
+  ) {
+    if (!cells.length) {
+      return;
+    }
+
+    let bushMin = Infinity;
+    let bushMax = -Infinity;
+    let bushTotal = 0;
+
+    let mushroomMin = Infinity;
+    let mushroomMax = -Infinity;
+    let mushroomTotal = 0;
+
+    let brambleMin = Infinity;
+    let brambleMax = -Infinity;
+    let brambleTotal = 0;
+
+    for (const cell of cells) {
+      const moisture =
+        cell.moisture || 0;
+
+      const shade =
+        cell.shade || 0;
+
+      const openGround =
+        cell.openGround ?? 1;
+
+      const edge =
+        cell.woodlandEdge || 0;
+
+      const channelPenalty =
+        1 -
+        smoothstep01(
+          cell.channelStrength || 0
+        ) *
+        0.62;
+
+      const bushMoisture =
+        bellPreference(
+          moisture,
+          0.50,
+          0.38,
+          0.39
+        );
+
+      const bushOpenness =
+        bellPreference(
+          openGround,
+          0.67,
+          0.50,
+          0.34
+        );
+
+      let bushSuitability =
+        bushMoisture *
+        bushOpenness *
+        (
+          0.46 +
+          edge * 0.54
+        ) *
+        (
+          0.82 +
+          channelPenalty * 0.18
+        );
+
+      const mushroomMoisture =
+        smoothstep01(
+          (
+            moisture -
+            0.22
+          ) /
+          0.58
+        );
+
+      const mushroomShade =
+        smoothstep01(
+          (
+            shade -
+            0.12
+          ) /
+          0.72
+        );
+
+      let mushroomSuitability =
+        mushroomMoisture *
+        (
+          0.18 +
+          mushroomShade * 0.82
+        ) *
+        (
+          0.88 +
+          edge * 0.12
+        );
+
+      const brambleMoisture =
+        bellPreference(
+          moisture,
+          0.48,
+          0.34,
+          0.40
+        );
+
+      const brambleOpenness =
+        bellPreference(
+          openGround,
+          0.72,
+          0.46,
+          0.31
+        );
+
+      let brambleSuitability =
+        brambleMoisture *
+        brambleOpenness *
+        (
+          0.18 +
+          edge * 0.82
+        ) *
+        channelPenalty;
+
+      if (
+        cell.surfaceWaterDepth >
+        EPSILON
+      ) {
+        bushSuitability = 0;
+        mushroomSuitability = 0;
+        brambleSuitability = 0;
+      }
+
+      cell.bushMoistureSuitability =
+        bushMoisture;
+
+      cell.bushOpennessSuitability =
+        bushOpenness;
+
+      cell.bushSuitability =
+        clamp(
+          bushSuitability
+        );
+
+      cell.mushroomMoistureSuitability =
+        mushroomMoisture;
+
+      cell.mushroomShadeSuitability =
+        mushroomShade;
+
+      cell.mushroomSuitability =
+        clamp(
+          mushroomSuitability
+        );
+
+      cell.brambleMoistureSuitability =
+        brambleMoisture;
+
+      cell.brambleOpennessSuitability =
+        brambleOpenness;
+
+      cell.brambleSuitability =
+        clamp(
+          brambleSuitability
+        );
+
+      bushMin =
+        Math.min(
+          bushMin,
+          cell.bushSuitability
+        );
+
+      bushMax =
+        Math.max(
+          bushMax,
+          cell.bushSuitability
+        );
+
+      bushTotal +=
+        cell.bushSuitability;
+
+      mushroomMin =
+        Math.min(
+          mushroomMin,
+          cell.mushroomSuitability
+        );
+
+      mushroomMax =
+        Math.max(
+          mushroomMax,
+          cell.mushroomSuitability
+        );
+
+      mushroomTotal +=
+        cell.mushroomSuitability;
+
+      brambleMin =
+        Math.min(
+          brambleMin,
+          cell.brambleSuitability
+        );
+
+      brambleMax =
+        Math.max(
+          brambleMax,
+          cell.brambleSuitability
+        );
+
+      brambleTotal +=
+        cell.brambleSuitability;
+    }
+
+    state.landscape.bushSuitabilityStats = {
+      min: bushMin,
+      mean:
+        bushTotal /
+        cells.length,
+      max: bushMax
+    };
+
+    state.landscape.mushroomSuitabilityStats = {
+      min: mushroomMin,
+      mean:
+        mushroomTotal /
+        cells.length,
+      max: mushroomMax
+    };
+
+    state.landscape.brambleSuitabilityStats = {
+      min: brambleMin,
+      mean:
+        brambleTotal /
+        cells.length,
+      max: brambleMax
+    };
+  }
+
+  function availableCells(
+    cells,
+    occupied,
+    property,
+    minimum,
+    avoidFire = true
+  ) {
+    const fireRing =
+      avoidFire
+        ? fireRingSet()
+        : null;
+
+    return cells.filter(
+      (cell) => {
+        if (
+          isCellBlocked(
+            cell,
+            occupied
+          )
+        ) {
+          return false;
+        }
+
+        if (
+          fireRing &&
+          fireRing.has(
+            LLW.gridKey(
+              cell.x,
+              cell.y
+            )
+          )
+        ) {
+          return false;
+        }
+
+        return (
+          (
+            cell[property] ||
+            0
+          ) >= minimum
+        );
+      }
+    );
+  }
+
+  function nearbyEstablishedCount(
+    cell,
+    established,
+    radius
+  ) {
+    let count = 0;
+
+    for (
+      const other of
+      established
+    ) {
+      if (
+        distance(
+          cell,
+          other
+        ) <= radius
+      ) {
+        count++;
+      }
+    }
+
+    return count;
+  }
+
+  function generateBushes({
+    seed,
+    occupied,
+    spawnBush
+  }) {
+    const cells =
+      state.landscape.cells;
+
+    const targetCount =
+      Math.max(
+        1,
+        Math.round(
+          LLW.CONFIG.worldCols *
+          LLW.CONFIG.worldRows *
+          LLW.CONFIG.bushDensity
+        )
+      );
+
+    const rng =
+      LLW.pcg.createRng(
+        seed,
+        "bush-ecology"
+      );
+
+    const established = [];
+
+    while (
+      established.length <
+      targetCount
+    ) {
+      let candidates =
+        availableCells(
+          cells,
+          occupied,
+          "bushSuitability",
+          LLW.CONFIG
+            .bushMinSuitability
+        );
+
+      if (!candidates.length) {
+        candidates =
+          availableCells(
+            cells,
+            occupied,
+            "bushSuitability",
+            LLW.CONFIG
+              .bushFallbackSuitability
+          );
+      }
+
+      if (!candidates.length) {
+        break;
+      }
+
+      const chosen =
+        weightedChoice(
+          candidates,
+          rng,
+          (cell) => {
+            const nearby =
+              nearbyEstablishedCount(
+                cell,
+                established,
+                2.35
+              );
+
+            return (
+              Math.pow(
+                Math.max(
+                  0.01,
+                  cell.bushSuitability
+                ),
+                2.1
+              ) *
+              (
+                1 +
+                Math.min(
+                  3,
+                  nearby
+                ) *
+                0.24
+              ) *
+              (
+                0.86 +
+                rng() * 0.28
+              )
+            );
+          }
+        );
+
+      if (!chosen) {
+        break;
+      }
+
+      spawnBush(
+        chosen.x,
+        chosen.y
+      );
+
+      established.push(
+        chosen
+      );
+
+      occupied.add(
+        LLW.gridKey(
+          chosen.x,
+          chosen.y
+        )
+      );
+    }
+
+    state.landscape.bushEstablishment = {
+      targetCount,
+      actualCount:
+        established.length
+    };
+  }
+
+  function eightNeighborCandidates(
+    established,
+    cells,
+    occupied,
+    property,
+    minimum,
+    anchor,
+    maxRadius
+  ) {
+    const result =
+      new Map();
+
+    for (
+      const establishedCell of
+      established
+    ) {
+      for (
+        const neighborIndex of
+        establishedCell.neighborIndexes
+      ) {
+        const neighbor =
+          cells[
+            neighborIndex
+          ];
+
+        if (
+          isCellBlocked(
+            neighbor,
+            occupied
+          ) ||
+          (
+            neighbor[property] ||
+            0
+          ) < minimum ||
+          distance(
+            neighbor,
+            anchor
+          ) > maxRadius
+        ) {
+          continue;
+        }
+
+        result.set(
+          LLW.gridKey(
+            neighbor.x,
+            neighbor.y
+          ),
+          neighbor
+        );
+      }
+    }
+
+    return [
+      ...result.values()
+    ];
+  }
+
+  function generateMushrooms({
+    seed,
+    occupied,
+    spawnMushroom
+  }) {
+    const cells =
+      state.landscape.cells;
+
+    const targetCount =
+      Math.max(
+        1,
+        Math.round(
+          LLW.CONFIG.worldCols *
+          LLW.CONFIG.worldRows *
+          LLW.CONFIG.mushroomDensity
+        )
+      );
+
+    const rng =
+      LLW.pcg.createRng(
+        seed,
+        "mushroom-ecology"
+      );
+
+    const anchors = [];
+    const established = [];
+
+    while (
+      established.length <
+      targetCount
+    ) {
+      const remaining =
+        targetCount -
+        established.length;
+
+      const anchorCandidates =
+        availableCells(
+          cells,
+          occupied,
+          "mushroomSuitability",
+          LLW.CONFIG
+            .mushroomAnchorMinSuitability
+        ).filter(
+          (cell) =>
+            anchors.every(
+              (anchor) =>
+                distance(
+                  cell,
+                  anchor
+                ) >=
+                LLW.CONFIG
+                  .mushroomAnchorMinSpacing
+            )
+        );
+
+      let anchor =
+        weightedChoice(
+          anchorCandidates,
+          rng,
+          (cell) =>
+            Math.pow(
+              Math.max(
+                0.01,
+                cell.mushroomSuitability
+              ),
+              2.45
+            )
+        );
+
+      if (!anchor) {
+        const fallback =
+          availableCells(
+            cells,
+            occupied,
+            "mushroomSuitability",
+            LLW.CONFIG
+              .mushroomFallbackSuitability
+          );
+
+        anchor =
+          weightedChoice(
+            fallback,
+            rng,
+            (cell) =>
+              Math.pow(
+                Math.max(
+                  0.01,
+                  cell.mushroomSuitability
+                ),
+                2
+              )
+          );
+      }
+
+      if (!anchor) {
+        break;
+      }
+
+      anchors.push(
+        anchor
+      );
+
+      const clusterTarget =
+        Math.min(
+          remaining,
+          LLW.CONFIG
+            .mushroomClusterMinSize +
+          Math.floor(
+            rng() *
+            (
+              LLW.CONFIG
+                .mushroomClusterMaxSize -
+              LLW.CONFIG
+                .mushroomClusterMinSize +
+              1
+            )
+          )
+        );
+
+      const cluster = [];
+
+      function establish(cell) {
+        spawnMushroom(
+          cell.x,
+          cell.y
+        );
+
+        cluster.push(cell);
+        established.push(cell);
+
+        occupied.add(
+          LLW.gridKey(
+            cell.x,
+            cell.y
+          )
+        );
+      }
+
+      establish(anchor);
+
+      while (
+        cluster.length <
+        clusterTarget
+      ) {
+        const candidates =
+          eightNeighborCandidates(
+            cluster,
+            cells,
+            occupied,
+            "mushroomSuitability",
+            LLW.CONFIG
+              .mushroomGrowthMinSuitability,
+            anchor,
+            LLW.CONFIG
+              .mushroomClusterMaxRadius
+          );
+
+        if (!candidates.length) {
+          break;
+        }
+
+        const chosen =
+          weightedChoice(
+            candidates,
+            rng,
+            (cell) =>
+              Math.pow(
+                Math.max(
+                  0.01,
+                  cell.mushroomSuitability
+                ),
+                1.9
+              ) *
+              (
+                0.82 +
+                rng() * 0.36
+              )
+          );
+
+        if (!chosen) {
+          break;
+        }
+
+        establish(
+          chosen
+        );
+      }
+    }
+
+    state.landscape.mushroomAnchors =
+      anchors.map(
+        (cell) => ({
+          x: cell.x,
+          y: cell.y,
+          suitability:
+            cell.mushroomSuitability
+        })
+      );
+
+    state.landscape.mushroomEstablishment = {
+      targetCount,
+      actualCount:
+        established.length
+    };
+  }
+
+  function cardinalNeighborCells(
+    cell,
+    cells
+  ) {
+    const result = [];
+
+    const positions = [
+      [cell.x, cell.y - 1],
+      [cell.x + 1, cell.y],
+      [cell.x, cell.y + 1],
+      [cell.x - 1, cell.y]
+    ];
+
+    for (
+      const [x, y] of
+      positions
+    ) {
+      if (
+        x < 0 ||
+        y < 0 ||
+        x >=
+          LLW.CONFIG.worldCols ||
+        y >=
+          LLW.CONFIG.worldRows
+      ) {
+        continue;
+      }
+
+      result.push(
+        cells[
+          y *
+          LLW.CONFIG.worldCols +
+          x
+        ]
+      );
+    }
+
+    return result;
+  }
+
+  function generateBrambles({
+    seed,
+    occupied,
+    spawnPatch
+  }) {
+    const cells =
+      state.landscape.cells;
+
+    const rng =
+      LLW.pcg.createRng(
+        seed,
+        "bramble-ecology"
+      );
+
+    const desiredPatchCount =
+      LLW.CONFIG
+        .bramblePatchMinCount +
+      Math.floor(
+        rng() *
+        (
+          LLW.CONFIG
+            .bramblePatchMaxCount -
+          LLW.CONFIG
+            .bramblePatchMinCount +
+          1
+        )
+      );
+
+    const patchAnchors = [];
+    const reserved =
+      new Set();
+
+    let actualPatchCount = 0;
+
+    function reserveHalo(cell) {
+      reserved.add(
+        LLW.gridKey(
+          cell.x,
+          cell.y
+        )
+      );
+
+      for (
+        const neighbor of
+        cardinalNeighborCells(
+          cell,
+          cells
+        )
+      ) {
+        reserved.add(
+          LLW.gridKey(
+            neighbor.x,
+            neighbor.y
+          )
+        );
+      }
+    }
+
+    for (
+      let patchIndex = 0;
+      patchIndex <
+        desiredPatchCount;
+      patchIndex++
+    ) {
+      const candidates =
+        availableCells(
+          cells,
+          occupied,
+          "brambleSuitability",
+          LLW.CONFIG
+            .brambleAnchorMinSuitability
+        ).filter(
+          (cell) =>
+            !reserved.has(
+              LLW.gridKey(
+                cell.x,
+                cell.y
+              )
+            ) &&
+            patchAnchors.every(
+              (anchor) =>
+                distance(
+                  cell,
+                  anchor
+                ) >=
+                LLW.CONFIG
+                  .brambleAnchorMinSpacing
+            )
+        );
+
+      const anchor =
+        weightedChoice(
+          candidates,
+          rng,
+          (cell) =>
+            Math.pow(
+              Math.max(
+                0.01,
+                cell.brambleSuitability
+              ),
+              2.6
+            )
+        );
+
+      if (!anchor) {
+        break;
+      }
+
+      const targetSize =
+        LLW.CONFIG
+          .bramblePatchMinSize +
+        Math.floor(
+          rng() *
+          (
+            LLW.CONFIG
+              .bramblePatchMaxSize -
+            LLW.CONFIG
+              .bramblePatchMinSize +
+            1
+          )
+        );
+
+      const patchCells = [
+        anchor
+      ];
+
+      const patchKeys =
+        new Set([
+          LLW.gridKey(
+            anchor.x,
+            anchor.y
+          )
+        ]);
+
+      while (
+        patchCells.length <
+        targetSize
+      ) {
+        const growth =
+          new Map();
+
+        for (
+          const patchCell of
+          patchCells
+        ) {
+          for (
+            const neighbor of
+            cardinalNeighborCells(
+              patchCell,
+              cells
+            )
+          ) {
+            const key =
+              LLW.gridKey(
+                neighbor.x,
+                neighbor.y
+              );
+
+            if (
+              patchKeys.has(key) ||
+              reserved.has(key) ||
+              isCellBlocked(
+                neighbor,
+                occupied
+              ) ||
+              neighbor.brambleSuitability <
+                LLW.CONFIG
+                  .brambleGrowthMinSuitability
+            ) {
+              continue;
+            }
+
+            growth.set(
+              key,
+              neighbor
+            );
+          }
+        }
+
+        const growthCandidates =
+          [
+            ...growth.values()
+          ];
+
+        if (!growthCandidates.length) {
+          break;
+        }
+
+        const chosen =
+          weightedChoice(
+            growthCandidates,
+            rng,
+            (cell) =>
+              Math.pow(
+                Math.max(
+                  0.01,
+                  cell.brambleSuitability
+                ),
+                1.85
+              ) *
+              (
+                0.78 +
+                rng() * 0.44
+              )
+          );
+
+        if (!chosen) {
+          break;
+        }
+
+        patchCells.push(
+          chosen
+        );
+
+        patchKeys.add(
+          LLW.gridKey(
+            chosen.x,
+            chosen.y
+          )
+        );
+      }
+
+      if (
+        patchCells.length <
+        LLW.CONFIG
+          .bramblePatchMinSize
+      ) {
+        reserveHalo(
+          anchor
+        );
+
+        continue;
+      }
+
+      spawnPatch(
+        patchCells.map(
+          (cell) => ({
+            x: cell.x,
+            y: cell.y
+          })
+        )
+      );
+
+      for (
+        const cell of
+        patchCells
+      ) {
+        occupied.add(
+          LLW.gridKey(
+            cell.x,
+            cell.y
+          )
+        );
+
+        reserveHalo(
+          cell
+        );
+      }
+
+      patchAnchors.push(
+        anchor
+      );
+
+      actualPatchCount++;
+    }
+
+    state.landscape.brambleAnchors =
+      patchAnchors.map(
+        (cell) => ({
+          x: cell.x,
+          y: cell.y,
+          suitability:
+            cell.brambleSuitability
+        })
+      );
+
+    state.landscape.brambleEstablishment = {
+      targetCount:
+        desiredPatchCount,
+      actualCount:
+        actualPatchCount
+    };
+  }
+
   LLW.ecology = {
     deriveTreeSuitability,
     generateTrees,
-    deriveCanopyFields
+    deriveCanopyFields,
+    deriveUnderstorySuitability,
+    generateBushes,
+    generateMushrooms,
+    generateBrambles
   };
 })();

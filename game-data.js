@@ -43,8 +43,7 @@
     // not literal rainfall yet.
     runoffPerCell: 0.0025,
 
-    // Placeholder ecology scales with world area until habitat rules replace
-    // random placement.
+    // Population scales. Placement now listens to ecological fields.
     treeDensity: 0.026,
     bushDensity: 0.031,
     mushroomDensity: 0.016,
@@ -66,6 +65,26 @@
     // nothing, and a stick only appears on genuinely open ground nearby.
     initialStickChancePerTree: 0.28,
     initialStickMinOpenGround: 0.52,
+
+    // Understory establishment.
+    bushMinSuitability: 0.31,
+    bushFallbackSuitability: 0.20,
+
+    mushroomAnchorMinSuitability: 0.34,
+    mushroomGrowthMinSuitability: 0.24,
+    mushroomFallbackSuitability: 0.16,
+    mushroomAnchorMinSpacing: 2.8,
+    mushroomClusterMinSize: 1,
+    mushroomClusterMaxSize: 3,
+    mushroomClusterMaxRadius: 2.25,
+
+    bramblePatchMinCount: 2,
+    bramblePatchMaxCount: 4,
+    bramblePatchMinSize: 2,
+    bramblePatchMaxSize: 6,
+    brambleAnchorMinSuitability: 0.34,
+    brambleGrowthMinSuitability: 0.22,
+    brambleAnchorMinSpacing: 4.0,
 
     fireStartSticks: 3,
     fireMaxSticks: 5,
@@ -120,7 +139,8 @@
     debug: {
       moisture: false,
       treeSuitability: false,
-      canopy: false
+      canopy: false,
+      understory: false
     },
 
     landscape: {
@@ -148,6 +168,35 @@
         min: 0,
         mean: 0,
         max: 0
+      },
+      bushSuitabilityStats: {
+        min: 0,
+        mean: 0,
+        max: 0
+      },
+      mushroomSuitabilityStats: {
+        min: 0,
+        mean: 0,
+        max: 0
+      },
+      brambleSuitabilityStats: {
+        min: 0,
+        mean: 0,
+        max: 0
+      },
+      mushroomAnchors: [],
+      brambleAnchors: [],
+      bushEstablishment: {
+        targetCount: 0,
+        actualCount: 0
+      },
+      mushroomEstablishment: {
+        targetCount: 0,
+        actualCount: 0
+      },
+      brambleEstablishment: {
+        targetCount: 0,
+        actualCount: 0
       },
       geometry: {
         seed: null,
@@ -188,17 +237,7 @@
       emberTurnsRemaining: 0
     },
 
-    bramblePatches: [
-      {
-        id: "bramble_patch_1",
-        tiles: [
-          { x: 16, y: 11 }, { x: 17, y: 11 }, { x: 18, y: 11 },
-          { x: 16, y: 12 }, { x: 17, y: 12 }, { x: 18, y: 12 },
-          { x: 16, y: 13 }, { x: 17, y: 13 }, { x: 18, y: 13 },
-          { x: 16, y: 14 }, { x: 17, y: 14 }, { x: 18, y: 14 }
-        ]
-      }
-    ],
+    bramblePatches: [],
 
     trees: [],
     bushes: [],
@@ -210,6 +249,7 @@
   let nextItemId = 1;
   let nextTreeId = 1;
   let nextBushId = 1;
+  let nextBramblePatchId = 1;
   let generationRandom = Math.random;
 
   LLW.worldLocation = function (x, y) {
@@ -384,119 +424,62 @@
     return bush;
   }
 
-  function generateTreesAndBushes(
+  function addBramblePatch(
+    tiles
+  ) {
+    const patch = {
+      id:
+        `bramble_patch_${
+          nextBramblePatchId++
+        }`,
+
+      tiles:
+        tiles.map(
+          (tile) => ({
+            x: tile.x,
+            y: tile.y
+          })
+        )
+    };
+
+    LLW.state.bramblePatches.push(
+      patch
+    );
+
+    return patch;
+  }
+
+  function generateVegetation(
     seed
   ) {
     const occupied =
       buildBaseOccupiedSet();
 
-    const worldArea =
-      LLW.CONFIG.worldCols *
-      LLW.CONFIG.worldRows;
-
-    const targetBushCount =
-      Math.max(
-        1,
-        Math.round(
-          worldArea *
-          LLW.CONFIG.bushDensity
-        )
-      );
-
-    // Tree placement now belongs to ecology: suitability chooses where a
-    // stand can establish, and local growth turns anchors into small clusters.
     LLW.ecology.generateTrees({
       seed,
       occupied,
       spawnTree: addTree
     });
 
-    // Trees now change the land around them. Later organisms can listen to
-    // these fields rather than merely checking for a tree object nearby.
     LLW.ecology.deriveCanopyFields();
+    LLW.ecology.deriveUnderstorySuitability();
 
-    // Bushes remain deliberately unchanged in this pass so the effect of
-    // ecological tree placement can be judged in isolation.
-    const fixedBushes = [
-      {
-        x:
-          LLW.state.firepit.x -
-          4,
+    // Brambles establish first because they are terrain/costly route patches.
+    LLW.ecology.generateBrambles({
+      seed,
+      occupied,
+      spawnPatch:
+        addBramblePatch
+    });
 
-        y:
-          LLW.state.firepit.y -
-          3
-      },
-      {
-        x:
-          LLW.state.firepit.x -
-          2,
-
-        y:
-          LLW.state.firepit.y -
-          6
-      }
-    ];
-
-    for (
-      const bush of
-      fixedBushes
-    ) {
-      if (
-        bush.x < 0 ||
-        bush.y < 0 ||
-        bush.x >=
-          LLW.CONFIG.worldCols ||
-        bush.y >=
-          LLW.CONFIG.worldRows
-      ) {
-        continue;
-      }
-
-      const key =
-        LLW.gridKey(
-          bush.x,
-          bush.y
-        );
-
-      if (
-        !occupied.has(key)
-      ) {
-        addBush(
-          bush.x,
-          bush.y
-        );
-
-        occupied.add(key);
-      }
-    }
-
-    while (
-      LLW.state.bushes.length <
-      targetBushCount
-    ) {
-      const tile =
-        findRandomClearTile(
-          occupied,
-          { margin: 0 }
-        );
-
-      if (!tile) {
-        break;
-      }
-
-      addBush(
-        tile.x,
-        tile.y
-      );
-
-      occupied.add(
-        LLW.gridKey(
-          tile.x,
-          tile.y
-        )
-      );
-    }
+    // Bush location now comes from habitat; berry presence remains ordinary
+    // bush state and still uses the existing start/regrowth rules.
+    LLW.ecology.generateBushes({
+      seed,
+      occupied,
+      spawnBush:
+        addBush
+    });
 
     return occupied;
   }
@@ -660,47 +643,27 @@
     }
   }
 
-  function generateMushrooms(occupied) {
-    const targetCount =
-      Math.max(
-        1,
-        Math.round(
-          LLW.CONFIG.worldCols *
-          LLW.CONFIG.worldRows *
-          LLW.CONFIG.mushroomDensity
-        )
-      );
+  function generateMushrooms(
+    occupied,
+    seed
+  ) {
+    LLW.ecology.generateMushrooms({
+      seed,
+      occupied,
 
-    for (
-      let i = 0;
-      i < targetCount;
-      i++
-    ) {
-      const tile =
-        findRandomClearTile(
-          occupied,
-          { margin: 0 }
+      spawnMushroom(
+        x,
+        y
+      ) {
+        LLW.spawnItem(
+          "mushroom",
+          LLW.worldLocation(
+            x,
+            y
+          )
         );
-
-      if (!tile) {
-        break;
       }
-
-      LLW.spawnItem(
-        "mushroom",
-        LLW.worldLocation(
-          tile.x,
-          tile.y
-        )
-      );
-
-      occupied.add(
-        LLW.gridKey(
-          tile.x,
-          tile.y
-        )
-      );
-    }
+    });
   }
 
   LLW.createWorld = function (seed = null) {
@@ -735,6 +698,7 @@
     nextItemId = 1;
     nextTreeId = 1;
     nextBushId = 1;
+    nextBramblePatchId = 1;
 
     LLW.state.game.turn = 0;
     LLW.state.game.vitality = LLW.state.game.maxVitality;
@@ -763,14 +727,21 @@
 
     LLW.state.trees = [];
     LLW.state.bushes = [];
+    LLW.state.bramblePatches = [];
     LLW.state.items = [];
 
     const occupied =
-      generateTreesAndBushes(
+      generateVegetation(
         resolvedSeed
       );
 
-    generateSticksAroundTrees(occupied);
-    generateMushrooms(occupied);
+    generateSticksAroundTrees(
+      occupied
+    );
+
+    generateMushrooms(
+      occupied,
+      resolvedSeed
+    );
   };
 })();

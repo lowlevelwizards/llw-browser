@@ -49,6 +49,9 @@
   const canopyToggleButton =
     document.getElementById("canopyToggleButton");
 
+  const understoryToggleButton =
+    document.getElementById("understoryToggleButton");
+
   const pocketButtons = [
     ...document.querySelectorAll(
       ".pocket-slot"
@@ -332,6 +335,28 @@
     canopyToggleButton.setAttribute(
       "aria-pressed",
       canopyOn
+        ? "true"
+        : "false"
+    );
+
+    const understoryOn =
+      Boolean(
+        LLW.state.debug.understory
+      );
+
+    understoryToggleButton.textContent =
+      understoryOn
+        ? "Understory: On"
+        : "Understory: Off";
+
+    understoryToggleButton.classList.toggle(
+      "active",
+      understoryOn
+    );
+
+    understoryToggleButton.setAttribute(
+      "aria-pressed",
+      understoryOn
         ? "true"
         : "false"
     );
@@ -690,6 +715,9 @@
 
         LLW.state.debug.canopy =
           false;
+
+        LLW.state.debug.understory =
+          false;
       }
 
       syncSeedUI();
@@ -711,6 +739,9 @@
 
         LLW.state.debug.canopy =
           false;
+
+        LLW.state.debug.understory =
+          false;
       }
 
       syncSeedUI();
@@ -731,6 +762,33 @@
           false;
 
         LLW.state.debug.treeSuitability =
+          false;
+
+        LLW.state.debug.understory =
+          false;
+      }
+
+      syncSeedUI();
+    }
+  );
+
+  bindPress(
+    understoryToggleButton,
+    () => {
+      const next =
+        !LLW.state.debug.understory;
+
+      LLW.state.debug.understory =
+        next;
+
+      if (next) {
+        LLW.state.debug.moisture =
+          false;
+
+        LLW.state.debug.treeSuitability =
+          false;
+
+        LLW.state.debug.canopy =
           false;
       }
 

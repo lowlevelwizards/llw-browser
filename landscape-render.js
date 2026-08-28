@@ -26,6 +26,12 @@
     pixelsPerTile: 7
   };
 
+  let understoryCache = {
+    key: null,
+    canvas: null,
+    pixelsPerTile: 7
+  };
+
   let waterLayers = {
     width: 0,
     height: 0,
@@ -556,6 +562,11 @@
         view
       );
 
+      drawUnderstoryDebug(
+        ctx,
+        view
+      );
+
       return;
     }
 
@@ -692,6 +703,11 @@
     );
 
     drawCanopyDebug(
+      ctx,
+      view
+    );
+
+    drawUnderstoryDebug(
       ctx,
       view
     );
@@ -1923,6 +1939,521 @@
       overview
         ? 0.68
         : 0.59;
+
+    ctx.imageSmoothingEnabled =
+      true;
+
+    ctx.imageSmoothingQuality =
+      "high";
+
+    if (overview) {
+      ctx.drawImage(
+        cache,
+
+        0.5 * scale,
+        0.5 * scale,
+
+        LLW.CONFIG.worldCols *
+          scale,
+
+        LLW.CONFIG.worldRows *
+          scale,
+
+        view.offsetX,
+        view.offsetY,
+        view.mapWidth,
+        view.mapHeight
+      );
+
+      ctx.restore();
+      return;
+    }
+
+    const visibleLeft =
+      state.camera.x -
+      view.offsetX /
+      view.tileSize;
+
+    const visibleTop =
+      state.camera.y -
+      view.offsetY /
+      view.tileSize;
+
+    const visibleRight =
+      visibleLeft +
+      view.width /
+      view.tileSize;
+
+    const visibleBottom =
+      visibleTop +
+      view.height /
+      view.tileSize;
+
+    const clippedLeft =
+      clamp(
+        visibleLeft,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedTop =
+      clamp(
+        visibleTop,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    const clippedRight =
+      clamp(
+        visibleRight,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedBottom =
+      clamp(
+        visibleBottom,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    if (
+      clippedRight >
+        clippedLeft &&
+      clippedBottom >
+        clippedTop
+    ) {
+      ctx.drawImage(
+        cache,
+
+        (
+          clippedLeft +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedTop +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        scale,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        scale,
+
+        (
+          clippedLeft -
+          visibleLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedTop -
+          visibleTop
+        ) *
+        view.tileSize,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        view.tileSize
+      );
+    }
+
+    ctx.restore();
+  }
+
+  function sampleUnderstoryField(
+    worldX,
+    worldY,
+    property
+  ) {
+    const x0 =
+      Math.floor(
+        worldX
+      );
+
+    const y0 =
+      Math.floor(
+        worldY
+      );
+
+    const x1 =
+      x0 + 1;
+
+    const y1 =
+      y0 + 1;
+
+    const tx =
+      worldX - x0;
+
+    const ty =
+      worldY - y0;
+
+    const a =
+      getCellClamped(
+        x0,
+        y0
+      );
+
+    const b =
+      getCellClamped(
+        x1,
+        y0
+      );
+
+    const c =
+      getCellClamped(
+        x0,
+        y1
+      );
+
+    const d =
+      getCellClamped(
+        x1,
+        y1
+      );
+
+    if (
+      !a ||
+      !b ||
+      !c ||
+      !d
+    ) {
+      return 0;
+    }
+
+    return lerp(
+      lerp(
+        a[property] || 0,
+        b[property] || 0,
+        tx
+      ),
+
+      lerp(
+        c[property] || 0,
+        d[property] || 0,
+        tx
+      ),
+
+      ty
+    );
+  }
+
+  function understoryDebugColor(
+    bush,
+    mushroom,
+    bramble
+  ) {
+    const ground =
+      [178, 168, 122];
+
+    const bushColor =
+      [92, 151, 84];
+
+    const mushroomColor =
+      [65, 137, 143];
+
+    const brambleColor =
+      [140, 84, 142];
+
+    const total =
+      bush +
+      mushroom +
+      bramble;
+
+    if (
+      total <= 0.0001
+    ) {
+      return ground;
+    }
+
+    const strength =
+      clamp(
+        Math.max(
+          bush,
+          mushroom,
+          bramble
+        )
+      );
+
+    const r =
+      (
+        bush *
+          bushColor[0] +
+        mushroom *
+          mushroomColor[0] +
+        bramble *
+          brambleColor[0]
+      ) /
+      total;
+
+    const g =
+      (
+        bush *
+          bushColor[1] +
+        mushroom *
+          mushroomColor[1] +
+        bramble *
+          brambleColor[1]
+      ) /
+      total;
+
+    const b =
+      (
+        bush *
+          bushColor[2] +
+        mushroom *
+          mushroomColor[2] +
+        bramble *
+          brambleColor[2]
+      ) /
+      total;
+
+    const mix =
+      0.22 +
+      strength * 0.78;
+
+    return [
+      Math.round(
+        lerp(
+          ground[0],
+          r,
+          mix
+        )
+      ),
+
+      Math.round(
+        lerp(
+          ground[1],
+          g,
+          mix
+        )
+      ),
+
+      Math.round(
+        lerp(
+          ground[2],
+          b,
+          mix
+        )
+      )
+    ];
+  }
+
+  function ensureUnderstoryCache() {
+    if (
+      typeof document ===
+        "undefined" ||
+      !state.landscape
+        .cells.length
+    ) {
+      return null;
+    }
+
+    const scale =
+      understoryCache
+        .pixelsPerTile;
+
+    const treeSignature =
+      state.trees
+        .map(
+          (tree) =>
+            `${tree.x},${tree.y}`
+        )
+        .join(";");
+
+    const key =
+      [
+        state.landscape.seed,
+        LLW.CONFIG.worldCols,
+        LLW.CONFIG.worldRows,
+        scale,
+        treeSignature
+      ].join(":");
+
+    if (
+      understoryCache.key ===
+        key &&
+      understoryCache.canvas
+    ) {
+      return (
+        understoryCache.canvas
+      );
+    }
+
+    const canvas =
+      document.createElement(
+        "canvas"
+      );
+
+    canvas.width =
+      (
+        LLW.CONFIG.worldCols +
+        1
+      ) *
+      scale;
+
+    canvas.height =
+      (
+        LLW.CONFIG.worldRows +
+        1
+      ) *
+      scale;
+
+    const context =
+      canvas.getContext(
+        "2d"
+      );
+
+    const image =
+      context.createImageData(
+        canvas.width,
+        canvas.height
+      );
+
+    for (
+      let py = 0;
+      py <
+        canvas.height;
+      py++
+    ) {
+      const worldY =
+        py /
+        scale -
+        0.5;
+
+      for (
+        let px = 0;
+        px <
+          canvas.width;
+        px++
+      ) {
+        const worldX =
+          px /
+          scale -
+          0.5;
+
+        const bush =
+          sampleUnderstoryField(
+            worldX,
+            worldY,
+            "bushSuitability"
+          );
+
+        const mushroom =
+          sampleUnderstoryField(
+            worldX,
+            worldY,
+            "mushroomSuitability"
+          );
+
+        const bramble =
+          sampleUnderstoryField(
+            worldX,
+            worldY,
+            "brambleSuitability"
+          );
+
+        const [
+          r,
+          g,
+          b
+        ] =
+          understoryDebugColor(
+            bush,
+            mushroom,
+            bramble
+          );
+
+        const index =
+          (
+            py *
+            canvas.width +
+            px
+          ) *
+          4;
+
+        image.data[
+          index
+        ] = r;
+
+        image.data[
+          index + 1
+        ] = g;
+
+        image.data[
+          index + 2
+        ] = b;
+
+        image.data[
+          index + 3
+        ] = 255;
+      }
+    }
+
+    context.putImageData(
+      image,
+      0,
+      0
+    );
+
+    understoryCache = {
+      ...understoryCache,
+      key,
+      canvas
+    };
+
+    return canvas;
+  }
+
+  function drawUnderstoryDebug(
+    ctx,
+    view
+  ) {
+    if (
+      !state.debug
+        .understory
+    ) {
+      return;
+    }
+
+    const cache =
+      ensureUnderstoryCache();
+
+    if (!cache) {
+      return;
+    }
+
+    const scale =
+      understoryCache
+        .pixelsPerTile;
+
+    const overview =
+      LLW.camera.isOverview();
+
+    ctx.save();
+
+    ctx.globalAlpha =
+      overview
+        ? 0.70
+        : 0.60;
 
     ctx.imageSmoothingEnabled =
       true;
