@@ -200,17 +200,17 @@
       {
         scaleX: 1.20,
         scaleY: 1.24,
-        alpha: alpha * 0.10
+        alpha: alpha * 0.13
       },
       {
         scaleX: 1.08,
         scaleY: 1.11,
-        alpha: alpha * 0.20
+        alpha: alpha * 0.27
       },
       {
         scaleX: 1,
         scaleY: 1,
-        alpha: alpha * 0.74
+        alpha: alpha * 0.86
       }
     ];
 

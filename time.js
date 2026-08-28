@@ -201,8 +201,8 @@
         : 0;
 
       const castAlpha = visible
-        ? 0.17 +
-          Math.pow(1 - altitude, 0.85) * 0.11
+        ? 0.20 +
+          Math.pow(1 - altitude, 0.85) * 0.13
         : 0;
 
       const contactAlpha = visible
