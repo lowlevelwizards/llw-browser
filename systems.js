@@ -151,8 +151,14 @@
       return false;
     }
 
-    if (LLW.getTreeAt(nextX, nextY)) {
-      LLW.notify("The tree is in the way.");
+    const blockingFeature =
+      LLW.terrain.getBlockingFeatureAt(
+        nextX,
+        nextY
+      );
+
+    if (blockingFeature) {
+      LLW.notify(blockingFeature.message);
       return false;
     }
 

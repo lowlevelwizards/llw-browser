@@ -294,9 +294,10 @@
     );
   }
 
-  function sampleWoodlandDensity(
+  function sampleScalarField(
     worldX,
-    worldY
+    worldY,
+    property
   ) {
     const x0 =
       Math.floor(
@@ -355,24 +356,57 @@
 
     return lerp(
       lerp(
-        a.woodlandDensity || 0,
-        b.woodlandDensity || 0,
+        a[property] || 0,
+        b[property] || 0,
         tx
       ),
-
       lerp(
-        c.woodlandDensity || 0,
-        d.woodlandDensity || 0,
+        c[property] || 0,
+        d[property] || 0,
         tx
       ),
-
       ty
+    );
+  }
+
+  function sampleWoodlandDensity(
+    worldX,
+    worldY
+  ) {
+    return sampleScalarField(
+      worldX,
+      worldY,
+      "woodlandDensity"
+    );
+  }
+
+  function sampleShade(
+    worldX,
+    worldY
+  ) {
+    return sampleScalarField(
+      worldX,
+      worldY,
+      "shade"
+    );
+  }
+
+  function sampleMoistureField(
+    worldX,
+    worldY
+  ) {
+    return sampleScalarField(
+      worldX,
+      worldY,
+      "moisture"
     );
   }
 
   function elevationColor(
     elevation,
-    woodland = 0
+    woodland = 0,
+    shade = 0,
+    moisture = 0
   ) {
     const t =
       smoothstep(
@@ -448,21 +482,44 @@
         local
       );
 
-    // Normal play should agree with the regional ecology even without debug:
-    // woodland floor shifts cooler/deeper, while carved clearings retain the
-    // brighter elevation palette.
     const woodlandMix =
       smoothstep(
         (
           woodland -
-          0.24
+          0.22
         ) /
-        0.68
+        0.66
       ) *
-      0.42;
+      0.30;
+
+    const shadeMix =
+      smoothstep(
+        (
+          shade -
+          0.10
+        ) /
+        0.72
+      ) *
+      0.28;
+
+    const moistureMix =
+      smoothstep(
+        (
+          moisture -
+          0.42
+        ) /
+        0.34
+      ) *
+      0.10;
 
     const woodlandFloor =
-      [72, 122, 79];
+      [86, 132, 86];
+
+    const shadeFloor =
+      [70, 113, 79];
+
+    const dampFloor =
+      [91, 132, 98];
 
     r =
       lerp(
@@ -470,19 +527,55 @@
         woodlandFloor[0],
         woodlandMix
       );
-
     g =
       lerp(
         g,
         woodlandFloor[1],
         woodlandMix
       );
-
     b =
       lerp(
         b,
         woodlandFloor[2],
         woodlandMix
+      );
+
+    r =
+      lerp(
+        r,
+        shadeFloor[0],
+        shadeMix
+      );
+    g =
+      lerp(
+        g,
+        shadeFloor[1],
+        shadeMix
+      );
+    b =
+      lerp(
+        b,
+        shadeFloor[2],
+        shadeMix
+      );
+
+    r =
+      lerp(
+        r,
+        dampFloor[0],
+        moistureMix
+      );
+    g =
+      lerp(
+        g,
+        dampFloor[1],
+        moistureMix
+      );
+    b =
+      lerp(
+        b,
+        dampFloor[2],
+        moistureMix
       );
 
     return [
@@ -510,6 +603,7 @@
         state.landscape.seed,
         LLW.CONFIG.worldCols,
         LLW.CONFIG.worldRows,
+        state.trees.length,
         scale
       ].join(":");
 
@@ -576,6 +670,14 @@
               worldY
             ),
             sampleWoodlandDensity(
+              worldX,
+              worldY
+            ),
+            sampleShade(
+              worldX,
+              worldY
+            ),
+            sampleMoistureField(
               worldX,
               worldY
             )
@@ -1006,6 +1108,7 @@
         state.landscape.seed,
         LLW.CONFIG.worldCols,
         LLW.CONFIG.worldRows,
+        state.trees.length,
         scale
       ].join(":");
 
@@ -1373,6 +1476,7 @@
         state.landscape.seed,
         LLW.CONFIG.worldCols,
         LLW.CONFIG.worldRows,
+        state.trees.length,
         scale
       ].join(":");
 
@@ -1832,6 +1936,7 @@
         state.landscape.seed,
         LLW.CONFIG.worldCols,
         LLW.CONFIG.worldRows,
+        state.trees.length,
         scale
       ].join(":");
 

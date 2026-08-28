@@ -2684,6 +2684,60 @@
 
     const anchors = [];
     const established = [];
+    const mushroomTileCounts =
+      new Map();
+
+    function tileKey(cell) {
+      return LLW.gridKey(
+        cell.x,
+        cell.y
+      );
+    }
+
+    function mushroomCountAt(cell) {
+      return (
+        mushroomTileCounts.get(
+          tileKey(cell)
+        ) || 0
+      );
+    }
+
+    function mushroomTileOpen(cell) {
+      const key = tileKey(cell);
+
+      if (
+        occupied.has(key) &&
+        !mushroomTileCounts.has(key)
+      ) {
+        return false;
+      }
+
+      return (
+        mushroomCountAt(cell) <
+        LLW.CONFIG.mushroomMaxPerTile
+      );
+    }
+
+    function establish(cell, clusterCells) {
+      spawnMushroom(
+        cell.x,
+        cell.y
+      );
+
+      established.push(cell);
+
+      const key = tileKey(cell);
+      const count =
+        mushroomTileCounts.get(key) || 0;
+
+      mushroomTileCounts.set(
+        key,
+        count + 1
+      );
+
+      clusterCells.set(key, cell);
+      occupied.add(key);
+    }
 
     while (
       established.length <
@@ -2777,42 +2831,99 @@
           )
         );
 
-      const cluster = [];
+      const clusterCells =
+        new Map();
 
-      function establish(cell) {
-        spawnMushroom(
-          cell.x,
-          cell.y
-        );
+      establish(
+        anchor,
+        clusterCells
+      );
 
-        cluster.push(cell);
-        established.push(cell);
-
-        occupied.add(
-          LLW.gridKey(
-            cell.x,
-            cell.y
-          )
+      if (
+        established.length <
+          targetCount &&
+        clusterTarget > 1 &&
+        mushroomCountAt(anchor) <
+          LLW.CONFIG
+            .mushroomMaxPerTile &&
+        rng() <
+          LLW.CONFIG
+            .mushroomSameTileChance
+      ) {
+        establish(
+          anchor,
+          clusterCells
         );
       }
 
-      establish(anchor);
-
       while (
-        cluster.length <
-        clusterTarget
+        clusterCells.size <=
+          clusterTarget + 1 &&
+        established.length <
+          targetCount &&
+        [...clusterCells.values()].reduce(
+          (sum, cell) =>
+            sum + mushroomCountAt(cell),
+          0
+        ) < clusterTarget
       ) {
+        const uniqueClusterCells =
+          [...clusterCells.values()];
+
+        const sameTileCandidates =
+          uniqueClusterCells.filter(
+            (cell) =>
+              mushroomTileOpen(cell)
+          );
+
+        if (
+          sameTileCandidates.length &&
+          rng() <
+            LLW.CONFIG
+              .mushroomSameTileChance
+        ) {
+          const doubled =
+            weightedChoice(
+              sameTileCandidates,
+              rng,
+              (cell) =>
+                Math.pow(
+                  Math.max(
+                    0.01,
+                    cell.mushroomSuitability
+                  ),
+                  1.55
+                )
+            );
+
+          if (doubled) {
+            establish(
+              doubled,
+              clusterCells
+            );
+            continue;
+          }
+        }
+
         const candidates =
           eightNeighborCandidates(
-            cluster,
+            uniqueClusterCells,
             cells,
-            occupied,
+            new Set(
+              [...occupied].filter(
+                (key) =>
+                  !mushroomTileCounts.has(key)
+              )
+            ),
             "mushroomSuitability",
             LLW.CONFIG
               .mushroomGrowthMinSuitability,
             anchor,
             LLW.CONFIG
               .mushroomClusterMaxRadius
+          ).filter(
+            (cell) =>
+              mushroomTileOpen(cell)
           );
 
         if (!candidates.length) {
@@ -2842,8 +2953,30 @@
         }
 
         establish(
-          chosen
+          chosen,
+          clusterCells
         );
+
+        if (
+          established.length <
+            targetCount &&
+          [...clusterCells.values()].reduce(
+            (sum, cell) =>
+              sum + mushroomCountAt(cell),
+            0
+          ) < clusterTarget &&
+          mushroomCountAt(chosen) <
+            LLW.CONFIG
+              .mushroomMaxPerTile &&
+          rng() <
+            LLW.CONFIG
+              .mushroomSameTileChance * 0.72
+        ) {
+          establish(
+            chosen,
+            clusterCells
+          );
+        }
       }
     }
 
@@ -3188,6 +3321,322 @@
     };
   }
 
+  function spawnWeightedProps({
+    cells,
+    occupied,
+    targetCount,
+    rng,
+    minSpacing = 0,
+    allow,
+    weightFor,
+    spawn
+  }) {
+    const placed = [];
+    const fireRing =
+      fireRingSet();
+
+    while (
+      placed.length <
+      targetCount
+    ) {
+      const spaced =
+        cells.filter(
+          (cell) => {
+            if (
+              isCellBlocked(
+                cell,
+                occupied
+              ) ||
+              fireRing.has(
+                LLW.gridKey(
+                  cell.x,
+                  cell.y
+                )
+              )
+            ) {
+              return false;
+            }
+
+            if (
+              allow &&
+              !allow(cell)
+            ) {
+              return false;
+            }
+
+            if (
+              minSpacing > 0 &&
+              placed.some(
+                (other) =>
+                  distance(
+                    cell,
+                    other
+                  ) < minSpacing
+              )
+            ) {
+              return false;
+            }
+
+            return true;
+          }
+        );
+
+      const relaxed =
+        spaced.length
+          ? spaced
+          : cells.filter(
+              (cell) => {
+                if (
+                  isCellBlocked(
+                    cell,
+                    occupied
+                  ) ||
+                  fireRing.has(
+                    LLW.gridKey(
+                      cell.x,
+                      cell.y
+                    )
+                  )
+                ) {
+                  return false;
+                }
+
+                return !allow || allow(cell);
+              }
+            );
+
+      if (!relaxed.length) {
+        break;
+      }
+
+      const chosen =
+        weightedChoice(
+          relaxed,
+          rng,
+          (cell) =>
+            Math.max(
+              0.0001,
+              weightFor(cell)
+            ) *
+            (
+              0.86 +
+              rng() * 0.30
+            )
+        );
+
+      if (!chosen) {
+        break;
+      }
+
+      spawn(
+        chosen.x,
+        chosen.y
+      );
+
+      occupied.add(
+        LLW.gridKey(
+          chosen.x,
+          chosen.y
+        )
+      );
+
+      placed.push(chosen);
+    }
+
+    return placed;
+  }
+
+  function generateForestFloorProps({
+    seed,
+    occupied,
+    spawnStone,
+    spawnBoulder,
+    spawnFallenLog,
+    spawnStump
+  }) {
+    const cells =
+      state.landscape.cells;
+
+    const worldArea =
+      LLW.CONFIG.worldCols *
+      LLW.CONFIG.worldRows;
+
+    function countFromDensity(density) {
+      return Math.max(
+        0,
+        Math.round(
+          worldArea * density
+        )
+      );
+    }
+
+    function normalizedSteepness(cell) {
+      return smoothstep01(
+        (
+          (cell.terrainSteepness || 0) -
+          0.018
+        ) /
+        0.095
+      );
+    }
+
+    function moderateMoisture(cell) {
+      return bellPreference(
+        cell.moisture || 0,
+        0.50,
+        0.34,
+        0.34
+      );
+    }
+
+    function bankness(cell) {
+      return smoothstep01(
+        (
+          (cell.moisture || 0) -
+          0.38
+        ) /
+        0.32
+      ) *
+      (
+        1 -
+        smoothstep01(
+          (
+            (cell.moisture || 0) -
+            0.86
+          ) /
+          0.12
+        )
+      );
+    }
+
+    spawnWeightedProps({
+      cells,
+      occupied,
+      targetCount:
+        countFromDensity(
+          LLW.CONFIG.stoneDensity
+        ),
+      rng:
+        LLW.pcg.createRng(
+          seed,
+          "stone-floor"
+        ),
+      minSpacing: 1.1,
+      allow(cell) {
+        return (
+          (cell.openGround ?? 1) >= 0.26 &&
+          cell.surfaceWaterDepth <= EPSILON
+        );
+      },
+      weightFor(cell) {
+        return (
+          0.16 +
+          (cell.openGround ?? 1) * 0.38 +
+          normalizedSteepness(cell) * 0.26 +
+          (cell.woodlandEdge || 0) * 0.12 +
+          bankness(cell) * 0.18
+        );
+      },
+      spawn: spawnStone
+    });
+
+    spawnWeightedProps({
+      cells,
+      occupied,
+      targetCount:
+        countFromDensity(
+          LLW.CONFIG.boulderDensity
+        ),
+      rng:
+        LLW.pcg.createRng(
+          seed,
+          "boulder-floor"
+        ),
+      minSpacing: 2.8,
+      allow(cell) {
+        return (
+          (cell.openGround ?? 1) >= 0.22 &&
+          (cell.moisture || 0) < 0.88 &&
+          cell.surfaceWaterDepth <= EPSILON
+        );
+      },
+      weightFor(cell) {
+        return (
+          0.12 +
+          normalizedSteepness(cell) * 0.40 +
+          cell.elevation * 0.20 +
+          (cell.openGround ?? 1) * 0.14 +
+          (cell.woodlandEdge || 0) * 0.14
+        );
+      },
+      spawn: spawnBoulder
+    });
+
+    spawnWeightedProps({
+      cells,
+      occupied,
+      targetCount:
+        countFromDensity(
+          LLW.CONFIG.fallenLogDensity
+        ),
+      rng:
+        LLW.pcg.createRng(
+          seed,
+          "fallen-log-floor"
+        ),
+      minSpacing: 2.6,
+      allow(cell) {
+        return (
+          (cell.woodlandDensity || 0) >= 0.34 &&
+          (cell.openGround ?? 1) >= 0.10 &&
+          cell.surfaceWaterDepth <= EPSILON
+        );
+      },
+      weightFor(cell) {
+        return (
+          0.10 +
+          (cell.woodlandDensity || 0) * 0.34 +
+          (cell.shade || 0) * 0.18 +
+          (cell.woodlandEdge || 0) * 0.12 +
+          moderateMoisture(cell) * 0.14
+        );
+      },
+      spawn: spawnFallenLog
+    });
+
+    spawnWeightedProps({
+      cells,
+      occupied,
+      targetCount:
+        countFromDensity(
+          LLW.CONFIG.stumpDensity
+        ),
+      rng:
+        LLW.pcg.createRng(
+          seed,
+          "stump-floor"
+        ),
+      minSpacing: 2.0,
+      allow(cell) {
+        return (
+          (cell.openGround ?? 1) >= 0.18 &&
+          (cell.woodlandDensity || 0) >= 0.24 &&
+          cell.surfaceWaterDepth <= EPSILON
+        );
+      },
+      weightFor(cell) {
+        return (
+          0.08 +
+          (cell.woodlandClearingInfluence || 0) * 0.34 +
+          (cell.woodlandEdge || 0) * 0.28 +
+          (cell.woodlandDensity || 0) * 0.16 +
+          (cell.openGround ?? 1) * 0.08
+        );
+      },
+      spawn: spawnStump
+    });
+  }
+
   LLW.ecology = {
     deriveWoodlandMatrix,
     deriveTreeSuitability,
@@ -3196,6 +3645,7 @@
     deriveUnderstorySuitability,
     generateBushes,
     generateMushrooms,
-    generateBrambles
+    generateBrambles,
+    generateForestFloorProps
   };
 })();

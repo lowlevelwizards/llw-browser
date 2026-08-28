@@ -68,10 +68,16 @@
     // Established trees alter the cells around them.
     treeCanopyRadius: 2.35,
 
-    // More trunks must not mean a carpet of free fuel. Most trees still
-    // contribute no convenient loose stick at world start.
-    initialStickChancePerTree: 0.10,
+    // More trunks must not mean a carpet of free fuel, but woodland now
+    // wants a little more obvious fallen wood on the floor.
+    initialStickChancePerTree: 0.18,
     initialStickMinOpenGround: 0.52,
+
+    // Forest-floor clutter and geology.
+    stoneDensity: 0.010,
+    boulderDensity: 0.004,
+    fallenLogDensity: 0.005,
+    stumpDensity: 0.005,
 
     // Understory establishment.
     bushMinSuitability: 0.31,
@@ -84,6 +90,8 @@
     mushroomClusterMinSize: 1,
     mushroomClusterMaxSize: 3,
     mushroomClusterMaxRadius: 2.25,
+    mushroomMaxPerTile: 2,
+    mushroomSameTileChance: 0.36,
 
     bramblePatchMinCount: 2,
     bramblePatchMaxCount: 4,
@@ -261,6 +269,10 @@
 
     trees: [],
     bushes: [],
+    stones: [],
+    boulders: [],
+    fallenLogs: [],
+    stumps: [],
     items: []
   };
 
@@ -270,6 +282,10 @@
   let nextTreeId = 1;
   let nextBushId = 1;
   let nextBramblePatchId = 1;
+  let nextStoneId = 1;
+  let nextBoulderId = 1;
+  let nextFallenLogId = 1;
+  let nextStumpId = 1;
   let generationRandom = Math.random;
 
   LLW.worldLocation = function (x, y) {
@@ -423,7 +439,36 @@
       id: `tree_${nextTreeId++}`,
       x,
       y,
-      lastForageTurn: -Infinity
+      lastForageTurn: -Infinity,
+      offsetX:
+        (generationRandom() - 0.5) * 0.18,
+      offsetY:
+        (generationRandom() - 0.5) * 0.06,
+      scale:
+        0.90 +
+        generationRandom() * 0.24,
+      trunkHeight:
+        0.90 +
+        generationRandom() * 0.26,
+      trunkWidth:
+        0.88 +
+        generationRandom() * 0.18,
+      crownScaleX:
+        0.88 +
+        generationRandom() * 0.24,
+      crownScaleY:
+        0.90 +
+        generationRandom() * 0.24,
+      crownOffsetX:
+        (generationRandom() - 0.5) * 0.16,
+      crownOffsetY:
+        (generationRandom() - 0.5) * 0.08,
+      crownRotation:
+        (generationRandom() - 0.5) * 0.24,
+      colorShift:
+        (generationRandom() - 0.5) * 1.0,
+      lightShift:
+        generationRandom() - 0.5
     };
 
     LLW.state.trees.push(tree);
@@ -437,11 +482,127 @@
       y,
       hasBerries:
         generationRandom() <
-        LLW.CONFIG.berryStartChance
+        LLW.CONFIG.berryStartChance,
+      offsetX:
+        (generationRandom() - 0.5) * 0.20,
+      offsetY:
+        (generationRandom() - 0.5) * 0.06,
+      scale:
+        0.88 +
+        generationRandom() * 0.26,
+      foliageScaleX:
+        0.84 +
+        generationRandom() * 0.28,
+      foliageScaleY:
+        0.86 +
+        generationRandom() * 0.26,
+      foliageRotation:
+        (generationRandom() - 0.5) * 0.34,
+      colorShift:
+        (generationRandom() - 0.5) * 1.0,
+      lightShift:
+        generationRandom() - 0.5
     };
 
     LLW.state.bushes.push(bush);
     return bush;
+  }
+
+  function addStone(x, y) {
+    const stone = {
+      id: `stone_${nextStoneId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.24,
+      offsetY:
+        (generationRandom() - 0.5) * 0.10,
+      scale:
+        0.80 +
+        generationRandom() * 0.55,
+      rotation:
+        (generationRandom() - 0.5) * 1.2,
+      colorShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.stones.push(stone);
+    return stone;
+  }
+
+  function addBoulder(x, y) {
+    const boulder = {
+      id: `boulder_${nextBoulderId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.18,
+      offsetY:
+        (generationRandom() - 0.5) * 0.08,
+      scale:
+        0.92 +
+        generationRandom() * 0.46,
+      widthScale:
+        0.88 +
+        generationRandom() * 0.34,
+      heightScale:
+        0.86 +
+        generationRandom() * 0.28,
+      rotation:
+        (generationRandom() - 0.5) * 0.85,
+      colorShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.boulders.push(boulder);
+    return boulder;
+  }
+
+  function addFallenLog(x, y) {
+    const fallenLog = {
+      id: `fallen_log_${nextFallenLogId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.14,
+      offsetY:
+        (generationRandom() - 0.5) * 0.06,
+      lengthScale:
+        0.94 +
+        generationRandom() * 0.72,
+      thicknessScale:
+        0.86 +
+        generationRandom() * 0.28,
+      rotation:
+        generationRandom() * Math.PI,
+      colorShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.fallenLogs.push(fallenLog);
+    return fallenLog;
+  }
+
+  function addStump(x, y) {
+    const stump = {
+      id: `stump_${nextStumpId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.18,
+      offsetY:
+        (generationRandom() - 0.5) * 0.06,
+      scale:
+        0.86 +
+        generationRandom() * 0.34,
+      rotation:
+        (generationRandom() - 0.5) * 0.35,
+      colorShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.stumps.push(stump);
+    return stump;
   }
 
   function addBramblePatch(
@@ -502,6 +663,21 @@
     });
 
     return occupied;
+  }
+
+
+  function generateForestFloorProps(
+    occupied,
+    seed
+  ) {
+    LLW.ecology.generateForestFloorProps({
+      seed,
+      occupied,
+      spawnStone: addStone,
+      spawnBoulder: addBoulder,
+      spawnFallenLog: addFallenLog,
+      spawnStump: addStump
+    });
   }
 
   function generateSticksAroundTrees(
@@ -725,6 +901,10 @@
     nextTreeId = 1;
     nextBushId = 1;
     nextBramblePatchId = 1;
+    nextStoneId = 1;
+    nextBoulderId = 1;
+    nextFallenLogId = 1;
+    nextStumpId = 1;
 
     LLW.state.game.turn = 0;
     LLW.state.game.vitality = LLW.state.game.maxVitality;
@@ -753,6 +933,10 @@
 
     LLW.state.trees = [];
     LLW.state.bushes = [];
+    LLW.state.stones = [];
+    LLW.state.boulders = [];
+    LLW.state.fallenLogs = [];
+    LLW.state.stumps = [];
     LLW.state.bramblePatches = [];
     LLW.state.items = [];
 
@@ -760,6 +944,11 @@
       generateVegetation(
         resolvedSeed
       );
+
+    generateForestFloorProps(
+      occupied,
+      resolvedSeed
+    );
 
     generateSticksAroundTrees(
       occupied

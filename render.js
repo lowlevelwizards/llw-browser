@@ -186,6 +186,17 @@
     return value - Math.floor(value);
   }
 
+  function clampValue(
+    value,
+    min,
+    max
+  ) {
+    return Math.max(
+      min,
+      Math.min(max, value)
+    );
+  }
+
 
   function drawPotentialBasinsDebug(
     tileSize,
@@ -1081,13 +1092,75 @@
     }
   }
 
+  function foliageColor(
+    baseHue,
+    colorShift,
+    lightShift,
+    saturation,
+    lightness
+  ) {
+    const hue =
+      Math.round(
+        baseHue + colorShift * 8
+      );
+
+    const sat =
+      Math.round(
+        clampValue(
+          saturation + colorShift * 4,
+          20,
+          55
+        )
+      );
+
+    const light =
+      Math.round(
+        clampValue(
+          lightness + lightShift * 8,
+          26,
+          62
+        )
+      );
+
+    return `hsl(${hue}, ${sat}%, ${light}%)`;
+  }
+
+  function woodColor(
+    baseHue,
+    colorShift,
+    lightness
+  ) {
+    const hue =
+      Math.round(
+        baseHue + colorShift * 5
+      );
+
+    const light =
+      Math.round(
+        clampValue(
+          lightness + colorShift * 7,
+          24,
+          54
+        )
+      );
+
+    return `hsl(${hue}, 34%, ${light}%)`;
+  }
+
   function drawBushes(
     now,
     tileSize,
     offsetX,
     offsetY
   ) {
-    for (const bush of state.bushes) {
+    const bushes =
+      [...state.bushes].sort(
+        (a, b) =>
+          (a.y + (a.offsetY || 0)) -
+          (b.y + (b.offsetY || 0))
+      );
+
+    for (const bush of bushes) {
       const p = gridToPixel(
         bush.x,
         bush.y,
@@ -1097,16 +1170,19 @@
       );
 
       const centerX =
-        p.x + tileSize * 0.5;
+        p.x +
+        tileSize *
+        (0.5 + (bush.offsetX || 0));
 
-      const baseY =
-        p.y + tileSize * 0.83;
+      const shadowY =
+        p.y + tileSize * 0.83 +
+        tileSize * (bush.offsetY || 0) * 0.45;
 
       drawShadow(
         centerX,
-        baseY,
-        tileSize * 0.34,
-        tileSize * 0.12
+        shadowY,
+        tileSize * 0.30 * (bush.scale || 1),
+        tileSize * 0.11 * (bush.scale || 1)
       );
 
       const wiggle = LLW.juice.getBushWiggle(
@@ -1114,44 +1190,53 @@
         now
       );
 
+      const foliageCenterX =
+        centerX + wiggle.shiftX * tileSize;
+
+      const foliageCenterY =
+        p.y +
+        tileSize *
+        (0.68 + (bush.offsetY || 0));
+
       ctx.save();
       ctx.translate(
-        centerX + wiggle.shiftX * tileSize,
-        p.y + tileSize * 0.66
+        foliageCenterX,
+        foliageCenterY
       );
-      ctx.rotate(wiggle.rotation);
-      ctx.scale(wiggle.scale, wiggle.scale);
-      ctx.translate(
-        -centerX,
-        -(p.y + tileSize * 0.66)
+      ctx.rotate(
+        (bush.foliageRotation || 0) +
+        wiggle.rotation
+      );
+      ctx.scale(
+        (bush.scale || 1) *
+          (bush.foliageScaleX || 1) *
+          wiggle.scale,
+        (bush.scale || 1) *
+          (bush.foliageScaleY || 1) *
+          wiggle.scale
       );
 
-      ctx.fillStyle = "#5da24c";
+      ctx.fillStyle = foliageColor(
+        112,
+        bush.colorShift || 0,
+        bush.lightShift || 0,
+        34,
+        47
+      );
 
-      const circles = [
-        {
-          x: centerX - tileSize * 0.14,
-          y: p.y + tileSize * 0.62,
-          r: tileSize * 0.16
-        },
-        {
-          x: centerX + tileSize * 0.14,
-          y: p.y + tileSize * 0.62,
-          r: tileSize * 0.16
-        },
-        {
-          x: centerX,
-          y: p.y + tileSize * 0.52,
-          r: tileSize * 0.18
-        }
+      const lobes = [
+        [-tileSize * 0.15, tileSize * 0.02, tileSize * 0.15],
+        [ tileSize * 0.14, tileSize * 0.03, tileSize * 0.14],
+        [ 0, -tileSize * 0.08, tileSize * 0.18],
+        [ 0, tileSize * 0.08, tileSize * 0.16]
       ];
 
-      for (const c of circles) {
+      for (const [x, y, r] of lobes) {
         ctx.beginPath();
         ctx.arc(
-          c.x,
-          c.y,
-          c.r,
+          x,
+          y,
+          r,
           0,
           Math.PI * 2
         );
@@ -1160,10 +1245,10 @@
 
       if (bush.hasBerries) {
         const berries = [
-          [-0.10, 0.57],
-          [ 0.02, 0.51],
-          [ 0.12, 0.61],
-          [-0.01, 0.66]
+          [-0.10, -0.02],
+          [ 0.02, -0.07],
+          [ 0.12,  0.01],
+          [-0.01, 0.09]
         ];
 
         ctx.fillStyle = "#7f4055";
@@ -1171,9 +1256,9 @@
         for (const [bx, by] of berries) {
           ctx.beginPath();
           ctx.arc(
-            centerX + tileSize * bx,
-            p.y + tileSize * by,
-            tileSize * 0.038,
+            tileSize * bx,
+            tileSize * by,
+            tileSize * 0.036,
             0,
             Math.PI * 2
           );
@@ -1187,6 +1272,7 @@
 
   function drawTree(
     tree,
+    now,
     tileSize,
     offsetX,
     offsetY
@@ -1200,73 +1286,110 @@
     );
 
     const centerX =
-      p.x + tileSize * 0.5;
+      p.x +
+      tileSize *
+      (0.5 + (tree.offsetX || 0));
 
     const baseY =
-      p.y + tileSize * 0.9;
+      p.y +
+      tileSize *
+      (0.89 + (tree.offsetY || 0));
+
+    const scale =
+      tree.scale || 1;
 
     drawShadow(
       centerX,
       baseY,
-      tileSize * 0.48,
-      tileSize * 0.18
+      tileSize * 0.44 * scale,
+      tileSize * 0.16 * scale
     );
+
+    const trunkHeight =
+      tileSize * 0.36 *
+      scale *
+      (tree.trunkHeight || 1);
+
+    const trunkWidth =
+      tileSize * 0.20 *
+      scale *
+      (tree.trunkWidth || 1);
+
+    const trunkTopY =
+      baseY - trunkHeight;
 
     ctx.save();
 
-    ctx.fillStyle = "#7a5233";
-    ctx.fillRect(
-      centerX - tileSize * 0.12,
-      p.y + tileSize * 0.42,
-      tileSize * 0.24,
-      tileSize * 0.42
+    ctx.fillStyle = woodColor(
+      26,
+      tree.colorShift || 0,
+      35 + (tree.lightShift || 0) * 2
     );
+
+    roundedCapsule(
+      centerX - trunkWidth / 2,
+      trunkTopY,
+      trunkWidth,
+      trunkHeight,
+      tileSize * 0.06
+    );
+    ctx.fill();
 
     const wiggle = LLW.juice.getTreeWiggle(
       tree.id,
-      performance.now()
+      now
     );
+
+    const crownX =
+      centerX +
+      tileSize * (tree.crownOffsetX || 0) +
+      wiggle.shiftX * tileSize;
+
+    const crownY =
+      trunkTopY +
+      tileSize *
+      (-0.06 + (tree.crownOffsetY || 0));
 
     ctx.save();
     ctx.translate(
-      centerX + wiggle.shiftX * tileSize,
-      p.y + tileSize * 0.40
+      crownX,
+      crownY
     );
-    ctx.rotate(wiggle.rotation);
-    ctx.scale(wiggle.scale, wiggle.scale);
-    ctx.translate(-centerX, -(p.y + tileSize * 0.40));
+    ctx.rotate(
+      (tree.crownRotation || 0) +
+      wiggle.rotation
+    );
+    ctx.scale(
+      scale *
+        (tree.crownScaleX || 1) *
+        wiggle.scale,
+      scale *
+        (tree.crownScaleY || 1) *
+        wiggle.scale
+    );
 
-    ctx.fillStyle = "#4f9b4f";
+    ctx.fillStyle = foliageColor(
+      115,
+      tree.colorShift || 0,
+      tree.lightShift || 0,
+      35,
+      46
+    );
 
-    const circles = [
-      {
-        x: centerX - tileSize * 0.2,
-        y: p.y + tileSize * 0.36,
-        r: tileSize * 0.23
-      },
-      {
-        x: centerX + tileSize * 0.2,
-        y: p.y + tileSize * 0.36,
-        r: tileSize * 0.23
-      },
-      {
-        x: centerX,
-        y: p.y + tileSize * 0.22,
-        r: tileSize * 0.28
-      },
-      {
-        x: centerX,
-        y: p.y + tileSize * 0.42,
-        r: tileSize * 0.24
-      }
+    const lobes = [
+      [-tileSize * 0.20, tileSize * 0.00, tileSize * 0.22],
+      [ tileSize * 0.18, tileSize * 0.01, tileSize * 0.21],
+      [ 0, -tileSize * 0.15, tileSize * 0.27],
+      [ 0, tileSize * 0.07, tileSize * 0.23],
+      [-tileSize * 0.02, tileSize * 0.16, tileSize * 0.16]
     ];
 
-    for (const c of circles) {
+    for (const [x, y, r] of lobes) {
       ctx.beginPath();
       ctx.arc(
-        c.x,
-        c.y,
-        c.r,
+        x,
+        y,
+        r,
         0,
         Math.PI * 2
       );
@@ -1278,17 +1401,403 @@
   }
 
   function drawTrees(
+    now,
     tileSize,
     offsetX,
     offsetY
   ) {
-    for (const tree of state.trees) {
+    const trees =
+      [...state.trees].sort(
+        (a, b) =>
+          (a.y + (a.offsetY || 0)) -
+          (b.y + (b.offsetY || 0))
+      );
+
+    for (const tree of trees) {
       drawTree(
         tree,
+        now,
         tileSize,
         offsetX,
         offsetY
       );
+    }
+  }
+
+  function drawStoneProp(
+    stone,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      stone.x,
+      stone.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX =
+      p.x +
+      tileSize *
+      (0.5 + (stone.offsetX || 0));
+
+    const baseY =
+      p.y +
+      tileSize *
+      (0.80 + (stone.offsetY || 0));
+
+    drawShadow(
+      centerX,
+      baseY + tileSize * 0.03,
+      tileSize * 0.20 * (stone.scale || 1),
+      tileSize * 0.07 * (stone.scale || 1)
+    );
+
+    ctx.save();
+    ctx.translate(centerX, baseY);
+    ctx.rotate(stone.rotation || 0);
+    ctx.scale(stone.scale || 1, stone.scale || 1);
+
+    ctx.fillStyle = `hsl(${Math.round(34 + (stone.colorShift || 0) * 8)}, 14%, ${Math.round(48 + (stone.colorShift || 0) * 8)}%)`;
+
+    const pebbles = [
+      [-tileSize * 0.10, 0, tileSize * 0.08],
+      [ 0, -tileSize * 0.03, tileSize * 0.09],
+      [ tileSize * 0.10, tileSize * 0.01, tileSize * 0.07]
+    ];
+
+    for (const [x, y, r] of pebbles) {
+      ctx.beginPath();
+      ctx.ellipse(
+        x,
+        y,
+        r,
+        r * 0.72,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawBoulderProp(
+    boulder,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      boulder.x,
+      boulder.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX =
+      p.x +
+      tileSize *
+      (0.5 + (boulder.offsetX || 0));
+
+    const baseY =
+      p.y +
+      tileSize *
+      (0.77 + (boulder.offsetY || 0));
+
+    drawShadow(
+      centerX,
+      baseY + tileSize * 0.06,
+      tileSize * 0.26 * (boulder.scale || 1),
+      tileSize * 0.10 * (boulder.scale || 1)
+    );
+
+    ctx.save();
+    ctx.translate(centerX, baseY);
+    ctx.rotate(boulder.rotation || 0);
+    ctx.scale(
+      (boulder.scale || 1) * (boulder.widthScale || 1),
+      (boulder.scale || 1) * (boulder.heightScale || 1)
+    );
+
+    ctx.fillStyle = `hsl(${Math.round(36 + (boulder.colorShift || 0) * 7)}, 12%, ${Math.round(46 + (boulder.colorShift || 0) * 7)}%)`;
+    ctx.beginPath();
+    ctx.moveTo(-tileSize * 0.18, tileSize * 0.02);
+    ctx.quadraticCurveTo(
+      -tileSize * 0.21,
+      -tileSize * 0.14,
+      -tileSize * 0.05,
+      -tileSize * 0.22
+    );
+    ctx.quadraticCurveTo(
+      tileSize * 0.08,
+      -tileSize * 0.26,
+      tileSize * 0.18,
+      -tileSize * 0.10
+    );
+    ctx.quadraticCurveTo(
+      tileSize * 0.23,
+      tileSize * 0.05,
+      tileSize * 0.11,
+      tileSize * 0.14
+    );
+    ctx.quadraticCurveTo(
+      -tileSize * 0.05,
+      tileSize * 0.18,
+      -tileSize * 0.18,
+      tileSize * 0.02
+    );
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.20)";
+    ctx.lineWidth = Math.max(1, tileSize * 0.028);
+    ctx.beginPath();
+    ctx.moveTo(-tileSize * 0.06, -tileSize * 0.12);
+    ctx.lineTo(tileSize * 0.08, -tileSize * 0.16);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawFallenLogProp(
+    log,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      log.x,
+      log.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX =
+      p.x +
+      tileSize *
+      (0.5 + (log.offsetX || 0));
+
+    const centerY =
+      p.y +
+      tileSize *
+      (0.76 + (log.offsetY || 0));
+
+    drawShadow(
+      centerX,
+      centerY + tileSize * 0.08,
+      tileSize * 0.30 * (log.lengthScale || 1),
+      tileSize * 0.09 * (log.thicknessScale || 1)
+    );
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(log.rotation || 0);
+    ctx.scale(
+      log.lengthScale || 1,
+      log.thicknessScale || 1
+    );
+
+    ctx.fillStyle = woodColor(
+      27,
+      log.colorShift || 0,
+      37
+    );
+    roundedCapsule(
+      -tileSize * 0.28,
+      -tileSize * 0.07,
+      tileSize * 0.56,
+      tileSize * 0.14,
+      tileSize * 0.06
+    );
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(233, 223, 188, 0.85)";
+    ctx.beginPath();
+    ctx.ellipse(
+      tileSize * 0.22,
+      0,
+      tileSize * 0.05,
+      tileSize * 0.07,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(86, 59, 35, 0.22)";
+    ctx.lineWidth = Math.max(1, tileSize * 0.024);
+    ctx.beginPath();
+    ctx.moveTo(-tileSize * 0.15, -tileSize * 0.03);
+    ctx.lineTo(tileSize * 0.12, -tileSize * 0.03);
+    ctx.moveTo(-tileSize * 0.10, tileSize * 0.02);
+    ctx.lineTo(tileSize * 0.08, tileSize * 0.02);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawStumpProp(
+    stump,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      stump.x,
+      stump.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX =
+      p.x +
+      tileSize *
+      (0.5 + (stump.offsetX || 0));
+
+    const baseY =
+      p.y +
+      tileSize *
+      (0.79 + (stump.offsetY || 0));
+
+    drawShadow(
+      centerX,
+      baseY + tileSize * 0.05,
+      tileSize * 0.20 * (stump.scale || 1),
+      tileSize * 0.08 * (stump.scale || 1)
+    );
+
+    ctx.save();
+    ctx.translate(centerX, baseY);
+    ctx.rotate(stump.rotation || 0);
+    ctx.scale(stump.scale || 1, stump.scale || 1);
+
+    ctx.fillStyle = woodColor(
+      26,
+      stump.colorShift || 0,
+      40
+    );
+    roundedCapsule(
+      -tileSize * 0.11,
+      -tileSize * 0.18,
+      tileSize * 0.22,
+      tileSize * 0.18,
+      tileSize * 0.05
+    );
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(224, 205, 166, 0.95)";
+    ctx.beginPath();
+    ctx.ellipse(
+      0,
+      -tileSize * 0.18,
+      tileSize * 0.12,
+      tileSize * 0.05,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(116, 88, 58, 0.30)";
+    ctx.lineWidth = Math.max(1, tileSize * 0.02);
+    ctx.beginPath();
+    ctx.arc(
+      0,
+      -tileSize * 0.18,
+      tileSize * 0.04,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawGroundScenery(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const props = [];
+
+    for (const stone of state.stones || []) {
+      props.push({
+        type: "stone",
+        y: stone.y + (stone.offsetY || 0),
+        data: stone
+      });
+    }
+
+    for (const log of state.fallenLogs || []) {
+      props.push({
+        type: "fallen_log",
+        y: log.y + (log.offsetY || 0),
+        data: log
+      });
+    }
+
+    for (const boulder of state.boulders || []) {
+      props.push({
+        type: "boulder",
+        y: boulder.y + (boulder.offsetY || 0),
+        data: boulder
+      });
+    }
+
+    for (const stump of state.stumps || []) {
+      props.push({
+        type: "stump",
+        y: stump.y + (stump.offsetY || 0),
+        data: stump
+      });
+    }
+
+    props.sort(
+      (a, b) => a.y - b.y
+    );
+
+    for (const prop of props) {
+      if (prop.type === "stone") {
+        drawStoneProp(
+          prop.data,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      }
+
+      if (prop.type === "fallen_log") {
+        drawFallenLogProp(
+          prop.data,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      }
+
+      if (prop.type === "boulder") {
+        drawBoulderProp(
+          prop.data,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      }
+
+      if (prop.type === "stump") {
+        drawStumpProp(
+          prop.data,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      }
     }
   }
 
@@ -1545,7 +2054,7 @@
 
           const baseY =
             p.y +
-            tileSize * 0.77 +
+            tileSize * 0.82 +
             offset.y;
 
           if (
@@ -2421,6 +2930,12 @@
       offsetY
     );
 
+    drawGroundScenery(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
     drawFirepit(
       now,
       tileSize,
@@ -2443,6 +2958,7 @@
     );
 
     drawTrees(
+      now,
       tileSize,
       offsetX,
       offsetY
