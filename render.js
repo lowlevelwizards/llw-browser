@@ -105,6 +105,45 @@
     };
   }
 
+  function worldPointToScreen(
+    x,
+    y,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const view = LLW.camera.worldToView(x, y);
+
+    return {
+      x: offsetX + view.x * tileSize,
+      y: offsetY + view.y * tileSize
+    };
+  }
+
+  function drawRotatedShadow(
+    centerX,
+    baseY,
+    width,
+    height,
+    rotation = 0,
+    alpha = 0.18
+  ) {
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      centerX,
+      baseY,
+      width,
+      height,
+      rotation,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawShadow(
     centerX,
     baseY,
@@ -1178,12 +1217,6 @@
         p.y + tileSize * 0.84 +
         tileSize * (bush.offsetY || 0) * 0.42;
 
-      drawShadow(
-        centerX,
-        shadowY,
-        tileSize * 0.30 * (bush.scale || 1),
-        tileSize * 0.11 * (bush.scale || 1)
-      );
 
       const wiggle = LLW.juice.getBushWiggle(
         bush.id,
@@ -1279,6 +1312,50 @@
     }
   }
 
+  function treeLobes(tree, tileSize) {
+    const family = tree.family || 0;
+
+    if (family === 1) {
+      return [
+        [-0.18,  0.00, 0.23],
+        [ 0.17,  0.01, 0.22],
+        [-0.05, -0.22, 0.27],
+        [ 0.07, -0.40, 0.23],
+        [ 0.00,  0.17, 0.22]
+      ].map(([x, y, r]) => [
+        x * tileSize,
+        y * tileSize,
+        r * tileSize
+      ]);
+    }
+
+    if (family === 2) {
+      return [
+        [-0.29,  0.02, 0.24],
+        [ 0.28,  0.03, 0.23],
+        [-0.13, -0.17, 0.27],
+        [ 0.14, -0.16, 0.27],
+        [ 0.00,  0.15, 0.23]
+      ].map(([x, y, r]) => [
+        x * tileSize,
+        y * tileSize,
+        r * tileSize
+      ]);
+    }
+
+    return [
+      [-0.24,  0.00, 0.26],
+      [ 0.22,  0.01, 0.25],
+      [ 0.00, -0.22, 0.32],
+      [-0.05,  0.10, 0.28],
+      [ 0.14,  0.16, 0.20]
+    ].map(([x, y, r]) => [
+      x * tileSize,
+      y * tileSize,
+      r * tileSize
+    ]);
+  }
+
   function drawTree(
     tree,
     now,
@@ -1304,18 +1381,10 @@
       tileSize *
       (0.89 + (tree.offsetY || 0));
 
-    const scale =
-      tree.scale || 1;
-
-    drawShadow(
-      centerX,
-      baseY,
-      tileSize * 0.44 * scale,
-      tileSize * 0.16 * scale
-    );
+    const scale = tree.scale || 1;
 
     const trunkHeight =
-      tileSize * 0.42 *
+      tileSize * 0.45 *
       scale *
       (tree.trunkHeight || 1);
 
@@ -1327,14 +1396,46 @@
     const trunkTopY =
       baseY - trunkHeight;
 
+    const treeCell = LLW.pcg.getCell(
+      tree.x,
+      tree.y
+    );
+    const treeShade = treeCell?.shade || 0;
+
     ctx.save();
 
-    ctx.fillStyle = woodColor(
-      26,
-      tree.colorShift || 0,
-      35 + (tree.lightShift || 0) * 2
+    const trunkGradient = ctx.createLinearGradient(
+      centerX - trunkWidth / 2,
+      0,
+      centerX + trunkWidth / 2,
+      0
+    );
+    trunkGradient.addColorStop(
+      0,
+      woodColor(
+        28 + treeShade * 4,
+        (tree.colorShift || 0) + 0.12,
+        31 - treeShade * 3
+      )
+    );
+    trunkGradient.addColorStop(
+      0.55,
+      woodColor(
+        25,
+        tree.colorShift || 0,
+        39 - treeShade * 4
+      )
+    );
+    trunkGradient.addColorStop(
+      1,
+      woodColor(
+        23,
+        (tree.colorShift || 0) - 0.10,
+        33 - treeShade * 4
+      )
     );
 
+    ctx.fillStyle = trunkGradient;
     roundedCapsule(
       centerX - trunkWidth / 2,
       trunkTopY,
@@ -1343,6 +1444,31 @@
       tileSize * 0.06
     );
     ctx.fill();
+
+    // A couple of painterly bark strokes keep the trunk from reading as a
+    // perfectly smooth brown post.
+    ctx.strokeStyle =
+      "rgba(77, 52, 33, 0.26)";
+    ctx.lineWidth = Math.max(1, tileSize * 0.018);
+    ctx.lineCap = "round";
+    const stripeShift = tree.barkStripeShift || 0;
+    for (let i = 0; i < 2; i++) {
+      const stripeX =
+        centerX +
+        trunkWidth * (-0.20 + i * 0.34 + stripeShift * 0.05);
+      ctx.beginPath();
+      ctx.moveTo(
+        stripeX,
+        trunkTopY + trunkHeight * (0.20 + i * 0.12)
+      );
+      ctx.quadraticCurveTo(
+        stripeX + trunkWidth * 0.08,
+        trunkTopY + trunkHeight * 0.48,
+        stripeX - trunkWidth * 0.03,
+        trunkTopY + trunkHeight * 0.80
+      );
+      ctx.stroke();
+    }
 
     const wiggle = LLW.juice.getTreeWiggle(
       tree.id,
@@ -1357,13 +1483,10 @@
     const crownY =
       trunkTopY +
       tileSize *
-      (-0.06 + (tree.crownOffsetY || 0));
+      (-0.14 + (tree.crownOffsetY || 0));
 
     ctx.save();
-    ctx.translate(
-      crownX,
-      crownY
-    );
+    ctx.translate(crownX, crownY);
     ctx.rotate(
       (tree.crownRotation || 0) +
       wiggle.rotation
@@ -1377,42 +1500,50 @@
         wiggle.scale
     );
 
-    const treeCell =
-      LLW.pcg.getCell(
-        tree.x,
-        tree.y
-      );
+    const lobes = treeLobes(tree, tileSize);
+    const maxY = Math.max(...lobes.map((lobe) => lobe[1]));
+    const minY = Math.min(...lobes.map((lobe) => lobe[1]));
 
-    const treeShade =
-      treeCell?.shade || 0;
-
-    ctx.fillStyle = foliageColor(
-      109 + treeShade * 18,
-      tree.colorShift || 0,
-      (tree.lightShift || 0) - treeShade * 0.58,
-      35 + treeShade * 6,
-      48 - treeShade * 6
+    // Lower/crowded foliage first: darker and cooler. Upper lobes get warmer
+    // highlights, so even a flat-shape tree carries a little vertical light.
+    const sortedLobes = [...lobes].sort(
+      (a, b) => b[1] - a[1]
     );
 
-    const lobes = [
-      [-tileSize * 0.23, tileSize * 0.00, tileSize * 0.25],
-      [ tileSize * 0.21, tileSize * 0.01, tileSize * 0.24],
-      [ 0, -tileSize * 0.19, tileSize * 0.31],
-      [ 0, tileSize * 0.07, tileSize * 0.27],
-      [-tileSize * 0.03, tileSize * 0.20, tileSize * 0.19]
-    ];
+    sortedLobes.forEach(
+      ([x, y, r], index) => {
+        const vertical =
+          (maxY - y) /
+          Math.max(0.001, maxY - minY);
+        const localJitter =
+          hash01(
+            Math.floor((tree.lobeSeed || 0) * 10000),
+            index,
+            431
+          ) - 0.5;
+        const hue =
+          116 +
+          treeShade * 15 -
+          vertical * 11 +
+          localJitter * 6;
+        const lightShift =
+          (tree.lightShift || 0) -
+          treeShade * 0.62 +
+          vertical * 0.68 +
+          localJitter * 0.22;
 
-    for (const [x, y, r] of lobes) {
-      ctx.beginPath();
-      ctx.arc(
-        x,
-        y,
-        r,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
+        ctx.fillStyle = foliageColor(
+          hue,
+          (tree.colorShift || 0) + localJitter * 0.22,
+          lightShift,
+          36 + treeShade * 6,
+          44 - treeShade * 5 + vertical * 5
+        );
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    );
 
     ctx.restore();
     ctx.restore();
@@ -1585,12 +1716,6 @@
       tileSize *
       (0.79 + (boulder.offsetY || 0));
 
-    drawShadow(
-      centerX,
-      baseY + tileSize * 0.06,
-      tileSize * 0.34 * (boulder.scale || 1),
-      tileSize * 0.12 * (boulder.scale || 1)
-    );
 
     const palette =
       boulder.palette || {
@@ -1630,7 +1755,26 @@
       boulderShade * 7
     );
 
-    ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+    const rockGradient = ctx.createLinearGradient(
+      0,
+      -tileSize * 0.30,
+      0,
+      tileSize * 0.20
+    );
+    rockGradient.addColorStop(
+      0,
+      `hsl(${Math.round(hue - 7)}, ${sat + 2}%, ${Math.min(68, light + 10)}%)`
+    );
+    rockGradient.addColorStop(
+      0.54,
+      `hsl(${hue}, ${sat}%, ${light}%)`
+    );
+    rockGradient.addColorStop(
+      1,
+      `hsl(${Math.round(hue + 12)}, ${sat + 3}%, ${Math.max(24, light - 10)}%)`
+    );
+
+    ctx.fillStyle = rockGradient;
     ctx.beginPath();
     ctx.moveTo(-tileSize * 0.24, tileSize * 0.03);
     ctx.quadraticCurveTo(
@@ -1664,9 +1808,9 @@
       ctx.beginPath();
       ctx.ellipse(
         -tileSize * 0.05,
-        -tileSize * 0.03,
-        tileSize * 0.12,
-        tileSize * 0.07,
+        -tileSize * 0.13,
+        tileSize * 0.14,
+        tileSize * 0.065,
         -0.15,
         0,
         Math.PI * 2
@@ -1710,12 +1854,6 @@
       tileSize *
       (0.77 + (log.offsetY || 0));
 
-    drawShadow(
-      centerX,
-      centerY + tileSize * 0.08,
-      tileSize * 0.34 * (log.lengthScale || 1),
-      tileSize * 0.09 * (log.thicknessScale || 1)
-    );
 
     ctx.save();
     ctx.translate(centerX, centerY);
@@ -1725,19 +1863,37 @@
       log.thicknessScale || 1
     );
 
+    const logAge = log.age || 0;
+    const logHue = 28 + logAge * 12;
+    const logLight = 39 - logAge * 6;
     ctx.fillStyle = woodColor(
-      27,
+      logHue,
       log.colorShift || 0,
-      37
+      logLight
     );
     roundedCapsule(
-      -tileSize * 0.34,
-      -tileSize * 0.078,
-      tileSize * 0.68,
-      tileSize * 0.15,
-      tileSize * 0.065
+      -tileSize * 0.35,
+      -tileSize * 0.098,
+      tileSize * 0.70,
+      tileSize * 0.19,
+      tileSize * 0.078
     );
     ctx.fill();
+
+    if ((log.mossiness || 0) > 0.08) {
+      ctx.fillStyle = `rgba(74, 118, 69, ${0.20 + log.mossiness * 0.32})`;
+      ctx.beginPath();
+      ctx.ellipse(
+        -tileSize * 0.08,
+        -tileSize * 0.074,
+        tileSize * 0.16,
+        tileSize * 0.035,
+        -0.08,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
 
     if (log.branch) {
       ctx.save();
@@ -1810,12 +1966,6 @@
       tileSize *
       (0.80 + (stump.offsetY || 0));
 
-    drawShadow(
-      centerX,
-      baseY + tileSize * 0.05,
-      tileSize * 0.24 * (stump.scale || 1),
-      tileSize * 0.09 * (stump.scale || 1)
-    );
 
     ctx.save();
     ctx.translate(centerX, baseY);
@@ -1872,6 +2022,21 @@
       Math.PI * 2
     );
     ctx.stroke();
+
+    if ((stump.mossiness || 0) > 0.10) {
+      ctx.fillStyle = `rgba(76, 122, 69, ${0.18 + stump.mossiness * 0.30})`;
+      ctx.beginPath();
+      ctx.ellipse(
+        -tileSize * 0.07,
+        -tileSize * 0.21,
+        tileSize * 0.075,
+        tileSize * 0.028,
+        -0.18,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
 
     ctx.restore();
   }
@@ -1992,6 +2157,12 @@
     const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
     const seed = itemSeed(patch);
     const count = patch.count || 4;
+    const groundCell = LLW.pcg.getCell(
+      patch.x,
+      patch.y
+    );
+    const dryGround =
+      groundCell?.dryGroundAmount || 0;
 
     ctx.save();
     ctx.translate(centerX, centerY);
@@ -2002,9 +2173,22 @@
       const height = tileSize * (0.08 + hash01(seed, i, 31) * 0.08);
       const width = tileSize * (0.018 + hash01(seed, i, 32) * 0.018);
       const bend = (hash01(seed, i, 33) - 0.5) * tileSize * 0.028;
-      const hue = Math.round(105 + (patch.colorShift || 0) * 12 + hash01(seed, i, 34) * 10);
-      const light = Math.round(40 + (patch.lightShift || 0) * 6 + hash01(seed, i, 35) * 10);
-      ctx.fillStyle = `hsla(${hue}, 30%, ${light}%, 0.70)`;
+      const hue = Math.round(
+        105 -
+        dryGround * 26 +
+        (patch.colorShift || 0) * 12 +
+        hash01(seed, i, 34) * 10
+      );
+      const light = Math.round(
+        40 +
+        dryGround * 9 +
+        (patch.lightShift || 0) * 6 +
+        hash01(seed, i, 35) * 10
+      );
+      const saturation = Math.round(
+        30 - dryGround * 6
+      );
+      ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${light}%, 0.70)`;
       ctx.beginPath();
       ctx.moveTo(offset, 0);
       ctx.quadraticCurveTo(offset + bend, -height * 0.75, offset + bend, -height);
@@ -2249,6 +2433,188 @@
     }
   }
 
+  function drawMajorShadows(
+    now,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    for (const tree of state.trees || []) {
+      const p = gridToPixel(tree.x, tree.y, tileSize, offsetX, offsetY);
+      const scale = tree.scale || 1;
+      drawShadow(
+        p.x + tileSize * (0.5 + (tree.offsetX || 0)),
+        p.y + tileSize * (0.89 + (tree.offsetY || 0)),
+        tileSize * 0.46 * scale,
+        tileSize * 0.16 * scale
+      );
+    }
+
+    for (const bush of state.bushes || []) {
+      const p = gridToPixel(bush.x, bush.y, tileSize, offsetX, offsetY);
+      drawShadow(
+        p.x + tileSize * (0.5 + (bush.offsetX || 0)),
+        p.y + tileSize * (0.84 + (bush.offsetY || 0) * 0.42),
+        tileSize * 0.30 * (bush.scale || 1),
+        tileSize * 0.11 * (bush.scale || 1)
+      );
+    }
+
+    for (const stump of state.stumps || []) {
+      const p = gridToPixel(stump.x, stump.y, tileSize, offsetX, offsetY);
+      drawShadow(
+        p.x + tileSize * (0.5 + (stump.offsetX || 0)),
+        p.y + tileSize * (0.85 + (stump.offsetY || 0)),
+        tileSize * 0.23 * (stump.scale || 1),
+        tileSize * 0.085 * (stump.scale || 1)
+      );
+    }
+
+    for (const boulder of state.boulders || []) {
+      const p = gridToPixel(boulder.x, boulder.y, tileSize, offsetX, offsetY);
+      drawShadow(
+        p.x + tileSize * (0.5 + (boulder.offsetX || 0)),
+        p.y + tileSize * (0.85 + (boulder.offsetY || 0)),
+        tileSize * 0.34 * (boulder.scale || 1),
+        tileSize * 0.12 * (boulder.scale || 1)
+      );
+    }
+
+    for (const log of state.fallenLogs || []) {
+      const p = gridToPixel(log.x, log.y, tileSize, offsetX, offsetY);
+      drawRotatedShadow(
+        p.x + tileSize * (0.5 + (log.offsetX || 0)),
+        p.y + tileSize * (0.84 + (log.offsetY || 0)),
+        tileSize * 0.36 * (log.lengthScale || 1),
+        tileSize * 0.095 * (log.thicknessScale || 1),
+        log.rotation || 0,
+        0.17
+      );
+    }
+
+    for (const crossing of state.landscape.crossings || []) {
+      if (crossing.kind !== "log_bridge") {
+        continue;
+      }
+      const path = LLW.crossings.crossingPath(crossing);
+      const a = worldPointToScreen(path[0].x, path[0].y, tileSize, offsetX, offsetY);
+      const b = worldPointToScreen(path[path.length - 1].x, path[path.length - 1].y, tileSize, offsetX, offsetY);
+      drawRotatedShadow(
+        (a.x + b.x) / 2,
+        (a.y + b.y) / 2 + tileSize * 0.055,
+        Math.hypot(b.x - a.x, b.y - a.y) * 0.47,
+        tileSize * 0.085,
+        Math.atan2(b.y - a.y, b.x - a.x),
+        0.16
+      );
+    }
+
+    const itemGroups = new Map();
+    for (const item of state.items || []) {
+      if (
+        item.location.kind !== "world" ||
+        LLW.juice.isItemInFlight(item.id, now)
+      ) {
+        continue;
+      }
+
+      const key = `${item.location.x},${item.location.y}`;
+      if (!itemGroups.has(key)) {
+        itemGroups.set(key, []);
+      }
+      itemGroups.get(key).push(item);
+    }
+
+    for (const items of itemGroups.values()) {
+      const { x, y } = items[0].location;
+      const p = gridToPixel(x, y, tileSize, offsetX, offsetY);
+      drawShadow(
+        p.x + tileSize * 0.5,
+        p.y + tileSize * 0.88,
+        tileSize *
+          (
+            0.20 +
+            Math.min(items.length - 1, 4) * 0.035
+          ),
+        tileSize * 0.085
+      );
+    }
+
+    const player = state.player;
+    const pp = gridToPixel(player.renderX, player.renderY, tileSize, offsetX, offsetY);
+    drawShadow(
+      pp.x + tileSize * 0.5,
+      pp.y + tileSize * 0.86,
+      tileSize * 0.29,
+      tileSize * 0.11
+    );
+  }
+
+  function drawCrossings(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    for (const crossing of state.landscape.crossings || []) {
+      const path = LLW.crossings.crossingPath(crossing);
+      const a = worldPointToScreen(path[0].x, path[0].y, tileSize, offsetX, offsetY);
+      const b = worldPointToScreen(path[path.length - 1].x, path[path.length - 1].y, tileSize, offsetX, offsetY);
+      const centerX = (a.x + b.x) / 2;
+      const centerY = (a.y + b.y) / 2;
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+
+      if (crossing.kind === "log_bridge") {
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(angle);
+        const gradient = ctx.createLinearGradient(0, -tileSize * 0.10, 0, tileSize * 0.10);
+        gradient.addColorStop(0, "#9a7048");
+        gradient.addColorStop(1, "#65482f");
+        ctx.fillStyle = gradient;
+        roundedCapsule(
+          -length * 0.50,
+          -tileSize * 0.095,
+          length,
+          tileSize * 0.19,
+          tileSize * 0.07
+        );
+        ctx.fill();
+        ctx.strokeStyle = "rgba(78, 52, 34, 0.28)";
+        ctx.lineWidth = Math.max(1, tileSize * 0.018);
+        ctx.beginPath();
+        ctx.moveTo(-length * 0.32, -tileSize * 0.025);
+        ctx.lineTo(length * 0.25, -tileSize * 0.025);
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+
+      const count = crossing.stoneCount || 3;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const perpX = -dy / Math.max(0.001, length);
+      const perpY = dx / Math.max(0.001, length);
+
+      for (let i = 1; i <= count; i++) {
+        const t = i / (count + 1);
+        const jitter =
+          (hash01(i, crossing.variation || 0, 921) - 0.5) *
+          tileSize * 0.07;
+        const x = a.x + dx * t + perpX * jitter;
+        const y = a.y + dy * t + perpY * jitter;
+        const r = tileSize * (0.11 + hash01(i, count, 922) * 0.025);
+        const rock = ctx.createLinearGradient(x, y - r, x, y + r);
+        rock.addColorStop(0, "#a89a7f");
+        rock.addColorStop(1, "#746e63");
+        ctx.fillStyle = rock;
+        ctx.beginPath();
+        ctx.ellipse(x, y, r, r * 0.68, angle * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
   function drawGroundScenery(
     tileSize,
     offsetX,
@@ -2261,14 +2627,6 @@
         type: "stone",
         y: stone.y + (stone.offsetY || 0),
         data: stone
-      });
-    }
-
-    for (const stump of state.stumps || []) {
-      props.push({
-        type: "stump",
-        y: stump.y + (stump.offsetY || 0),
-        data: stump
       });
     }
 
@@ -2286,14 +2644,6 @@
         );
       }
 
-      if (prop.type === "stump") {
-        drawStumpProp(
-          prop.data,
-          tileSize,
-          offsetX,
-          offsetY
-        );
-      }
     }
   }
 
@@ -2508,23 +2858,6 @@
         tileSize,
         offsetX,
         offsetY
-      );
-
-      // The pile's shadow arrives with the actual visible pile, never
-      // ahead of a lerping/cooking item.
-      drawShadow(
-        p.x + tileSize * 0.5,
-        p.y + tileSize * 0.88,
-        tileSize *
-          (
-            0.20 +
-            Math.min(
-              visibleItems.length - 1,
-              4
-            ) *
-            0.035
-          ),
-        tileSize * 0.085
       );
 
       const pileScale =
@@ -2956,12 +3289,6 @@
     const groundY =
       p.y + tileSize * 0.86;
 
-    drawShadow(
-      centerX,
-      groundY,
-      tileSize * 0.29,
-      tileSize * 0.11
-    );
 
     const moving = walkT > 0;
 
@@ -3171,18 +3498,18 @@
       player.renderY + 0.48 -
       (
         tree.y +
-        0.42 +
+        0.30 +
         (tree.offsetY || 0) +
         (tree.crownOffsetY || 0)
       );
 
     const rx =
-      0.62 *
+      0.70 *
       (tree.scale || 1) *
       (tree.crownScaleX || 1);
 
     const ry =
-      0.72 *
+      0.84 *
       (tree.scale || 1) *
       (tree.crownScaleY || 1);
 
@@ -3303,6 +3630,20 @@
       });
     }
 
+    for (
+      const stump of
+      state.stumps || []
+    ) {
+      queue.push({
+        kind: "stump",
+        sortY:
+          stump.y +
+          0.80 +
+          (stump.offsetY || 0),
+        entity: stump
+      });
+    }
+
     queue.push({
       kind: "player",
       sortY:
@@ -3337,6 +3678,15 @@
         entry.kind === "fallen_log"
       ) {
         drawFallenLogProp(
+          entry.entity,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      } else if (
+        entry.kind === "stump"
+      ) {
+        drawStumpProp(
           entry.entity,
           tileSize,
           offsetX,
@@ -3689,6 +4039,19 @@
     );
 
     drawGrid(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawMajorShadows(
+      now,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawCrossings(
       tileSize,
       offsetX,
       offsetY

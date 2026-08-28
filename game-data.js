@@ -86,8 +86,10 @@
     // clearance, but can squeeze through a narrow truthful gap at a turn cost.
     playerNormalRadius: 0.19,
     playerSqueezeRadius: 0.105,
-    squeezeMicroPathMaxOffset: 0.30,
-    squeezeMicroPathSamples: 8,
+    squeezeMicroPathMaxOffset: 0.34,
+    squeezeMicroPathSamples: 10,
+    squeezeIntentSideBias: 0.72,
+    squeezeIntentMaxDetour: 1.42,
     normalMoveTurns: 1,
     slowMoveTurns: 2,
     squeezeMoveTurns: 2,
@@ -121,11 +123,34 @@
     trailTargetCount: 3,
     trailOuterWidth: 0.46,
     trailInnerWidth: 0.22,
+    trailDesireWidth: 0.25,
+    trailFootpathWidth: 0.46,
+    trailTrackWidth: 0.68,
+    trailOvergrownWidth: 0.38,
+    trailEndpointFadeFraction: 0.14,
     trailMudPenalty: 4.8,
     trailBramblePenalty: 8.0,
     trailWoodlandPenalty: 1.25,
     trailSlopePenalty: 1.35,
     trailMergeBonus: 0.52,
+
+    // Natural crossings are uncommon bits of opportunity, not guaranteed
+    // infrastructure. They can later become places people deliberately use.
+    crossingMaxCount: 2,
+    crossingSpawnChance: 0.78,
+    crossingLogChance: 0.48,
+    crossingMoveTurns: 2,
+    crossingMinChannelStrength: 0.20,
+    crossingMaxStandingWaterDepth: 0.020,
+
+    // Dry, exposed and disturbed ground is the warm counterpoint to mud.
+    dryGroundVisualThreshold: 0.22,
+    dryGroundBareThreshold: 0.52,
+    dryGroundTargetCoverage: 0.12,
+
+    // Small historical relationships between props.
+    stumpPairedLogChance: 0.32,
+    propMossIdealChance: 0.58,
 
     // Understory establishment.
     bushMinSuitability: 0.31,
@@ -204,7 +229,8 @@
       woodland: false,
       treeSuitability: false,
       canopy: false,
-      understory: false
+      understory: false,
+      squeeze: false
     },
 
     landscape: {
@@ -289,6 +315,17 @@
         trailCells: 0
       },
       trails: [],
+      crossings: [],
+      crossingStats: {
+        count: 0,
+        logBridges: 0,
+        steppingStones: 0
+      },
+      groundHistoryStats: {
+        dryCells: 0,
+        bareDryCells: 0,
+        meanDisturbance: 0
+      },
       geometry: {
         seed: null,
         waterBodies: [],
@@ -525,21 +562,23 @@
         (generationRandom() - 0.5) * 0.18,
       offsetY:
         (generationRandom() - 0.5) * 0.06,
+      family:
+        Math.floor(generationRandom() * 3),
       scale:
-        0.98 +
-        generationRandom() * 0.28,
+        1.05 +
+        generationRandom() * 0.27,
       trunkHeight:
-        1.04 +
-        generationRandom() * 0.28,
+        1.12 +
+        generationRandom() * 0.30,
       trunkWidth:
-        0.94 +
-        generationRandom() * 0.20,
+        0.96 +
+        generationRandom() * 0.22,
       crownScaleX:
-        0.98 +
+        1.04 +
         generationRandom() * 0.30,
       crownScaleY:
-        1.04 +
-        generationRandom() * 0.30,
+        1.10 +
+        generationRandom() * 0.31,
       crownOffsetX:
         (generationRandom() - 0.5) * 0.16,
       crownOffsetY:
@@ -549,7 +588,11 @@
       colorShift:
         (generationRandom() - 0.5) * 1.0,
       lightShift:
-        generationRandom() - 0.5
+        generationRandom() - 0.5,
+      barkStripeShift:
+        generationRandom() - 0.5,
+      lobeSeed:
+        generationRandom()
     };
 
     LLW.state.trees.push(tree);
@@ -657,10 +700,7 @@
       palette,
       facetShift:
         generationRandom() - 0.5,
-      mossiness:
-        generationRandom() < 0.34
-          ? generationRandom()
-          : 0,
+      mossiness: 0,
       colorShift:
         generationRandom() - 0.5,
       lightShift:
@@ -712,7 +752,12 @@
             }
           : null,
       colorShift:
-        generationRandom() - 0.5
+        generationRandom() - 0.5,
+      age:
+        generationRandom(),
+      mossiness: 0,
+      pairedStumpId: null,
+      isBridge: false
     };
 
     LLW.state.fallenLogs.push(fallenLog);
@@ -729,8 +774,8 @@
       offsetY:
         (generationRandom() - 0.5) * 0.06,
       scale:
-        1.02 +
-        generationRandom() * 0.42,
+        0.96 +
+        generationRandom() * 0.39,
       widthScale:
         0.96 +
         generationRandom() * 0.30,
@@ -742,7 +787,9 @@
       colorShift:
         generationRandom() - 0.5,
       ringShift:
-        generationRandom() - 0.5
+        generationRandom() - 0.5,
+      mossiness: 0,
+      pairedLogId: null
     };
 
     LLW.state.stumps.push(stump);
@@ -1320,6 +1367,17 @@
       trailCount: 0,
       trailCells: 0
     };
+    LLW.state.landscape.crossings = [];
+    LLW.state.landscape.crossingStats = {
+      count: 0,
+      logBridges: 0,
+      steppingStones: 0
+    };
+    LLW.state.landscape.groundHistoryStats = {
+      dryCells: 0,
+      bareDryCells: 0,
+      meanDisturbance: 0
+    };
     LLW.state.items = [];
 
     const occupied =
@@ -1332,7 +1390,15 @@
       resolvedSeed
     );
 
+    LLW.crossings.generate(
+      resolvedSeed
+    );
+
     LLW.trails.generate(
+      resolvedSeed
+    );
+
+    LLW.ecology.deriveGroundHistory(
       resolvedSeed
     );
 

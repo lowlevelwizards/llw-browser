@@ -49,9 +49,19 @@
       return false;
     }
 
+    const crossingCell =
+      LLW.crossings &&
+      LLW.crossings.isCrossingCell(
+        cell.x,
+        cell.y
+      );
+
     if (
-      cell.surfaceWaterDepth > 0.00001 ||
-      (cell.visibleWaterFooting || 0) >= 0.18
+      !crossingCell &&
+      (
+        cell.surfaceWaterDepth > 0.00001 ||
+        (cell.visibleWaterFooting || 0) >= 0.18
+      )
     ) {
       return false;
     }
@@ -89,8 +99,18 @@
     const existingTrail =
       to.trailAmount || 0;
 
+    const crossingCost =
+      LLW.crossings &&
+      LLW.crossings.isCrossingCell(
+        to.x,
+        to.y
+      )
+        ? 0.34
+        : 0;
+
     const raw =
       base +
+      crossingCost +
       mud * LLW.CONFIG.trailMudPenalty +
       bramble * LLW.CONFIG.trailBramblePenalty +
       woodland * LLW.CONFIG.trailWoodlandPenalty * 0.42 +
@@ -366,14 +386,21 @@
     return next;
   }
 
-  function pathPoints(indexes, rng) {
+  function pathPoints(
+    indexes,
+    rng,
+    trailClass
+  ) {
     const cells = state.landscape.cells;
 
     const points = indexes.map((index, i) => {
       const cell = cells[index];
       const endpoint =
         i === 0 || i === indexes.length - 1;
-      const jitter = endpoint ? 0.02 : 0.07;
+      const jitter =
+        trailClass === "track"
+          ? (endpoint ? 0.01 : 0.035)
+          : (endpoint ? 0.02 : 0.075);
 
       return {
         x:
@@ -387,23 +414,70 @@
       };
     });
 
-    return chaikin(points);
+    let smoothed = chaikin(points);
+
+    if (
+      trailClass === "desire" ||
+      trailClass === "overgrown"
+    ) {
+      smoothed = chaikin(smoothed);
+    }
+
+    return smoothed;
   }
 
-  function markTrail(indexes) {
+  function trailProfile(index, goal, length, rng) {
+    if (index === 0 && goal.kind === "edge") {
+      return {
+        trailClass: "track",
+        intensity: 0.94,
+        age: 0.18 + rng() * 0.24
+      };
+    }
+
+    if (index === 1) {
+      return {
+        trailClass: "footpath",
+        intensity: 0.70 + rng() * 0.12,
+        age: 0.20 + rng() * 0.38
+      };
+    }
+
+    if (rng() < 0.48 || length > 22) {
+      return {
+        trailClass: "overgrown",
+        intensity: 0.42 + rng() * 0.10,
+        age: 0.70 + rng() * 0.24
+      };
+    }
+
+    return {
+      trailClass: "desire",
+      intensity: 0.48 + rng() * 0.10,
+      age: 0.28 + rng() * 0.42
+    };
+  }
+
+  function markTrail(indexes, intensity) {
     const cells = state.landscape.cells;
     const marked = new Set();
 
     for (const index of indexes) {
       const cell = cells[index];
+
+      cell.trailUse =
+        (cell.trailUse || 0) + intensity;
+
       cell.trailAmount = Math.max(
         cell.trailAmount || 0,
-        1
+        Math.min(1, intensity)
       );
+
       cell.disturbance = Math.max(
         cell.disturbance || 0,
-        0.82
+        Math.min(1, 0.34 + intensity * 0.58)
       );
+
       marked.add(index);
 
       for (const neighborIndex of cell.neighborIndexes) {
@@ -411,7 +485,9 @@
         const diagonal =
           neighbor.x !== cell.x &&
           neighbor.y !== cell.y;
-        const fringe = diagonal ? 0.18 : 0.30;
+        const fringe =
+          (diagonal ? 0.13 : 0.22) *
+          intensity;
 
         neighbor.trailAmount = Math.max(
           neighbor.trailAmount || 0,
@@ -419,7 +495,7 @@
         );
         neighbor.disturbance = Math.max(
           neighbor.disturbance || 0,
-          fringe * 0.55
+          fringe * 0.52
         );
       }
     }
@@ -432,6 +508,7 @@
 
     for (const cell of cells) {
       cell.trailAmount = 0;
+      cell.trailUse = 0;
       cell.disturbance = cell.disturbance || 0;
     }
 
@@ -541,7 +618,17 @@
         continue;
       }
 
-      const marked = markTrail(indexes);
+      const profile = trailProfile(
+        i,
+        goal,
+        indexes.length,
+        rng
+      );
+
+      const marked = markTrail(
+        indexes,
+        profile.intensity
+      );
       for (const index of marked) {
         trailCellSet.add(index);
       }
@@ -550,14 +637,35 @@
         id: `trail_${state.landscape.trails.length + 1}`,
         kind: goal.kind,
         label: goal.label,
+        trailClass: profile.trailClass,
+        intensity: profile.intensity,
+        age: profile.age,
         cellIndexes: indexes,
-        points: pathPoints(indexes, rng)
+        points: pathPoints(
+          indexes,
+          rng,
+          profile.trailClass
+        )
       });
     }
 
     state.landscape.trailStats = {
       trailCount: state.landscape.trails.length,
-      trailCells: trailCellSet.size
+      trailCells: trailCellSet.size,
+      trackCount:
+        state.landscape.trails.filter(
+          (trail) => trail.trailClass === "track"
+        ).length,
+      footpathCount:
+        state.landscape.trails.filter(
+          (trail) => trail.trailClass === "footpath"
+        ).length,
+      minorCount:
+        state.landscape.trails.filter(
+          (trail) =>
+            trail.trailClass === "desire" ||
+            trail.trailClass === "overgrown"
+        ).length
     };
   }
 

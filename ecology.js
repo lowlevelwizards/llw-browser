@@ -4154,6 +4154,251 @@
     return placed;
   }
 
+  function deriveGroundHistory(
+    seed,
+    cells = state.landscape.cells
+  ) {
+    if (!cells.length) {
+      return;
+    }
+
+    const rng = LLW.pcg.createRng(
+      seed,
+      "ground-history"
+    );
+
+    function nearbyInfluence(list, cell, radius) {
+      let strongest = 0;
+
+      for (const entity of list || []) {
+        const d = Math.hypot(
+          cell.x - entity.x,
+          cell.y - entity.y
+        );
+
+        if (d >= radius) {
+          continue;
+        }
+
+        strongest = Math.max(
+          strongest,
+          1 - smoothstep01(d / radius)
+        );
+      }
+
+      return strongest;
+    }
+
+    function crossingInfluence(cell) {
+      let strongest = 0;
+
+      for (
+        const crossing of
+        state.landscape.crossings || []
+      ) {
+        for (const point of [
+          crossing.from,
+          crossing.to
+        ]) {
+          const d = Math.hypot(
+            cell.x - point.x,
+            cell.y - point.y
+          );
+
+          if (d < 2.2) {
+            strongest = Math.max(
+              strongest,
+              1 - smoothstep01(d / 2.2)
+            );
+          }
+        }
+      }
+
+      return strongest;
+    }
+
+    const rawDry = [];
+    let disturbanceTotal = 0;
+
+    for (const cell of cells) {
+      const trailUse = Math.min(
+        1,
+        cell.trailUse || 0
+      );
+      const trail = cell.trailAmount || 0;
+      const clearing =
+        cell.woodlandClearingInfluence || 0;
+      const stumpHistory =
+        nearbyInfluence(
+          state.stumps,
+          cell,
+          2.3
+        );
+      const logHistory =
+        nearbyInfluence(
+          state.fallenLogs,
+          cell,
+          1.8
+        );
+      const boulderShelter =
+        nearbyInfluence(
+          state.boulders,
+          cell,
+          1.5
+        );
+      const crossing =
+        crossingInfluence(cell);
+
+      const disturbance = clamp(
+        Math.max(
+          cell.disturbance || 0,
+          trail * 0.58 +
+            trailUse * 0.34,
+          clearing * 0.22,
+          stumpHistory * 0.34,
+          crossing * 0.44
+        ) +
+          logHistory * 0.08
+      );
+
+      cell.disturbance = disturbance;
+      cell.propShelter = clamp(
+        logHistory * 0.62 +
+        boulderShelter * 0.58 +
+        stumpHistory * 0.24
+      );
+      disturbanceTotal += disturbance;
+
+      const moisture = cell.moisture || 0;
+      const shade = cell.shade || 0;
+      const open = cell.openGround ?? 1;
+      const elevation = cell.elevation || 0;
+      const mud = cell.mudAmount || 0;
+
+      const dryness =
+        1 -
+        smoothstep01(
+          (moisture - 0.20) / 0.52
+        );
+
+      const sun = 1 - shade;
+
+      let potential =
+        (
+          dryness * 0.48 +
+          sun * 0.18 +
+          open * 0.12 +
+          disturbance * 0.42 +
+          smoothstep01(
+            (elevation - 0.48) / 0.44
+          ) * 0.10
+        ) *
+        (
+          0.76 +
+          rng() * 0.30
+        );
+
+      potential *=
+        1 - mud * 0.92;
+
+      if (
+        cell.surfaceWaterDepth > EPSILON ||
+        (cell.visibleWaterFooting || 0) >= 0.18
+      ) {
+        potential = 0;
+      }
+
+      rawDry.push(clamp(potential));
+    }
+
+    const smoothDry = cells.map(
+      (cell, index) => {
+        let sum = rawDry[index] * 2.2;
+        let weight = 2.2;
+
+        for (
+          const neighborIndex of
+          cell.neighborIndexes
+        ) {
+          sum += rawDry[neighborIndex];
+          weight += 1;
+        }
+
+        return sum / weight;
+      }
+    );
+
+    let dryCells = 0;
+    let bareDryCells = 0;
+
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+
+      const amount = smoothstep01(
+        (
+          smoothDry[i] - 0.64
+        ) /
+        0.24
+      );
+
+      cell.dryGroundAmount = clamp(amount);
+      cell.dryBareAmount = smoothstep01(
+        (
+          amount -
+          LLW.CONFIG.dryGroundBareThreshold
+        ) /
+        Math.max(
+          0.0001,
+          1 - LLW.CONFIG.dryGroundBareThreshold
+        )
+      );
+
+      if (
+        cell.dryGroundAmount >=
+        LLW.CONFIG.dryGroundVisualThreshold
+      ) {
+        dryCells++;
+      }
+
+      if (cell.dryBareAmount >= 0.18) {
+        bareDryCells++;
+      }
+
+      // Presentation interpretation, not a new simulation ontology.
+      if ((cell.mudAmount || 0) > 0.48) {
+        cell.groundcoverProfile = "muddy";
+      } else if (cell.dryBareAmount > 0.24) {
+        cell.groundcoverProfile = "dry_sparse";
+      } else if ((cell.trailAmount || 0) > 0.38) {
+        cell.groundcoverProfile = "disturbed_trail";
+      } else if (
+        (
+          (cell.shade || 0) > 0.58 ||
+          (cell.propShelter || 0) > 0.42
+        ) &&
+        (cell.moisture || 0) > 0.44
+      ) {
+        cell.groundcoverProfile = "mossy_shade";
+      } else if ((cell.shade || 0) > 0.48) {
+        cell.groundcoverProfile = "woodland_litter";
+      } else if ((cell.riparian || 0) > 0.48) {
+        cell.groundcoverProfile = "pebbly_bank";
+      } else if ((cell.woodlandEdge || 0) > 0.50) {
+        cell.groundcoverProfile = "clover_edge";
+      } else {
+        cell.groundcoverProfile = "open_grass";
+      }
+    }
+
+    state.landscape.groundHistoryStats = {
+      dryCells,
+      bareDryCells,
+      meanDisturbance:
+        disturbanceTotal /
+        cells.length
+    };
+  }
+
   function generateForestFloorProps({
     seed,
     occupied,
@@ -4343,6 +4588,133 @@
       },
       spawn: spawnStump
     });
+
+
+    const historyRng =
+      LLW.pcg.createRng(
+        seed,
+        "prop-history"
+      );
+
+    // Some stumps remember the tree that became a nearby fallen trunk.
+    for (const stump of state.stumps || []) {
+      if (
+        historyRng() >
+        LLW.CONFIG.stumpPairedLogChance
+      ) {
+        continue;
+      }
+
+      const candidates = [];
+
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx === 0 && dy === 0) {
+            continue;
+          }
+
+          const cell =
+            LLW.pcg.getCell(
+              stump.x + dx,
+              stump.y + dy
+            );
+
+          if (
+            !cell ||
+            isCellBlocked(cell, occupied) ||
+            (cell.openGround ?? 1) < 0.18 ||
+            (cell.visibleWaterFooting || 0) >= 0.18
+          ) {
+            continue;
+          }
+
+          candidates.push(cell);
+        }
+      }
+
+      const chosen = weightedChoice(
+        candidates,
+        historyRng,
+        (cell) =>
+          0.18 +
+          (cell.woodlandDensity || 0) * 0.48 +
+          (cell.openGround ?? 1) * 0.22
+      );
+
+      if (!chosen) {
+        continue;
+      }
+
+      const log = spawnFallenLog(
+        chosen.x,
+        chosen.y
+      );
+
+      occupied.add(
+        LLW.gridKey(
+          chosen.x,
+          chosen.y
+        )
+      );
+
+      log.rotation = Math.atan2(
+        chosen.y - stump.y,
+        chosen.x - stump.x
+      );
+      log.pairedStumpId = stump.id;
+      stump.pairedLogId = log.id;
+    }
+
+    // Materials listen to where they ended up. Wet shaded stone and old wood
+    // are more likely to carry moss than exposed sun-warmed props.
+    for (const boulder of state.boulders || []) {
+      const cell = LLW.pcg.getCell(
+        boulder.x,
+        boulder.y
+      );
+      const habitat = clamp(
+        (cell?.shade || 0) * 0.56 +
+        (cell?.moisture || 0) * 0.44
+      );
+
+      boulder.mossiness =
+        historyRng() <
+        habitat * LLW.CONFIG.propMossIdealChance
+          ? habitat * (0.54 + historyRng() * 0.46)
+          : 0;
+    }
+
+    for (const log of state.fallenLogs || []) {
+      const cell = LLW.pcg.getCell(
+        log.x,
+        log.y
+      );
+      const habitat = clamp(
+        (cell?.shade || 0) * 0.52 +
+        (cell?.moisture || 0) * 0.48
+      );
+
+      log.mossiness =
+        historyRng() < habitat * 0.62
+          ? habitat * (0.42 + historyRng() * 0.50)
+          : 0;
+    }
+
+    for (const stump of state.stumps || []) {
+      const cell = LLW.pcg.getCell(
+        stump.x,
+        stump.y
+      );
+      const habitat = clamp(
+        (cell?.shade || 0) * 0.46 +
+        (cell?.moisture || 0) * 0.54
+      );
+
+      stump.mossiness =
+        historyRng() < habitat * 0.54
+          ? habitat * (0.36 + historyRng() * 0.42)
+          : 0;
+    }
   }
 
   function generateGroundcover({
@@ -4445,6 +4817,13 @@
         cell.mudBareAmount || 0;
       const trail =
         cell.trailAmount || 0;
+      const dryGround =
+        cell.dryGroundAmount || 0;
+      const dryBare =
+        cell.dryBareAmount || 0;
+      const profile =
+        cell.groundcoverProfile ||
+        "open_grass";
       const steepness =
         smoothstep01(
           (
@@ -4485,6 +4864,8 @@
         ) *
         (1 - bareMud * 0.88) *
         (1 - trail * 0.52) *
+        (1 - dryBare * 0.56) *
+        (profile === "woodland_litter" ? 1.26 : 1) *
         leafCluster;
 
       if (rng() < leafLitterChance) {
@@ -4511,6 +4892,8 @@
         ) *
         (1 - bareMud * 0.62) *
         (1 - trail * 0.44) *
+        (1 - dryGround * 0.72) *
+        (profile === "mossy_shade" ? 1.34 : 1) *
         mossCluster;
 
       if (rng() < mossChance) {
@@ -4538,6 +4921,8 @@
         ) *
         (1 - bareMud * 0.90) *
         (1 - trail * 0.78) *
+        (1 - dryBare * 0.46) *
+        (profile === "clover_edge" ? 1.28 : 1) *
         cloverCluster;
 
       if (rng() < cloverChance) {
@@ -4560,6 +4945,10 @@
         (1 - mud * 0.72) *
         (1 - bareMud * 0.84) *
         (1 - trail * 0.72) *
+        (1 - dryBare * 0.62) *
+        (profile === "open_grass" ? 1.14 : 1) *
+        (profile === "dry_sparse" ? 0.58 : 1) *
+        (profile === "disturbed_trail" ? 0.72 : 1) *
         grassCluster;
 
       if (rng() < grassChance) {
@@ -4588,6 +4977,7 @@
         (1 - mud * 0.86) *
         (1 - bareMud * 0.95) *
         (1 - trail * 0.88) *
+        (1 - dryGround * 0.54) *
         flowerCluster;
 
       if (rng() < flowerChance) {
@@ -4609,6 +4999,9 @@
         ) *
         (0.82 + trail * 0.34) *
         (0.86 + mud * 0.24) *
+        (profile === "pebbly_bank" ? 1.38 : 1) *
+        (profile === "disturbed_trail" ? 1.22 : 1) *
+        (profile === "dry_sparse" ? 1.16 : 1) *
         pebbleCluster;
 
       if (rng() < pebbleChance) {
@@ -4655,6 +5048,7 @@
     deriveTreeSuitability,
     deriveWaterPlacementFields,
     deriveMudFields,
+    deriveGroundHistory,
     generateTrees,
     deriveCanopyFields,
     deriveUnderstorySuitability,

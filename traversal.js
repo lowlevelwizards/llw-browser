@@ -35,6 +35,13 @@
   }
 
   function pointInWater(point) {
+    if (
+      LLW.crossings &&
+      LLW.crossings.pointAllowed(point)
+    ) {
+      return false;
+    }
+
     const geometry = state.landscape.geometry;
 
     if (!geometry) {
@@ -153,7 +160,7 @@
     };
 
     const halfLength =
-      0.36 *
+      0.37 *
       (log.lengthScale || 1);
 
     const angle = log.rotation || 0;
@@ -173,7 +180,7 @@
         y: center.y + dy
       },
       radius:
-        0.085 *
+        0.105 *
         (log.thicknessScale || 1)
     };
   }
@@ -284,6 +291,13 @@
       (
         targetCell.surfaceWaterDepth > 0.00001 ||
         (targetCell.visibleWaterFooting || 0) >= 0.18
+      ) &&
+      !(
+        LLW.crossings &&
+        LLW.crossings.isCrossingCell(
+          targetCell.x,
+          targetCell.y
+        )
       )
     ) {
       return true;
@@ -334,6 +348,13 @@
 
   function getTerrainMoveCost(x, y) {
     const cell = LLW.pcg.getCell(x, y);
+
+    if (
+      LLW.crossings &&
+      LLW.crossings.isCrossingCell(x, y)
+    ) {
+      return LLW.CONFIG.crossingMoveTurns;
+    }
 
     if (
       cell &&
@@ -598,8 +619,174 @@
     };
   }
 
+  function intentCandidates(
+    fromX,
+    fromY,
+    dx,
+    dy
+  ) {
+    const candidates = [];
+
+    if (dx !== 0) {
+      candidates.push(
+        {
+          x: fromX + dx,
+          y: fromY - 1,
+          side: -1
+        },
+        {
+          x: fromX + dx,
+          y: fromY + 1,
+          side: 1
+        }
+      );
+    } else {
+      candidates.push(
+        {
+          x: fromX - 1,
+          y: fromY + dy,
+          side: -1
+        },
+        {
+          x: fromX + 1,
+          y: fromY + dy,
+          side: 1
+        }
+      );
+    }
+
+    return candidates.filter(
+      (candidate) =>
+        candidate.x >= 0 &&
+        candidate.y >= 0 &&
+        candidate.x < LLW.CONFIG.worldCols &&
+        candidate.y < LLW.CONFIG.worldRows
+    );
+  }
+
+  function evaluateIntentMove(
+    fromX,
+    fromY,
+    dx,
+    dy
+  ) {
+    const primaryX = fromX + dx;
+    const primaryY = fromY + dy;
+
+    const primary = evaluateMove(
+      fromX,
+      fromY,
+      primaryX,
+      primaryY
+    );
+
+    primary.destX = primaryX;
+    primary.destY = primaryY;
+
+    if (primary.allowed) {
+      return primary;
+    }
+
+    // Intent slipping only answers a physical blockage. A cardinal press near
+    // water should not secretly route the wizard around an entire shoreline.
+    if (
+      primary.reason === "water" ||
+      primary.reason === "too_loaded_to_squeeze"
+    ) {
+      return primary;
+    }
+
+    const options = [];
+
+    for (
+      const candidate of intentCandidates(
+        fromX,
+        fromY,
+        dx,
+        dy
+      )
+    ) {
+      const result = evaluateMove(
+        fromX,
+        fromY,
+        candidate.x,
+        candidate.y
+      );
+
+      if (!result.allowed) {
+        continue;
+      }
+
+      const sideCell =
+        dx !== 0
+          ? LLW.pcg.getCell(
+              fromX,
+              candidate.y
+            )
+          : LLW.pcg.getCell(
+              candidate.x,
+              fromY
+            );
+
+      // A diagonal slip must actually pass a corner/opening, not teleport
+      // around a distant blocker. At least one side of the corner needs to be
+      // spatially open enough to read as a gap.
+      if (
+        sideCell &&
+        (
+          sideCell.surfaceWaterDepth > 0.00001 ||
+          (sideCell.visibleWaterFooting || 0) >= 0.18
+        )
+      ) {
+        continue;
+      }
+
+      const modeRank =
+        result.mode === "normal"
+          ? 0
+          : result.mode === "slow"
+            ? 1
+            : 2;
+
+      options.push({
+        ...result,
+        destX: candidate.x,
+        destY: candidate.y,
+        side: candidate.side,
+        score:
+          modeRank +
+          Math.abs(candidate.side) * 0.05
+      });
+    }
+
+    if (!options.length) {
+      return primary;
+    }
+
+    options.sort(
+      (a, b) => a.score - b.score
+    );
+
+    const chosen = options[0];
+
+    return {
+      ...chosen,
+      mode: "squeeze",
+      turnCost: Math.max(
+        chosen.turnCost || 1,
+        LLW.CONFIG.squeezeMoveTurns
+      ),
+      duration: Math.max(
+        chosen.duration || 0,
+        LLW.CONFIG.squeezeMoveDuration
+      ),
+      reason: "intent_gap"
+    };
+  }
+
   LLW.traversal = {
     evaluateMove,
+    evaluateIntentMove,
     getEffectiveBodyRadius,
     getTerrainMoveCost,
     getMudModifier,

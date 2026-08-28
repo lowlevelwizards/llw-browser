@@ -135,29 +135,38 @@
       return false;
     }
 
-    const nextX = LLW.clamp(
+    const requestedX = LLW.clamp(
       player.x + dx,
       0,
       LLW.CONFIG.worldCols - 1
     );
 
-    const nextY = LLW.clamp(
+    const requestedY = LLW.clamp(
       player.y + dy,
       0,
       LLW.CONFIG.worldRows - 1
     );
 
-    if (nextX === player.x && nextY === player.y) {
+    if (
+      requestedX === player.x &&
+      requestedY === player.y
+    ) {
       return false;
     }
 
     const traversal =
-      LLW.traversal.evaluateMove(
+      LLW.traversal.evaluateIntentMove(
         player.x,
         player.y,
-        nextX,
-        nextY
+        dx,
+        dy
       );
+
+    const nextX =
+      traversal.destX ?? requestedX;
+
+    const nextY =
+      traversal.destY ?? requestedY;
 
     if (!traversal.allowed) {
       if (traversal.message) {

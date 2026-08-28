@@ -696,7 +696,8 @@
     elevation,
     woodland = 0,
     shade = 0,
-    moisture = 0
+    moisture = 0,
+    dryGround = 0
   ) {
     const t =
       smoothstep(
@@ -929,6 +930,43 @@
         moistureMix
       );
 
+    const dryMix =
+      smoothstep(
+        (
+          dryGround -
+          LLW.CONFIG.dryGroundVisualThreshold * 0.54
+        ) /
+        0.68
+      ) *
+      0.48;
+
+    const dryWarm =
+      [205, 188, 112];
+
+    const dryBare =
+      [184, 157, 96];
+
+    const dryCore = smoothstep(
+      (
+        dryGround -
+        LLW.CONFIG.dryGroundBareThreshold
+      ) /
+      Math.max(
+        0.0001,
+        1 - LLW.CONFIG.dryGroundBareThreshold
+      )
+    );
+
+    const dryTarget = [
+      lerp(dryWarm[0], dryBare[0], dryCore),
+      lerp(dryWarm[1], dryBare[1], dryCore),
+      lerp(dryWarm[2], dryBare[2], dryCore)
+    ];
+
+    r = lerp(r, dryTarget[0], dryMix);
+    g = lerp(g, dryTarget[1], dryMix);
+    b = lerp(b, dryTarget[2], dryMix);
+
     return [
       Math.round(r),
       Math.round(g),
@@ -1031,6 +1069,11 @@
             sampleMoistureField(
               worldX,
               worldY
+            ),
+            sampleScalarField(
+              worldX,
+              worldY,
+              "dryGroundAmount"
             )
           );
 
@@ -1193,6 +1236,291 @@
     ctx.restore();
   }
 
+  function drawDryGroundDetails(
+    ctx,
+    view
+  ) {
+    const cells = state.landscape.cells;
+    if (!cells.length) {
+      return;
+    }
+
+    const overview = LLW.camera.isOverview();
+    const detailScale = overview ? 0.54 : 1;
+
+    ctx.save();
+
+    for (const cell of cells) {
+      const dry = cell.dryGroundAmount || 0;
+      const bare = cell.dryBareAmount || 0;
+
+      if (dry < LLW.CONFIG.dryGroundVisualThreshold) {
+        continue;
+      }
+
+      const center = worldPointToPixel(
+        {
+          x: cell.x + 0.5,
+          y: cell.y + 0.73
+        },
+        view
+      );
+
+      if (
+        center.x < -view.tileSize ||
+        center.y < -view.tileSize ||
+        center.x > view.width + view.tileSize ||
+        center.y > view.height + view.tileSize
+      ) {
+        continue;
+      }
+
+      const count =
+        1 +
+        Math.floor(
+          bare * 2.4 +
+          hash01(cell.x, cell.y, 961) * 1.6
+        );
+
+      for (let i = 0; i < count; i++) {
+        const angle =
+          hash01(cell.x, cell.y, 970 + i) * Math.PI * 2;
+        const radius =
+          view.tileSize *
+          (
+            0.035 +
+            hash01(cell.x, cell.y, 980 + i) * 0.15
+          );
+        const x =
+          center.x + Math.cos(angle) * radius;
+        const y =
+          center.y + Math.sin(angle) * radius * 0.65;
+        const rx =
+          view.tileSize *
+          (0.035 + hash01(cell.x, cell.y, 990 + i) * 0.045) *
+          detailScale;
+        const ry =
+          rx *
+          (0.32 + hash01(cell.x, cell.y, 1000 + i) * 0.28);
+
+        ctx.fillStyle =
+          `rgba(151, 125, 77, ${0.08 + bare * 0.16})`;
+        ctx.beginPath();
+        ctx.ellipse(
+          x,
+          y,
+          rx,
+          ry,
+          hash01(cell.x, cell.y, 1010 + i) * Math.PI,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function trailStyle(trail) {
+    const kind = trail.trailClass || "footpath";
+
+    if (kind === "track") {
+      return {
+        outerWidth: LLW.CONFIG.trailTrackWidth,
+        innerWidth: LLW.CONFIG.trailTrackWidth * 0.56,
+        outer: "rgba(160, 145, 86, 0.24)",
+        inner: "rgba(125, 105, 69, 0.23)",
+        grass: 0.10,
+        pebble: 0.34
+      };
+    }
+
+    if (kind === "desire") {
+      return {
+        outerWidth: LLW.CONFIG.trailDesireWidth,
+        innerWidth: LLW.CONFIG.trailDesireWidth * 0.34,
+        outer: "rgba(145, 148, 91, 0.13)",
+        inner: "rgba(123, 117, 77, 0.10)",
+        grass: 0.56,
+        pebble: 0.05
+      };
+    }
+
+    if (kind === "overgrown") {
+      return {
+        outerWidth: LLW.CONFIG.trailOvergrownWidth,
+        innerWidth: LLW.CONFIG.trailOvergrownWidth * 0.30,
+        outer: "rgba(142, 142, 88, 0.12)",
+        inner: "rgba(116, 110, 72, 0.09)",
+        grass: 0.72,
+        pebble: 0.05
+      };
+    }
+
+    return {
+      outerWidth: LLW.CONFIG.trailFootpathWidth,
+      innerWidth: LLW.CONFIG.trailFootpathWidth * 0.48,
+      outer: "rgba(157, 151, 91, 0.20)",
+      inner: "rgba(122, 112, 73, 0.18)",
+      grass: 0.28,
+      pebble: 0.18
+    };
+  }
+
+  function trailEnvelope(t) {
+    const fade =
+      Math.max(
+        0.04,
+        LLW.CONFIG.trailEndpointFadeFraction
+      );
+
+    const start = smoothstep(t / fade);
+    const end = smoothstep((1 - t) / fade);
+
+    return Math.max(
+      0.08,
+      Math.min(start, end)
+    );
+  }
+
+  function drawTrailSegmentPass(
+    ctx,
+    points,
+    view,
+    style,
+    inner = false
+  ) {
+    const total = points.length - 1;
+
+    for (let i = 0; i < total; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const t = (i + 0.5) / total;
+      const envelope = trailEnvelope(t);
+      const baseWidth = inner
+        ? style.innerWidth
+        : style.outerWidth;
+
+      ctx.strokeStyle = inner
+        ? style.inner
+        : style.outer;
+      const widthVariation =
+        0.90 +
+        hash01(
+          total,
+          i,
+          inner ? 842 : 841
+        ) *
+        0.18;
+
+      ctx.lineWidth =
+        view.tileSize *
+        baseWidth *
+        (0.44 + envelope * 0.56) *
+        widthVariation;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+
+  function drawTrailDressing(
+    ctx,
+    trail,
+    points,
+    view,
+    style
+  ) {
+    const overview = LLW.camera.isOverview();
+    if (overview || points.length < 4) {
+      return;
+    }
+
+    const seed =
+      Number(
+        String(trail.id).replace(/\D/g, "")
+      ) || 1;
+
+    for (let i = 2; i < points.length - 2; i += 3) {
+      const point = points[i];
+      const previous = points[i - 1];
+      const next = points[i + 1];
+      const dx = next.x - previous.x;
+      const dy = next.y - previous.y;
+      const length = Math.max(0.001, Math.hypot(dx, dy));
+      const nx = -dy / length;
+      const ny = dx / length;
+      const jitter =
+        hash01(seed, i, 811) - 0.5;
+
+      if (
+        hash01(seed, i, 812) <
+        style.grass
+      ) {
+        const side =
+          hash01(seed, i, 813) < 0.5
+            ? -1
+            : 1;
+        const x =
+          point.x +
+          nx * side * view.tileSize *
+            (0.06 + Math.abs(jitter) * 0.06);
+        const y =
+          point.y +
+          ny * side * view.tileSize *
+            (0.06 + Math.abs(jitter) * 0.06);
+
+        ctx.strokeStyle =
+          "rgba(91, 136, 70, 0.34)";
+        ctx.lineWidth = Math.max(1, view.tileSize * 0.012);
+        for (let blade = -1; blade <= 1; blade++) {
+          ctx.beginPath();
+          ctx.moveTo(
+            x + blade * view.tileSize * 0.014,
+            y
+          );
+          ctx.lineTo(
+            x + blade * view.tileSize * 0.010,
+            y - view.tileSize * (0.045 + blade * 0.006)
+          );
+          ctx.stroke();
+        }
+      }
+
+      if (
+        hash01(seed, i, 814) <
+        style.pebble
+      ) {
+        const side =
+          hash01(seed, i, 815) < 0.5
+            ? -1
+            : 1;
+        const x =
+          point.x +
+          nx * side * view.tileSize * style.outerWidth * 0.48;
+        const y =
+          point.y +
+          ny * side * view.tileSize * style.outerWidth * 0.48;
+
+        ctx.fillStyle =
+          "rgba(111, 103, 83, 0.45)";
+        ctx.beginPath();
+        ctx.ellipse(
+          x,
+          y,
+          view.tileSize * 0.025,
+          view.tileSize * 0.016,
+          hash01(seed, i, 816) * Math.PI,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+    }
+  }
+
   function drawTrails(
     ctx,
     view
@@ -1216,30 +1544,29 @@
       const points = trail.points.map(
         (point) => worldPointToPixel(point, view)
       );
+      const style = trailStyle(trail);
 
-      ctx.strokeStyle =
-        "rgba(157, 151, 91, 0.20)";
-      ctx.lineWidth =
-        view.tileSize *
-        LLW.CONFIG.trailOuterWidth;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      ctx.stroke();
-
-      ctx.strokeStyle =
-        "rgba(122, 112, 73, 0.18)";
-      ctx.lineWidth =
-        view.tileSize *
-        LLW.CONFIG.trailInnerWidth;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      ctx.stroke();
+      drawTrailSegmentPass(
+        ctx,
+        points,
+        view,
+        style,
+        false
+      );
+      drawTrailSegmentPass(
+        ctx,
+        points,
+        view,
+        style,
+        true
+      );
+      drawTrailDressing(
+        ctx,
+        trail,
+        points,
+        view,
+        style
+      );
     }
 
     ctx.restore();
@@ -1312,6 +1639,11 @@
       );
 
       drawMudDetails(
+        ctx,
+        view
+      );
+
+      drawDryGroundDetails(
         ctx,
         view
       );
@@ -1477,6 +1809,11 @@
     );
 
     drawMudDetails(
+      ctx,
+      view
+    );
+
+    drawDryGroundDetails(
       ctx,
       view
     );
