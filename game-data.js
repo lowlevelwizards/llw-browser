@@ -44,26 +44,33 @@
     runoffPerCell: 0.0025,
 
     // Population scales. Placement now listens to ecological fields.
-    treeDensity: 0.026,
+    treeDensity: 0.080,
+    treeDensityVariation: 0.08,
     bushDensity: 0.031,
     mushroomDensity: 0.016,
 
-    // First ecological establishment rules.
-    treeAnchorMinCount: 3,
-    treeAnchorMaxCount: 6,
-    treeAverageClusterSize: 4.5,
-    treeAnchorMinSuitability: 0.48,
-    treeAnchorMinSpacing: 4.2,
-    treeGrowthMinSuitability: 0.31,
-    treeFallbackMinSuitability: 0.38,
-    treeClusterMaxRadius: 4.6,
+    // Dapplethicket regional prior: woodland is the matrix and openings are
+    // interruptions in it, rather than tiny forest islands in grassland.
+    woodlandCoarseStep: 6,
+    woodlandClearingMinCount: 2,
+    woodlandClearingMaxCount: 4,
+    woodlandCampClearingRadiusX: 3.4,
+    woodlandCampClearingRadiusY: 3.8,
+    woodlandCoverageThreshold: 0.64,
+    woodlandRegionThreshold: 0.60,
+    woodlandRegionMinCells: 8,
+    woodlandTreeMinDensity: 0.34,
+
+    // Local tree rules still refine the regional prior.
+    treeGrowthMinSuitability: 0.22,
+    treeFallbackMinSuitability: 0.18,
 
     // Established trees alter the cells around them.
     treeCanopyRadius: 2.35,
 
-    // Initial fallen wood is deliberately scarce: most trees contribute
-    // nothing, and a stick only appears on genuinely open ground nearby.
-    initialStickChancePerTree: 0.28,
+    // More trunks must not mean a carpet of free fuel. Most trees still
+    // contribute no convenient loose stick at world start.
+    initialStickChancePerTree: 0.10,
     initialStickMinOpenGround: 0.52,
 
     // Understory establishment.
@@ -138,6 +145,7 @@
 
     debug: {
       moisture: false,
+      woodland: false,
       treeSuitability: false,
       canopy: false,
       understory: false
@@ -153,12 +161,24 @@
         max: 0,
         mean: 0
       },
+      woodlandDensityStats: {
+        min: 0,
+        max: 0,
+        mean: 0,
+        coverage: 0
+      },
+      woodlandClearings: [],
+      woodlandRegions: [],
       treeSuitabilityStats: {
         min: 0,
         max: 0,
         mean: 0
       },
       treeAnchors: [],
+      treeEstablishment: {
+        targetCount: 0,
+        actualCount: 0
+      },
       canopyStats: {
         min: 0,
         mean: 0,
@@ -679,8 +699,14 @@
     // that already exist in the terrain and hydrology?
     LLW.moisture.derive();
 
-    // Second ecological truth: where could a generic woodland tree
-    // plausibly establish given moisture, terrain and active drainage?
+    // Regional grammar before organism placement: Dapplethicket is a
+    // woodland with openings, not grassland containing isolated copses.
+    LLW.ecology.deriveWoodlandMatrix(
+      resolvedSeed
+    );
+
+    // Local conditions then refine where actual trunks can establish within
+    // that broader woodland intent.
     LLW.ecology.deriveTreeSuitability();
 
     // Hydrology stays discrete. Compile it once into connected vector

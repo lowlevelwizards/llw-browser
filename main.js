@@ -43,6 +43,9 @@
   const moistureToggleButton =
     document.getElementById("moistureToggleButton");
 
+  const woodlandToggleButton =
+    document.getElementById("woodlandToggleButton");
+
   const treeSuitabilityToggleButton =
     document.getElementById("treeSuitabilityToggleButton");
 
@@ -291,6 +294,28 @@
     moistureToggleButton.setAttribute(
       "aria-pressed",
       moistureOn
+        ? "true"
+        : "false"
+    );
+
+    const woodlandOn =
+      Boolean(
+        LLW.state.debug.woodland
+      );
+
+    woodlandToggleButton.textContent =
+      woodlandOn
+        ? "Woodland: On"
+        : "Woodland: Off";
+
+    woodlandToggleButton.classList.toggle(
+      "active",
+      woodlandOn
+    );
+
+    woodlandToggleButton.setAttribute(
+      "aria-pressed",
+      woodlandOn
         ? "true"
         : "false"
     );
@@ -710,6 +735,36 @@
         next;
 
       if (next) {
+        LLW.state.debug.woodland =
+          false;
+
+        LLW.state.debug.treeSuitability =
+          false;
+
+        LLW.state.debug.canopy =
+          false;
+
+        LLW.state.debug.understory =
+          false;
+      }
+
+      syncSeedUI();
+    }
+  );
+
+  bindPress(
+    woodlandToggleButton,
+    () => {
+      const next =
+        !LLW.state.debug.woodland;
+
+      LLW.state.debug.woodland =
+        next;
+
+      if (next) {
+        LLW.state.debug.moisture =
+          false;
+
         LLW.state.debug.treeSuitability =
           false;
 
@@ -737,6 +792,9 @@
         LLW.state.debug.moisture =
           false;
 
+        LLW.state.debug.woodland =
+          false;
+
         LLW.state.debug.canopy =
           false;
 
@@ -761,6 +819,9 @@
         LLW.state.debug.moisture =
           false;
 
+        LLW.state.debug.woodland =
+          false;
+
         LLW.state.debug.treeSuitability =
           false;
 
@@ -783,6 +844,9 @@
 
       if (next) {
         LLW.state.debug.moisture =
+          false;
+
+        LLW.state.debug.woodland =
           false;
 
         LLW.state.debug.treeSuitability =

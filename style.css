@@ -226,7 +226,7 @@ button {
 
 .debug-layer-buttons {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 5px;
   margin-top: 7px;
 }

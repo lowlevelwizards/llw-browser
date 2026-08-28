@@ -176,6 +176,569 @@
     );
   }
 
+  function smootherstep01(value) {
+    const t =
+      clamp(value);
+
+    return (
+      t *
+      t *
+      t *
+      (
+        t *
+        (
+          t * 6 -
+          15
+        ) +
+        10
+      )
+    );
+  }
+
+  function deriveWoodlandMatrix(
+    seed,
+    cells =
+      state.landscape.cells
+  ) {
+    if (!cells.length) {
+      state.landscape.woodlandDensityStats = {
+        min: 0,
+        mean: 0,
+        max: 0,
+        coverage: 0
+      };
+
+      state.landscape.woodlandClearings = [];
+      return;
+    }
+
+    const cols =
+      LLW.CONFIG.worldCols;
+
+    const rows =
+      LLW.CONFIG.worldRows;
+
+    const step =
+      LLW.CONFIG
+        .woodlandCoarseStep;
+
+    const rng =
+      LLW.pcg.createRng(
+        seed,
+        "woodland-matrix"
+      );
+
+    const coarseCols =
+      Math.ceil(
+        cols / step
+      ) + 2;
+
+    const coarseRows =
+      Math.ceil(
+        rows / step
+      ) + 2;
+
+    let coarse =
+      new Array(
+        coarseCols *
+        coarseRows
+      )
+        .fill(0)
+        .map(
+          () =>
+            0.24 +
+            Math.pow(
+              rng(),
+              0.72
+            ) *
+            0.76
+        );
+
+    // One smoothing pass makes connected woodland masses instead of a field
+    // of independent coarse squares.
+    const smoothed =
+      [...coarse];
+
+    for (
+      let y = 0;
+      y < coarseRows;
+      y++
+    ) {
+      for (
+        let x = 0;
+        x < coarseCols;
+        x++
+      ) {
+        let total = 0;
+        let weight = 0;
+
+        for (
+          let dy = -1;
+          dy <= 1;
+          dy++
+        ) {
+          for (
+            let dx = -1;
+            dx <= 1;
+            dx++
+          ) {
+            const nx =
+              x + dx;
+
+            const ny =
+              y + dy;
+
+            if (
+              nx < 0 ||
+              ny < 0 ||
+              nx >= coarseCols ||
+              ny >= coarseRows
+            ) {
+              continue;
+            }
+
+            const localWeight =
+              dx === 0 &&
+              dy === 0
+                ? 3
+                : (
+                    dx === 0 ||
+                    dy === 0
+                  )
+                  ? 1.5
+                  : 0.75;
+
+            total +=
+              coarse[
+                ny *
+                coarseCols +
+                nx
+              ] *
+              localWeight;
+
+            weight +=
+              localWeight;
+          }
+        }
+
+        smoothed[
+          y *
+          coarseCols +
+          x
+        ] =
+          total /
+          weight;
+      }
+    }
+
+    coarse =
+      smoothed;
+
+    function coarseAt(
+      x,
+      y
+    ) {
+      const px =
+        Math.max(
+          0,
+          Math.min(
+            coarseCols - 1,
+            x
+          )
+        );
+
+      const py =
+        Math.max(
+          0,
+          Math.min(
+            coarseRows - 1,
+            y
+          )
+        );
+
+      return (
+        coarse[
+          py *
+          coarseCols +
+          px
+        ]
+      );
+    }
+
+    function sampleBroadWoodland(
+      worldX,
+      worldY
+    ) {
+      const gx =
+        worldX /
+        step +
+        0.5;
+
+      const gy =
+        worldY /
+        step +
+        0.5;
+
+      const x0 =
+        Math.floor(gx);
+
+      const y0 =
+        Math.floor(gy);
+
+      const x1 =
+        x0 + 1;
+
+      const y1 =
+        y0 + 1;
+
+      const tx =
+        smootherstep01(
+          gx - x0
+        );
+
+      const ty =
+        smootherstep01(
+          gy - y0
+        );
+
+      return (
+        coarseAt(
+          x0,
+          y0
+        ) *
+        (
+          1 - tx
+        ) *
+        (
+          1 - ty
+        ) +
+        coarseAt(
+          x1,
+          y0
+        ) *
+        tx *
+        (
+          1 - ty
+        ) +
+        coarseAt(
+          x0,
+          y1
+        ) *
+        (
+          1 - tx
+        ) *
+        ty +
+        coarseAt(
+          x1,
+          y1
+        ) *
+        tx *
+        ty
+      );
+    }
+
+    const clearings = [
+      {
+        id:
+          "camp_clearing",
+
+        x:
+          state.firepit.x,
+
+        y:
+          state.firepit.y,
+
+        radiusX:
+          LLW.CONFIG
+            .woodlandCampClearingRadiusX,
+
+        radiusY:
+          LLW.CONFIG
+            .woodlandCampClearingRadiusY,
+
+        strength:
+          0.98
+      }
+    ];
+
+    const randomClearingCount =
+      LLW.CONFIG
+        .woodlandClearingMinCount +
+      Math.floor(
+        rng() *
+        (
+          LLW.CONFIG
+            .woodlandClearingMaxCount -
+          LLW.CONFIG
+            .woodlandClearingMinCount +
+          1
+        )
+      );
+
+    let attempts = 0;
+
+    while (
+      clearings.length <
+        randomClearingCount + 1 &&
+      attempts++ < 80
+    ) {
+      const x =
+        2 +
+        rng() *
+        (
+          cols - 4
+        );
+
+      const y =
+        2 +
+        rng() *
+        (
+          rows - 4
+        );
+
+      const candidate = {
+        id:
+          `clearing_${
+            clearings.length
+          }`,
+
+        x,
+        y,
+
+        radiusX:
+          2.6 +
+          rng() * 2.5,
+
+        radiusY:
+          3.0 +
+          rng() * 3.1,
+
+        strength:
+          0.62 +
+          rng() * 0.28
+      };
+
+      const farEnough =
+        clearings.every(
+          (clearing) =>
+            distance(
+              candidate,
+              clearing
+            ) >
+            5.2
+        );
+
+      if (!farEnough) {
+        continue;
+      }
+
+      const centerCell =
+        cells[
+          Math.round(y) *
+            cols +
+          Math.round(x)
+        ];
+
+      if (
+        centerCell &&
+        centerCell.surfaceWaterDepth >
+          EPSILON
+      ) {
+        continue;
+      }
+
+      clearings.push(
+        candidate
+      );
+    }
+
+    function clearingInfluence(
+      cell
+    ) {
+      let strongest = 0;
+
+      for (
+        const clearing of
+        clearings
+      ) {
+        const dx =
+          (
+            cell.x -
+            clearing.x
+          ) /
+          clearing.radiusX;
+
+        const dy =
+          (
+            cell.y -
+            clearing.y
+          ) /
+          clearing.radiusY;
+
+        const normalizedDistance =
+          Math.hypot(
+            dx,
+            dy
+          );
+
+        if (
+          normalizedDistance >= 1
+        ) {
+          continue;
+        }
+
+        const local =
+          1 -
+          smootherstep01(
+            normalizedDistance
+          );
+
+        strongest =
+          Math.max(
+            strongest,
+            local *
+            clearing.strength
+          );
+      }
+
+      return strongest;
+    }
+
+    let minimum = Infinity;
+    let maximum = -Infinity;
+    let total = 0;
+    let woodedCount = 0;
+
+    for (const cell of cells) {
+      const broadNoise =
+        sampleBroadWoodland(
+          cell.x,
+          cell.y
+        );
+
+      const moisture =
+        cell.moisture || 0;
+
+      // Dapplethicket's regional prior: woodland is the matrix. Moderate
+      // moisture reinforces it; only very wet ground starts to open it.
+      const moderateMoisture =
+        bellPreference(
+          moisture,
+          0.48,
+          0.46,
+          0.38
+        );
+
+      const saturation =
+        smoothstep01(
+          (
+            moisture -
+            0.72
+          ) /
+          0.27
+        );
+
+      const activeDrainage =
+        smoothstep01(
+          cell.channelStrength || 0
+        );
+
+      const clearing =
+        clearingInfluence(
+          cell
+        );
+
+      let density =
+        0.36 +
+        broadNoise *
+        0.42 +
+        moderateMoisture *
+        0.06;
+
+      density *=
+        1 -
+        saturation *
+        0.72;
+
+      density *=
+        1 -
+        activeDrainage *
+        0.13;
+
+      density -=
+        clearing *
+        0.94;
+
+      if (
+        cell.surfaceWaterDepth >
+        EPSILON
+      ) {
+        density = 0;
+      }
+
+      if (
+        moisture >
+        0.94
+      ) {
+        density *= 0.18;
+      }
+
+      density =
+        clamp(
+          density
+        );
+
+      cell.woodlandBroadNoise =
+        broadNoise;
+
+      cell.woodlandClearingInfluence =
+        clearing;
+
+      cell.woodlandDensity =
+        density;
+
+      minimum =
+        Math.min(
+          minimum,
+          density
+        );
+
+      maximum =
+        Math.max(
+          maximum,
+          density
+        );
+
+      total += density;
+
+      if (
+        density >=
+        LLW.CONFIG
+          .woodlandCoverageThreshold
+      ) {
+        woodedCount++;
+      }
+    }
+
+    state.landscape.woodlandClearings =
+      clearings.map(
+        (clearing) => ({
+          ...clearing
+        })
+      );
+
+    state.landscape.woodlandDensityStats = {
+      min: minimum,
+      mean:
+        total /
+        cells.length,
+      max: maximum,
+      coverage:
+        woodedCount /
+        cells.length
+    };
+  }
+
   function deriveTreeSuitability(
     cells =
       state.landscape.cells
@@ -221,11 +784,28 @@
           cell
         );
 
+      const woodlandScore =
+        smoothstep01(
+          (
+            (
+              cell.woodlandDensity ||
+              0
+            ) -
+            0.16
+          ) /
+          0.72
+        );
+
       let suitability =
         moistureScore *
         elevationScore *
         slopeScore *
-        channelScore;
+        channelScore *
+        (
+          0.14 +
+          woodlandScore *
+          0.86
+        );
 
       // Open standing water is categorically not a tree tile.
       if (
@@ -254,6 +834,9 @@
 
       cell.treeChannelSuitability =
         channelScore;
+
+      cell.treeWoodlandSuitability =
+        woodlandScore;
 
       cell.treeSuitability =
         suitability;
@@ -772,140 +1355,571 @@
       LLW.CONFIG.worldCols *
       LLW.CONFIG.worldRows;
 
-    const targetCount =
-      Math.max(
-        1,
-        Math.round(
-          worldArea *
-          LLW.CONFIG.treeDensity
-        )
-      );
-
     const rng =
       LLW.pcg.createRng(
         seed,
         "tree-ecology"
       );
 
-    const desiredAnchors =
-      Math.round(
-        targetCount /
-        LLW.CONFIG
-          .treeAverageClusterSize +
-        (
-          rng() -
-          0.5
-        ) *
-        1.6
-      );
-
-    const anchorCount =
+    const targetCount =
       Math.max(
-        LLW.CONFIG
-          .treeAnchorMinCount,
-        Math.min(
-          LLW.CONFIG
-            .treeAnchorMaxCount,
-          desiredAnchors
+        1,
+        Math.round(
+          worldArea *
+          LLW.CONFIG.treeDensity *
+          (
+            1 -
+            LLW.CONFIG
+              .treeDensityVariation +
+            rng() *
+            LLW.CONFIG
+              .treeDensityVariation *
+            2
+          )
         )
       );
 
-    const anchors =
-      chooseAnchors(
-        cells,
-        occupied,
-        rng,
-        anchorCount
+    const fireRing =
+      fireRingSet();
+
+    const treeKeys =
+      new Set();
+
+    const establishedCells =
+      [];
+
+    function treeKey(
+      x,
+      y
+    ) {
+      return (
+        LLW.gridKey(
+          x,
+          y
+        )
+      );
+    }
+
+    function hasTree(
+      x,
+      y
+    ) {
+      return treeKeys.has(
+        treeKey(
+          x,
+          y
+        )
+      );
+    }
+
+    function wouldMakeSolidTwoByTwo(
+      cell
+    ) {
+      for (
+        const offsetY of
+        [-1, 0]
+      ) {
+        for (
+          const offsetX of
+          [-1, 0]
+        ) {
+          const startX =
+            cell.x +
+            offsetX;
+
+          const startY =
+            cell.y +
+            offsetY;
+
+          if (
+            startX < 0 ||
+            startY < 0 ||
+            startX + 1 >=
+              LLW.CONFIG.worldCols ||
+            startY + 1 >=
+              LLW.CONFIG.worldRows
+          ) {
+            continue;
+          }
+
+          let count = 0;
+
+          for (
+            let dy = 0;
+            dy <= 1;
+            dy++
+          ) {
+            for (
+              let dx = 0;
+              dx <= 1;
+              dx++
+            ) {
+              const x =
+                startX + dx;
+
+              const y =
+                startY + dy;
+
+              if (
+                (
+                  x === cell.x &&
+                  y === cell.y
+                ) ||
+                hasTree(
+                  x,
+                  y
+                )
+              ) {
+                count++;
+              }
+            }
+          }
+
+          if (count >= 4) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function nearbyTreeCount(
+      cell,
+      radius
+    ) {
+      let count = 0;
+
+      for (
+        const treeCell of
+        establishedCells
+      ) {
+        if (
+          distance(
+            cell,
+            treeCell
+          ) <= radius
+        ) {
+          count++;
+        }
+      }
+
+      return count;
+    }
+
+    function eligible(cell) {
+      if (
+        !cell ||
+        isCellBlocked(
+          cell,
+          occupied
+        ) ||
+        fireRing.has(
+          treeKey(
+            cell.x,
+            cell.y
+          )
+        ) ||
+        (
+          cell.woodlandDensity ||
+          0
+        ) <
+          LLW.CONFIG
+            .woodlandTreeMinDensity ||
+        cell.treeSuitability <
+          LLW.CONFIG
+            .treeGrowthMinSuitability ||
+        wouldMakeSolidTwoByTwo(
+          cell
+        )
+      ) {
+        return false;
+      }
+
+      return true;
+    }
+
+    function establish(cell) {
+      spawnTree(
+        cell.x,
+        cell.y
       );
 
-    state.landscape.treeAnchors =
-      anchors.map(
-        (cell) => ({
-          x: cell.x,
-          y: cell.y,
-          suitability:
+      occupied.add(
+        treeKey(
+          cell.x,
+          cell.y
+        )
+      );
+
+      treeKeys.add(
+        treeKey(
+          cell.x,
+          cell.y
+        )
+      );
+
+      establishedCells.push(
+        cell
+      );
+    }
+
+    function buildRegions() {
+      const possible =
+        new Set(
+          cells
+            .filter(
+              (cell) =>
+                (
+                  cell.woodlandDensity ||
+                  0
+                ) >=
+                  LLW.CONFIG
+                    .woodlandRegionThreshold &&
+                cell.surfaceWaterDepth <=
+                  EPSILON
+            )
+            .map(
+              (cell) =>
+                cell.index
+            )
+        );
+
+      const visited =
+        new Set();
+
+      const regions = [];
+
+      for (
+        const startIndex of
+        possible
+      ) {
+        if (
+          visited.has(
+            startIndex
+          )
+        ) {
+          continue;
+        }
+
+        const queue =
+          [startIndex];
+
+        const regionCells =
+          [];
+
+        visited.add(
+          startIndex
+        );
+
+        while (
+          queue.length
+        ) {
+          const index =
+            queue.shift();
+
+          const cell =
+            cells[index];
+
+          regionCells.push(
+            cell
+          );
+
+          for (
+            const neighborIndex of
+            cell.neighborIndexes
+          ) {
+            if (
+              !possible.has(
+                neighborIndex
+              ) ||
+              visited.has(
+                neighborIndex
+              )
+            ) {
+              continue;
+            }
+
+            visited.add(
+              neighborIndex
+            );
+
+            queue.push(
+              neighborIndex
+            );
+          }
+        }
+
+        if (
+          regionCells.length <
+          LLW.CONFIG
+            .woodlandRegionMinCells
+        ) {
+          continue;
+        }
+
+        const weight =
+          regionCells.reduce(
+            (sum, cell) =>
+              sum +
+              Math.pow(
+                cell.woodlandDensity,
+                1.5
+              ) *
+              (
+                0.20 +
+                cell.treeSuitability *
+                0.80
+              ),
+            0
+          );
+
+        regions.push({
+          cells:
+            regionCells,
+          weight,
+          targetCount: 0,
+          actualCount: 0
+        });
+      }
+
+      return regions;
+    }
+
+    const regions =
+      buildRegions();
+
+    const totalWeight =
+      regions.reduce(
+        (sum, region) =>
+          sum +
+          region.weight,
+        0
+      );
+
+    let allocated = 0;
+
+    if (
+      regions.length &&
+      totalWeight >
+        EPSILON
+    ) {
+      const allocations =
+        regions.map(
+          (region) => {
+            const exact =
+              targetCount *
+              region.weight /
+              totalWeight;
+
+            const whole =
+              Math.floor(
+                exact
+              );
+
+            region.targetCount =
+              whole;
+
+            allocated += whole;
+
+            return {
+              region,
+              fraction:
+                exact -
+                whole
+            };
+          }
+        );
+
+      allocations.sort(
+        (a, b) =>
+          b.fraction -
+          a.fraction
+      );
+
+      let remainder =
+        targetCount -
+        allocated;
+
+      for (
+        let i = 0;
+        i <
+          allocations.length &&
+        remainder > 0;
+        i++,
+        remainder--
+      ) {
+        allocations[
+          i
+        ].region.targetCount++;
+      }
+    }
+
+    function placementWeight(
+      cell
+    ) {
+      const nearby =
+        nearbyTreeCount(
+          cell,
+          2.25
+        );
+
+      const close =
+        nearbyTreeCount(
+          cell,
+          1.45
+        );
+
+      // Enough social pull for trunks to read as a stand, but crowding
+      // rapidly loses weight so woodland remains traversable between trunks.
+      const standPull =
+        nearby === 0
+          ? 0.82
+          : 1 +
+            Math.min(
+              4,
+              nearby
+            ) *
+            0.16;
+
+      const crowdPenalty =
+        close >= 4
+          ? 0.08
+          : close === 3
+            ? 0.34
+            : close === 2
+              ? 0.72
+              : 1;
+
+      return (
+        Math.pow(
+          Math.max(
+            0.01,
             cell.treeSuitability
+          ),
+          1.65
+        ) *
+        Math.pow(
+          Math.max(
+            0.01,
+            cell.woodlandDensity
+          ),
+          1.55
+        ) *
+        standPull *
+        crowdPenalty *
+        (
+          0.86 +
+          rng() * 0.28
+        )
+      );
+    }
+
+    for (
+      const region of
+      regions
+    ) {
+      while (
+        region.actualCount <
+          region.targetCount &&
+        establishedCells.length <
+          targetCount
+      ) {
+        const candidates =
+          region.cells.filter(
+            eligible
+          );
+
+        if (!candidates.length) {
+          break;
+        }
+
+        const chosen =
+          weightedChoice(
+            candidates,
+            rng,
+            placementWeight
+          );
+
+        if (!chosen) {
+          break;
+        }
+
+        establish(
+          chosen
+        );
+
+        region.actualCount++;
+      }
+    }
+
+    // Safety net for unusual seeds: finish the regional target from any
+    // remaining woodland-suitable ground rather than lowering the rules.
+    while (
+      establishedCells.length <
+      targetCount
+    ) {
+      const candidates =
+        cells.filter(
+          eligible
+        );
+
+      if (!candidates.length) {
+        break;
+      }
+
+      const chosen =
+        weightedChoice(
+          candidates,
+          rng,
+          placementWeight
+        );
+
+      if (!chosen) {
+        break;
+      }
+
+      establish(
+        chosen
+      );
+    }
+
+    state.landscape.treeAnchors = [];
+
+    state.landscape.woodlandRegions =
+      regions.map(
+        (region, index) => ({
+          id:
+            `woodland_region_${
+              index + 1
+            }`,
+
+          cellCount:
+            region.cells.length,
+
+          targetCount:
+            region.targetCount,
+
+          actualCount:
+            region.actualCount,
+
+          meanDensity:
+            region.cells.reduce(
+              (sum, cell) =>
+                sum +
+                cell.woodlandDensity,
+              0
+            ) /
+            region.cells.length
         })
       );
 
-    if (!anchors.length) {
-      ensureTargetCount(
-        cells,
-        occupied,
-        targetCount,
-        rng,
-        spawnTree
-      );
-
-      return;
-    }
-
-    let remaining =
-      targetCount;
-
-    for (
-      let anchorIndex = 0;
-      anchorIndex <
-        anchors.length;
-      anchorIndex++
-    ) {
-      const anchorsRemaining =
-        anchors.length -
-        anchorIndex;
-
-      const fairShare =
-        Math.max(
-          1,
-          Math.round(
-            remaining /
-            anchorsRemaining
-          )
-        );
-
-      const sizeVariation =
-        rng() < 0.34
-          ? -1
-          : rng() > 0.76
-            ? 1
-            : 0;
-
-      const clusterTarget =
-        Math.max(
-          1,
-          Math.min(
-            remaining,
-            fairShare +
-              sizeVariation
-          )
-        );
-
-      const established =
-        growCluster(
-          anchors[
-            anchorIndex
-          ],
-          clusterTarget,
-          cells,
-          occupied,
-          rng,
-          spawnTree
-        );
-
-      remaining -=
-        established.length;
-    }
-
-    // If a dry/steep anchor stalled, finish the density goal by choosing
-    // suitable cells globally. This is a safety net, not the primary pattern.
-    ensureTargetCount(
-      cells,
-      occupied,
+    state.landscape.treeEstablishment = {
       targetCount,
-      rng,
-      spawnTree
-    );
+      actualCount:
+        establishedCells.length
+    };
   }
-
 
   function canopyContribution(
     distanceFromTree
@@ -2175,6 +3189,7 @@
   }
 
   LLW.ecology = {
+    deriveWoodlandMatrix,
     deriveTreeSuitability,
     generateTrees,
     deriveCanopyFields,

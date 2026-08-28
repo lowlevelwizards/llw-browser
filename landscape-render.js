@@ -14,6 +14,12 @@
     pixelsPerTile: 7
   };
 
+  let woodlandCache = {
+    key: null,
+    canvas: null,
+    pixelsPerTile: 7
+  };
+
   let treeSuitabilityCache = {
     key: null,
     canvas: null,
@@ -288,8 +294,85 @@
     );
   }
 
+  function sampleWoodlandDensity(
+    worldX,
+    worldY
+  ) {
+    const x0 =
+      Math.floor(
+        worldX
+      );
+
+    const y0 =
+      Math.floor(
+        worldY
+      );
+
+    const x1 =
+      x0 + 1;
+
+    const y1 =
+      y0 + 1;
+
+    const tx =
+      worldX - x0;
+
+    const ty =
+      worldY - y0;
+
+    const a =
+      getCellClamped(
+        x0,
+        y0
+      );
+
+    const b =
+      getCellClamped(
+        x1,
+        y0
+      );
+
+    const c =
+      getCellClamped(
+        x0,
+        y1
+      );
+
+    const d =
+      getCellClamped(
+        x1,
+        y1
+      );
+
+    if (
+      !a ||
+      !b ||
+      !c ||
+      !d
+    ) {
+      return 0;
+    }
+
+    return lerp(
+      lerp(
+        a.woodlandDensity || 0,
+        b.woodlandDensity || 0,
+        tx
+      ),
+
+      lerp(
+        c.woodlandDensity || 0,
+        d.woodlandDensity || 0,
+        tx
+      ),
+
+      ty
+    );
+  }
+
   function elevationColor(
-    elevation
+    elevation,
+    woodland = 0
   ) {
     const t =
       smoothstep(
@@ -344,30 +427,68 @@
         0.32;
     }
 
+    let r =
+      lerp(
+        from[0],
+        to[0],
+        local
+      );
+
+    let g =
+      lerp(
+        from[1],
+        to[1],
+        local
+      );
+
+    let b =
+      lerp(
+        from[2],
+        to[2],
+        local
+      );
+
+    // Normal play should agree with the regional ecology even without debug:
+    // woodland floor shifts cooler/deeper, while carved clearings retain the
+    // brighter elevation palette.
+    const woodlandMix =
+      smoothstep(
+        (
+          woodland -
+          0.24
+        ) /
+        0.68
+      ) *
+      0.42;
+
+    const woodlandFloor =
+      [72, 122, 79];
+
+    r =
+      lerp(
+        r,
+        woodlandFloor[0],
+        woodlandMix
+      );
+
+    g =
+      lerp(
+        g,
+        woodlandFloor[1],
+        woodlandMix
+      );
+
+    b =
+      lerp(
+        b,
+        woodlandFloor[2],
+        woodlandMix
+      );
+
     return [
-      Math.round(
-        lerp(
-          from[0],
-          to[0],
-          local
-        )
-      ),
-
-      Math.round(
-        lerp(
-          from[1],
-          to[1],
-          local
-        )
-      ),
-
-      Math.round(
-        lerp(
-          from[2],
-          to[2],
-          local
-        )
-      )
+      Math.round(r),
+      Math.round(g),
+      Math.round(b)
     ];
   }
 
@@ -451,6 +572,10 @@
         const [r, g, b] =
           elevationColor(
             displayElevation(
+              worldX,
+              worldY
+            ),
+            sampleWoodlandDensity(
               worldX,
               worldY
             )
@@ -548,6 +673,11 @@
       ctx.restore();
 
       drawMoistureDebug(
+        ctx,
+        view
+      );
+
+      drawWoodlandDebug(
         ctx,
         view
       );
@@ -693,6 +823,11 @@
     ctx.restore();
 
     drawMoistureDebug(
+      ctx,
+      view
+    );
+
+    drawWoodlandDebug(
       ctx,
       view
     );
@@ -998,6 +1133,394 @@
       overview
         ? 0.66
         : 0.58;
+
+    ctx.imageSmoothingEnabled =
+      true;
+
+    ctx.imageSmoothingQuality =
+      "high";
+
+    if (overview) {
+      ctx.drawImage(
+        cache,
+
+        0.5 * scale,
+        0.5 * scale,
+
+        LLW.CONFIG.worldCols *
+          scale,
+
+        LLW.CONFIG.worldRows *
+          scale,
+
+        view.offsetX,
+        view.offsetY,
+        view.mapWidth,
+        view.mapHeight
+      );
+
+      ctx.restore();
+      return;
+    }
+
+    const visibleLeft =
+      state.camera.x -
+      view.offsetX /
+      view.tileSize;
+
+    const visibleTop =
+      state.camera.y -
+      view.offsetY /
+      view.tileSize;
+
+    const visibleRight =
+      visibleLeft +
+      view.width /
+      view.tileSize;
+
+    const visibleBottom =
+      visibleTop +
+      view.height /
+      view.tileSize;
+
+    const clippedLeft =
+      clamp(
+        visibleLeft,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedTop =
+      clamp(
+        visibleTop,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    const clippedRight =
+      clamp(
+        visibleRight,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedBottom =
+      clamp(
+        visibleBottom,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    if (
+      clippedRight >
+        clippedLeft &&
+      clippedBottom >
+        clippedTop
+    ) {
+      ctx.drawImage(
+        cache,
+
+        (
+          clippedLeft +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedTop +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        scale,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        scale,
+
+        (
+          clippedLeft -
+          visibleLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedTop -
+          visibleTop
+        ) *
+        view.tileSize,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        view.tileSize
+      );
+    }
+
+    ctx.restore();
+  }
+
+  function woodlandDebugColor(
+    density
+  ) {
+    const clearing =
+      [211, 193, 118];
+
+    const edge =
+      [132, 163, 91];
+
+    const woodland =
+      [54, 111, 72];
+
+    if (
+      density <
+      0.48
+    ) {
+      const t =
+        density /
+        0.48;
+
+      return [
+        Math.round(
+          lerp(
+            clearing[0],
+            edge[0],
+            t
+          )
+        ),
+
+        Math.round(
+          lerp(
+            clearing[1],
+            edge[1],
+            t
+          )
+        ),
+
+        Math.round(
+          lerp(
+            clearing[2],
+            edge[2],
+            t
+          )
+        )
+      ];
+    }
+
+    const t =
+      (
+        density -
+        0.48
+      ) /
+      0.52;
+
+    return [
+      Math.round(
+        lerp(
+          edge[0],
+          woodland[0],
+          t
+        )
+      ),
+
+      Math.round(
+        lerp(
+          edge[1],
+          woodland[1],
+          t
+        )
+      ),
+
+      Math.round(
+        lerp(
+          edge[2],
+          woodland[2],
+          t
+        )
+      )
+    ];
+  }
+
+  function ensureWoodlandCache() {
+    if (
+      typeof document ===
+        "undefined" ||
+      !state.landscape
+        .cells.length
+    ) {
+      return null;
+    }
+
+    const scale =
+      woodlandCache
+        .pixelsPerTile;
+
+    const key =
+      [
+        state.landscape.seed,
+        LLW.CONFIG.worldCols,
+        LLW.CONFIG.worldRows,
+        scale
+      ].join(":");
+
+    if (
+      woodlandCache.key ===
+        key &&
+      woodlandCache.canvas
+    ) {
+      return (
+        woodlandCache.canvas
+      );
+    }
+
+    const canvas =
+      document.createElement(
+        "canvas"
+      );
+
+    canvas.width =
+      (
+        LLW.CONFIG.worldCols +
+        1
+      ) *
+      scale;
+
+    canvas.height =
+      (
+        LLW.CONFIG.worldRows +
+        1
+      ) *
+      scale;
+
+    const context =
+      canvas.getContext(
+        "2d"
+      );
+
+    const image =
+      context.createImageData(
+        canvas.width,
+        canvas.height
+      );
+
+    for (
+      let py = 0;
+      py <
+        canvas.height;
+      py++
+    ) {
+      const worldY =
+        py /
+        scale -
+        0.5;
+
+      for (
+        let px = 0;
+        px <
+          canvas.width;
+        px++
+      ) {
+        const worldX =
+          px /
+          scale -
+          0.5;
+
+        const [
+          r,
+          g,
+          b
+        ] =
+          woodlandDebugColor(
+            sampleWoodlandDensity(
+              worldX,
+              worldY
+            )
+          );
+
+        const index =
+          (
+            py *
+            canvas.width +
+            px
+          ) *
+          4;
+
+        image.data[
+          index
+        ] = r;
+
+        image.data[
+          index + 1
+        ] = g;
+
+        image.data[
+          index + 2
+        ] = b;
+
+        image.data[
+          index + 3
+        ] = 255;
+      }
+    }
+
+    context.putImageData(
+      image,
+      0,
+      0
+    );
+
+    woodlandCache = {
+      ...woodlandCache,
+      key,
+      canvas
+    };
+
+    return canvas;
+  }
+
+  function drawWoodlandDebug(
+    ctx,
+    view
+  ) {
+    if (
+      !state.debug.woodland
+    ) {
+      return;
+    }
+
+    const cache =
+      ensureWoodlandCache();
+
+    if (!cache) {
+      return;
+    }
+
+    const scale =
+      woodlandCache
+        .pixelsPerTile;
+
+    const overview =
+      LLW.camera.isOverview();
+
+    ctx.save();
+
+    ctx.globalAlpha =
+      overview
+        ? 0.72
+        : 0.61;
 
     ctx.imageSmoothingEnabled =
       true;
