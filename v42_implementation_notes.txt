@@ -1,0 +1,68 @@
+LOW LEVEL WIZARDS — v42 Visual / Grounding Pass
+Painted Water & Lived-In Grass
+
+Built on v41 Water, Foliage & Thicket Language.
+
+CHANGED
+
+landscape-render.js
+- Rebuilt water presentation around a clearer material grammar:
+  damp/silty bank -> shallow shelf -> main water body -> pooled/deeper wash -> sparse surface marks.
+- Main water union is now an opaque painted base instead of relying on overlapping translucent feature fills.
+- Removed generic shallow-edge strokes from channel polygons. This specifically prevents pale rectangular/ghost seams where channel geometry overlaps ponds.
+- Standing water retains a restrained inner shallow shelf because pond/lake edges are plausibly shallower.
+- Added local per-water-body painted wash/depth treatment rather than one giant screen-space gradient shared by unrelated ponds.
+- Added a restrained pale center band to exposed creek/channel runs to imply shallower, constrained moving water.
+- Channel center highlights are clipped to the actual channel ribbon so they cannot bleed onto land.
+- Added semantic mouth treatment where channel centerlines cross into/out of standing water: a pale shallow fan appears inside the pond at the real connection.
+- Stepping-stone crossings now create a localized shallow-water cue beneath the crossing.
+- Reworked pond ripples into one or two loose, slightly angled curved glints with subtle breathing movement instead of the conventional repeated straight water-line icon.
+- Preserved the improved rounded weak-channel terminal / seep / ditch behavior.
+
+render.js
+- Grass tufts are wider and more substantial at phone scale.
+- Individual blades are taller, wider and chunkier while keeping flat bases and rounded tips.
+- Added a foreground-groundcover render path. Grass marked as foreground is Y-sorted with trees, boulders, logs, stumps and the player so it can overlap the visible base of props and visually plant them into the ground.
+
+ ecology.js
+- Grass no longer spawns mainly as generic open-ground scatter.
+- Ambient grass now explicitly favors relationships:
+  * meadow/open ground
+  * water margins
+  * path shoulders rather than path centers
+  * mud rims rather than muddy cores
+  * rings around disturbed/cleared ground
+  * sheltered ground around existing props
+- Added an independent deterministic prop-grounding grass pass.
+- Grass commonly gathers in front of / around the bases of trees, boulders, stumps and fallen logs.
+- Fallen-log bridges are excluded from prop grass so grass is not planted over water crossings.
+- The prop-grass pass has its own RNG namespace so it remains deterministic without perturbing the existing ambient groundcover stream.
+
+game-data.js
+- Grass tuft defaults were enlarged slightly to support the new chunkier visual language.
+- addGrassTuft now supports deterministic exact placement options for relationship-driven / foreground tufts without consuming the ordinary initial-entity RNG stream.
+
+INTENTION
+Water should read as a painted depression with understandable depth cues, not a blue polygon plus decorative highlights:
+- bank stain means wet earth
+- shelf means shallow shoreline
+- pale creek center means constrained/shallow moving water
+- mouth fan means an actual stream/pond join
+- localized crossing shelf means shallow usable footing
+- darker pooled wash means deeper/still water
+
+Grass should make objects and terrain relationships feel inhabited:
+- grass grows around things
+- gathers at edges
+- survives beside paths
+- circles worn/muddy ground
+- catches at the feet of old wood and stone
+rather than appearing as uniformly scattered filler.
+
+VALIDATION
+- `node --check` passed for every JavaScript file in the project.
+- Ran full world-generation smoke tests for seeds:
+  1842, 1234, 42, 777, 2026, 9182, 55555, 99999.
+- All eight seeds generated successfully with water bodies, channels, props, ambient grass and foreground prop grass intact.
+- Re-generating seed 1842 produced byte-identical serialized world/grass/geometry output, confirming deterministic generation remains intact.
+- No hydrology, pathfinding, traversal, crossing behavior, tree generation or bramble gameplay rules were changed.

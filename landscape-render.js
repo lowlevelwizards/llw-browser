@@ -4338,6 +4338,101 @@
     context.fill();
   }
 
+  function pointInPolygon(
+    point,
+    polygon
+  ) {
+    let inside = false;
+
+    for (
+      let i = 0,
+        j = polygon.length - 1;
+      i < polygon.length;
+      j = i++
+    ) {
+      const a = polygon[i];
+      const b = polygon[j];
+      const intersects =
+        (
+          (a.y > point.y) !==
+          (b.y > point.y)
+        ) &&
+        (
+          point.x <
+          (
+            (b.x - a.x) *
+            (point.y - a.y)
+          ) /
+          (
+            b.y - a.y +
+            Number.EPSILON
+          ) +
+          a.x
+        );
+
+      if (intersects) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  }
+
+  function waterBodyAtPoint(
+    point
+  ) {
+    const bodies =
+      state.landscape.geometry
+        ?.waterBodies || [];
+
+    for (const body of bodies) {
+      if (
+        !pointInPolygon(
+          point,
+          body.outer
+        )
+      ) {
+        continue;
+      }
+
+      const inHole =
+        (body.holes || []).some(
+          (hole) =>
+            pointInPolygon(
+              point,
+              hole
+            )
+        );
+
+      if (!inHole) {
+        return body;
+      }
+    }
+
+    return null;
+  }
+
+  function clipToBody(
+    context,
+    body,
+    view
+  ) {
+    context.beginPath();
+    appendPolygon(
+      context,
+      body.outer,
+      view
+    );
+    for (const hole of body.holes || []) {
+      appendPolygon(
+        context,
+        hole,
+        view
+      );
+    }
+    context.clip("evenodd");
+  }
+
   function paintGeometryToLayers(
     view
   ) {
@@ -4348,10 +4443,8 @@
 
     const bank =
       waterLayers.bankCtx;
-
     const water =
       waterLayers.waterCtx;
-
     const shallow =
       waterLayers.shallowCtx;
 
@@ -4361,14 +4454,12 @@
       view.width,
       view.height
     );
-
     water.clearRect(
       0,
       0,
       view.width,
       view.height
     );
-
     shallow.clearRect(
       0,
       0,
@@ -4383,9 +4474,9 @@
       return;
     }
 
-    // Build one opaque union for land-water contact and one exact union for
-    // the water itself. The bank is deliberately broader than v40: it is a
-    // strip of damp/silty ground, not a bright outline painted on the pond.
+    // One solid union owns the actual blue water. A broader second union sits
+    // beneath it as damp earth. Keeping those two truths separate prevents
+    // stream/pond overlaps from becoming translucent construction seams.
     bank.save();
     bank.fillStyle = "#ffffff";
     bank.strokeStyle = "#ffffff";
@@ -4394,7 +4485,7 @@
     bank.lineWidth =
       Math.max(
         2,
-        view.tileSize * 0.30
+        view.tileSize * 0.32
       );
 
     water.save();
@@ -4403,10 +4494,7 @@
     water.lineJoin = "round";
     water.lineCap = "round";
 
-    for (
-      const body of
-      geometry.waterBodies
-    ) {
+    for (const body of geometry.waterBodies) {
       fillPolygon(
         bank,
         body.outer,
@@ -4424,10 +4512,7 @@
       );
     }
 
-    for (
-      const channel of
-      geometry.channels
-    ) {
+    for (const channel of geometry.channels) {
       fillPolygon(
         bank,
         channel.polygon,
@@ -4455,13 +4540,13 @@
         bank,
         firstSample,
         view,
-        view.tileSize * 0.15
+        view.tileSize * 0.16
       );
       fillChannelCap(
         bank,
         lastSample,
         view,
-        view.tileSize * 0.15
+        view.tileSize * 0.16
       );
       fillChannelCap(
         water,
@@ -4475,20 +4560,13 @@
       );
     }
 
-    // Explicit holes are subtracted after the outer union.
     bank.globalCompositeOperation =
       "destination-out";
     water.globalCompositeOperation =
       "destination-out";
 
-    for (
-      const body of
-      geometry.waterBodies
-    ) {
-      for (
-        const hole of
-        body.holes
-      ) {
+    for (const body of geometry.waterBodies) {
+      for (const hole of body.holes || []) {
         fillPolygon(
           bank,
           hole,
@@ -4505,23 +4583,28 @@
     bank.restore();
     water.restore();
 
-    // The outer bank moves from sun-warmed silt into cooler damp earth. It is
-    // deliberately earthy rather than white so the shoreline belongs to the
-    // surrounding ground instead of separating from it like a sticker edge.
     bank.save();
     bank.globalCompositeOperation =
       "source-in";
-
     const bankGradient =
       bank.createLinearGradient(
         0,
         0,
-        view.width * 0.75,
+        view.width * 0.72,
         view.height
       );
-    bankGradient.addColorStop(0, "#a89c70");
-    bankGradient.addColorStop(0.52, "#8f8b67");
-    bankGradient.addColorStop(1, "#6f7d64");
+    bankGradient.addColorStop(
+      0,
+      "#aa9c70"
+    );
+    bankGradient.addColorStop(
+      0.52,
+      "#8e8966"
+    );
+    bankGradient.addColorStop(
+      1,
+      "#687860"
+    );
     bank.fillStyle = bankGradient;
     bank.fillRect(
       0,
@@ -4531,24 +4614,13 @@
     );
     bank.restore();
 
-    // Main body: mostly opaque, with a restrained warm/light -> cool/deep
-    // directional shift. The water should read as a material before any
-    // surface marks are added.
+    // Base water is intentionally close to a flat painted paper color. Local
+    // depth/shelf/flow layers below provide the form; the base itself no longer
+    // carries a giant screen-space gradient that makes unrelated ponds match.
     water.save();
     water.globalCompositeOperation =
       "source-in";
-
-    const waterGradient =
-      water.createLinearGradient(
-        0,
-        0,
-        view.width * 0.70,
-        view.height
-      );
-    waterGradient.addColorStop(0, "#61a9b2");
-    waterGradient.addColorStop(0.48, "#4e98a8");
-    waterGradient.addColorStop(1, "#3d8297");
-    water.fillStyle = waterGradient;
+    water.fillStyle = "#4b97a7";
     water.fillRect(
       0,
       0,
@@ -4557,8 +4629,9 @@
     );
     water.restore();
 
-    // Shallows are a broad INNER edge, clipped to the exact water union. This
-    // provides a visible depth transition without tracing every pond in white.
+    // Only standing-water shorelines receive the generic shallow shelf.
+    // Channels deliberately do NOT trace their polygon edges anymore: that was
+    // the source of the pale rectangular ghosts at pond/stream connections.
     shallow.save();
     shallow.strokeStyle = "#ffffff";
     shallow.fillStyle = "#ffffff";
@@ -4567,7 +4640,7 @@
     shallow.lineWidth =
       Math.max(
         2,
-        view.tileSize * 0.26
+        view.tileSize * 0.18
       );
 
     for (const body of geometry.waterBodies) {
@@ -4585,12 +4658,54 @@
       }
     }
 
-    for (const channel of geometry.channels) {
-      strokePolygon(
-        shallow,
-        channel.polygon,
-        view
+    // A usable stepping-stone crossing implies a shallow shelf. Give that
+    // inference a quiet visual cue instead of leaving the stones unrelated to
+    // the water beneath them.
+    for (
+      const crossing of
+      state.landscape.crossings || []
+    ) {
+      if (
+        crossing.kind !==
+        "stepping_stones"
+      ) {
+        continue;
+      }
+
+      const center =
+        worldPointToPixel(
+          {
+            x:
+              (crossing.from.x +
+                crossing.to.x) *
+                0.5 +
+              0.5,
+            y:
+              (crossing.from.y +
+                crossing.to.y) *
+                0.5 +
+              0.78
+          },
+          view
+        );
+      const angle = Math.atan2(
+        crossing.to.y -
+          crossing.from.y,
+        crossing.to.x -
+          crossing.from.x
       );
+
+      shallow.beginPath();
+      shallow.ellipse(
+        center.x,
+        center.y,
+        view.tileSize * 0.62,
+        view.tileSize * 0.25,
+        angle,
+        0,
+        Math.PI * 2
+      );
+      shallow.fill();
     }
     shallow.restore();
 
@@ -4607,17 +4722,7 @@
     shallow.save();
     shallow.globalCompositeOperation =
       "source-in";
-    const shallowGradient =
-      shallow.createLinearGradient(
-        0,
-        0,
-        view.width,
-        view.height
-      );
-    shallowGradient.addColorStop(0, "#82b7a8");
-    shallowGradient.addColorStop(0.55, "#6eab9f");
-    shallowGradient.addColorStop(1, "#5a9995");
-    shallow.fillStyle = shallowGradient;
+    shallow.fillStyle = "#83b8aa";
     shallow.fillRect(
       0,
       0,
@@ -4773,6 +4878,389 @@
     ctx.restore();
   }
 
+  function drawWaterBodyWash(
+    ctx,
+    view
+  ) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    for (const body of geometry.waterBodies) {
+      const topLeft =
+        worldPointToPixel(
+          {
+            x: body.bounds.minX,
+            y: body.bounds.minY
+          },
+          view
+        );
+      const bottomRight =
+        worldPointToPixel(
+          {
+            x: body.bounds.maxX,
+            y: body.bounds.maxY
+          },
+          view
+        );
+
+      ctx.save();
+      clipToBody(
+        ctx,
+        body,
+        view
+      );
+
+      const wash =
+        ctx.createLinearGradient(
+          topLeft.x,
+          topLeft.y,
+          bottomRight.x,
+          bottomRight.y
+        );
+      wash.addColorStop(
+        0,
+        "rgba(144, 197, 184, 0.16)"
+      );
+      wash.addColorStop(
+        0.46,
+        "rgba(92, 162, 165, 0.035)"
+      );
+      wash.addColorStop(
+        1,
+        "rgba(29, 72, 96, 0.13)"
+      );
+      ctx.fillStyle = wash;
+      ctx.fillRect(
+        Math.min(
+          topLeft.x,
+          bottomRight.x
+        ) - view.tileSize,
+        Math.min(
+          topLeft.y,
+          bottomRight.y
+        ) - view.tileSize,
+        Math.abs(
+          bottomRight.x -
+          topLeft.x
+        ) + view.tileSize * 2,
+        Math.abs(
+          bottomRight.y -
+          topLeft.y
+        ) + view.tileSize * 2
+      );
+      ctx.restore();
+    }
+  }
+
+  function drawChannelShallows(
+    ctx,
+    view
+  ) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (const channel of geometry.channels) {
+      const points =
+        channel.centerline || [];
+
+      if (points.length < 2) {
+        continue;
+      }
+
+      // Split the centerline wherever it enters standing water. Streams get a
+      // pale moving/shallow center; ponds get their own shelf language.
+      const runs = [];
+      let run = [];
+
+      for (const point of points) {
+        if (waterBodyAtPoint(point)) {
+          if (run.length >= 2) {
+            runs.push(run);
+          }
+          run = [];
+        } else {
+          run.push(point);
+        }
+      }
+
+      if (run.length >= 2) {
+        runs.push(run);
+      }
+
+      const broadWidth =
+        Math.max(
+          view.tileSize * 0.055,
+          Math.min(
+            channel.maxWidth || 0.4,
+            0.95
+          ) *
+            view.tileSize *
+            0.30
+        );
+
+      ctx.save();
+      ctx.beginPath();
+      appendPolygon(
+        ctx,
+        channel.polygon,
+        view
+      );
+      ctx.clip();
+
+      for (const pointsRun of runs) {
+        const start =
+          worldPointToPixel(
+            pointsRun[0],
+            view
+          );
+
+        ctx.strokeStyle =
+          "rgba(125, 190, 181, 0.14)";
+        ctx.lineWidth = broadWidth;
+        ctx.beginPath();
+        ctx.moveTo(
+          start.x,
+          start.y
+        );
+        for (
+          let i = 1;
+          i < pointsRun.length;
+          i++
+        ) {
+          const p =
+            worldPointToPixel(
+              pointsRun[i],
+              view
+            );
+          ctx.lineTo(
+            p.x,
+            p.y
+          );
+        }
+        ctx.stroke();
+
+        if (broadWidth < view.tileSize * 0.11) {
+          continue;
+        }
+
+        ctx.strokeStyle =
+          "rgba(205, 226, 207, 0.075)";
+        ctx.lineWidth =
+          broadWidth * 0.34;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function drawWaterMouths(
+    ctx,
+    view
+  ) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    for (const channel of geometry.channels) {
+      const points =
+        channel.centerline || [];
+
+      for (
+        let i = 1;
+        i < points.length;
+        i++
+      ) {
+        const previous = points[i - 1];
+        const current = points[i];
+        const previousBody =
+          waterBodyAtPoint(previous);
+        const currentBody =
+          waterBodyAtPoint(current);
+
+        if (
+          Boolean(previousBody) ===
+          Boolean(currentBody)
+        ) {
+          continue;
+        }
+
+        const body =
+          previousBody || currentBody;
+        const insidePoint =
+          previousBody
+            ? previous
+            : current;
+        const outsidePoint =
+          previousBody
+            ? current
+            : previous;
+        const dx =
+          insidePoint.x -
+          outsidePoint.x;
+        const dy =
+          insidePoint.y -
+          outsidePoint.y;
+        const length =
+          Math.max(
+            0.0001,
+            Math.hypot(dx, dy)
+          );
+        const ux = dx / length;
+        const uy = dy / length;
+        const nx = -uy;
+        const ny = ux;
+        const boundary = {
+          x:
+            (insidePoint.x +
+              outsidePoint.x) *
+            0.5,
+          y:
+            (insidePoint.y +
+              outsidePoint.y) *
+            0.5
+        };
+        const widthWorld =
+          Math.max(
+            0.22,
+            Math.min(
+              0.66,
+              Math.max(
+                previous.width || 0,
+                current.width || 0,
+                channel.maxWidth || 0.3
+              ) * 0.90
+            )
+          );
+        const depthWorld =
+          0.42 +
+          widthWorld * 0.42;
+
+        const left =
+          worldPointToPixel(
+            {
+              x:
+                boundary.x +
+                nx * widthWorld * 0.52,
+              y:
+                boundary.y +
+                ny * widthWorld * 0.52
+            },
+            view
+          );
+        const right =
+          worldPointToPixel(
+            {
+              x:
+                boundary.x -
+                nx * widthWorld * 0.52,
+              y:
+                boundary.y -
+                ny * widthWorld * 0.52
+            },
+            view
+          );
+        const tip =
+          worldPointToPixel(
+            {
+              x:
+                boundary.x +
+                ux * depthWorld,
+              y:
+                boundary.y +
+                uy * depthWorld
+            },
+            view
+          );
+        const middle =
+          worldPointToPixel(
+            boundary,
+            view
+          );
+
+        ctx.save();
+        clipToBody(
+          ctx,
+          body,
+          view
+        );
+        ctx.fillStyle =
+          "rgba(137, 194, 181, 0.19)";
+        ctx.beginPath();
+        ctx.moveTo(
+          left.x,
+          left.y
+        );
+        ctx.quadraticCurveTo(
+          middle.x +
+            (tip.x - middle.x) *
+              0.48 +
+            (left.x - right.x) *
+              0.10,
+          middle.y +
+            (tip.y - middle.y) *
+              0.48 +
+            (left.y - right.y) *
+              0.10,
+          tip.x,
+          tip.y
+        );
+        ctx.quadraticCurveTo(
+          middle.x +
+            (tip.x - middle.x) *
+              0.48 -
+            (left.x - right.x) *
+              0.10,
+          middle.y +
+            (tip.y - middle.y) *
+              0.48 -
+            (left.y - right.y) *
+              0.10,
+          right.x,
+          right.y
+        );
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle =
+          "rgba(205, 226, 207, 0.075)";
+        ctx.beginPath();
+        ctx.ellipse(
+          middle.x +
+            (tip.x - middle.x) * 0.34,
+          middle.y +
+            (tip.y - middle.y) * 0.34,
+          view.tileSize *
+            widthWorld * 0.22,
+          view.tileSize *
+            widthWorld * 0.11,
+          Math.atan2(uy, ux),
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
   function drawWaterDepth(
     ctx,
     view
@@ -4899,7 +5387,7 @@
     );
 
     ctx.save();
-    ctx.globalAlpha = 0.44;
+    ctx.globalAlpha = 0.46;
     ctx.drawImage(
       waterLayers.bankCanvas,
       0,
@@ -4908,7 +5396,7 @@
     ctx.restore();
 
     ctx.save();
-    ctx.globalAlpha = 0.98;
+    ctx.globalAlpha = 1;
     ctx.drawImage(
       waterLayers.waterCanvas,
       0,
@@ -4916,14 +5404,32 @@
     );
     ctx.restore();
 
+    // Local, feature-owned layers now do the visual storytelling. Pond shelves
+    // mean shallow edges; creek center bands mean constrained moving water;
+    // mouth fans only appear where a channel actually meets pooled water.
+    drawWaterBodyWash(
+      ctx,
+      view
+    );
+
     ctx.save();
-    ctx.globalAlpha = 0.34;
+    ctx.globalAlpha = 0.26;
     ctx.drawImage(
       waterLayers.shallowCanvas,
       0,
       0
     );
     ctx.restore();
+
+    drawChannelShallows(
+      ctx,
+      view
+    );
+
+    drawWaterMouths(
+      ctx,
+      view
+    );
 
     drawWaterDepth(
       ctx,
@@ -4949,9 +5455,9 @@
       return;
     }
 
-    // Pond reflections are sparse and irregular. They are clipped to each
-    // water body so they feel like light caught by a surface, not icon lines
-    // stamped across the map.
+    // Pooled water gets only one or two loose painted glints. They are
+    // deliberately off-axis and gently bowed so the marks feel brushed onto a
+    // surface rather than stamped as the conventional "three water lines" icon.
     for (const body of geometry.waterBodies) {
       const width =
         body.bounds.maxX -
@@ -4960,116 +5466,159 @@
         body.bounds.maxY -
         body.bounds.minY;
 
-      if (width < 0.85 || height < 0.62) {
+      if (width < 0.90 || height < 0.66) {
         continue;
       }
 
       const centerX =
-        (body.bounds.minX + body.bounds.maxX) * 0.5;
+        (body.bounds.minX +
+          body.bounds.maxX) *
+        0.5;
       const centerY =
-        (body.bounds.minY + body.bounds.maxY) * 0.5;
-
-      const count =
-        width > 4.2 || height > 4.2
-          ? 3
-          : width > 2.2 || height > 2.0
-            ? 2
-            : 1;
-
+        (body.bounds.minY +
+          body.bounds.maxY) *
+        0.5;
       const rippleSeed =
         Number(
-          String(body.id || "1").replace(/\D/g, "")
+          String(body.id || "1")
+            .replace(/\D/g, "")
         ) || 1;
+      const area = width * height;
+      const count =
+        area > 8.5
+          ? 2
+          : 1;
 
       ctx.save();
-      ctx.beginPath();
-      appendPolygon(
+      clipToBody(
         ctx,
-        body.outer,
+        body,
         view
       );
-      for (const hole of body.holes || []) {
-        appendPolygon(
-          ctx,
-          hole,
-          view
-        );
-      }
-      ctx.clip("evenodd");
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
       for (let i = 0; i < count; i++) {
         const phase =
-          now * 0.00020 +
-          rippleSeed * 0.29 +
-          i * 2.13;
-
+          now * 0.00016 +
+          rippleSeed * 0.41 +
+          i * 2.37;
+        const breath =
+          Math.sin(phase);
+        const x =
+          centerX +
+          (hash01(
+            rippleSeed,
+            i,
+            761
+          ) - 0.5) *
+            Math.min(
+              width * 0.44,
+              1.10
+            );
         const y =
           centerY +
-          (i - (count - 1) * 0.5) * 0.64 +
-          (hash01(rippleSeed, i, 731) - 0.5) * 0.18 +
-          Math.sin(phase) * 0.025;
-
-        const xShift =
-          (hash01(rippleSeed, i, 732) - 0.5) *
-          Math.min(0.46, width * 0.14);
-
-        const half =
+          (hash01(
+            rippleSeed,
+            i,
+            762
+          ) - 0.5) *
+            Math.min(
+              height * 0.40,
+              0.82
+            ) +
+          breath * 0.010;
+        const center =
+          worldPointToPixel(
+            { x, y },
+            view
+          );
+        const length =
+          view.tileSize *
           Math.min(
-            0.64,
-            width *
-              (0.105 +
-                hash01(rippleSeed, i, 733) * 0.055)
+            0.88,
+            0.42 +
+              hash01(
+                rippleSeed,
+                i,
+                763
+              ) * 0.36
           );
-
-        const left =
-          worldPointToPixel(
-            {
-              x: centerX + xShift - half,
-              y
-            },
-            view
-          );
-        const right =
-          worldPointToPixel(
-            {
-              x: centerX + xShift + half,
-              y
-            },
-            view
-          );
-
+        const angle =
+          (hash01(
+            rippleSeed,
+            i,
+            764
+          ) - 0.5) *
+          0.34;
+        const ux = Math.cos(angle);
+        const uy = Math.sin(angle);
+        const nx = -uy;
+        const ny = ux;
+        const half = length * 0.5;
         const bow =
           view.tileSize *
-          (0.018 +
-            hash01(rippleSeed, i, 734) * 0.022);
-        const lean =
-          (hash01(rippleSeed, i, 735) - 0.5) *
-          view.tileSize * 0.035;
+          (
+            0.026 +
+            hash01(
+              rippleSeed,
+              i,
+              765
+            ) * 0.026
+          );
+
+        const leftX =
+          center.x - ux * half;
+        const leftY =
+          center.y - uy * half;
+        const rightX =
+          center.x + ux * half;
+        const rightY =
+          center.y + uy * half;
 
         ctx.strokeStyle =
-          `rgba(220, 236, 224, ${(
-            0.16 +
-            hash01(rippleSeed, i, 736) * 0.08
+          `rgba(218, 233, 216, ${(
+            0.115 +
+            hash01(
+              rippleSeed,
+              i,
+              766
+            ) * 0.055 +
+            breath * 0.012
           ).toFixed(3)})`;
         ctx.lineWidth =
           Math.max(
             1,
             view.tileSize *
-              (0.015 +
-                hash01(rippleSeed, i, 737) * 0.006)
+              (
+                0.012 +
+                hash01(
+                  rippleSeed,
+                  i,
+                  767
+                ) * 0.005
+              )
           );
-
         ctx.beginPath();
-        ctx.moveTo(left.x, left.y);
+        ctx.moveTo(
+          leftX,
+          leftY
+        );
         ctx.bezierCurveTo(
-          left.x + (right.x - left.x) * 0.30,
-          left.y - bow + lean,
-          left.x + (right.x - left.x) * 0.68,
-          right.y + bow * 0.28 - lean,
-          right.x,
-          right.y
+          center.x -
+            ux * half * 0.30 +
+            nx * bow,
+          center.y -
+            uy * half * 0.30 +
+            ny * bow,
+          center.x +
+            ux * half * 0.24 +
+            nx * bow * 0.34,
+          center.y +
+            uy * half * 0.24 +
+            ny * bow * 0.34,
+          rightX,
+          rightY
         );
         ctx.stroke();
       }

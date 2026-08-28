@@ -910,29 +910,48 @@
     return patch;
   }
 
-  function addGrassTuft(x, y) {
-    const patch = {
-      id: `grass_tuft_${nextGrassTuftId++}`,
-      x,
-      y,
-      offsetX:
-        (generationRandom() - 0.5) * 0.22,
-      offsetY:
-        (generationRandom() - 0.5) * 0.12,
-      scale:
-        0.88 +
-        generationRandom() * 0.34,
-      count:
-        3 +
-        Math.floor(generationRandom() * 5),
-      scatter:
-        0.10 +
-        generationRandom() * 0.13,
-      colorShift:
-        generationRandom() - 0.5,
-      lightShift:
-        generationRandom() - 0.5
-    };
+  function addGrassTuft(x, y, options = null) {
+    const exact = options?.exact === true;
+
+    const patch = exact
+      ? {
+          id: `grass_tuft_${nextGrassTuftId++}`,
+          x,
+          y,
+          offsetX: options.offsetX || 0,
+          offsetY: options.offsetY || 0,
+          scale: options.scale || 1,
+          count: options.count || 5,
+          scatter: options.scatter || 0.16,
+          colorShift: options.colorShift || 0,
+          lightShift: options.lightShift || 0,
+          foreground: options.foreground === true,
+          source: options.source || "anchored"
+        }
+      : {
+          id: `grass_tuft_${nextGrassTuftId++}`,
+          x,
+          y,
+          offsetX:
+            (generationRandom() - 0.5) * 0.24,
+          offsetY:
+            (generationRandom() - 0.5) * 0.13,
+          scale:
+            0.96 +
+            generationRandom() * 0.42,
+          count:
+            4 +
+            Math.floor(generationRandom() * 5),
+          scatter:
+            0.12 +
+            generationRandom() * 0.15,
+          colorShift:
+            generationRandom() - 0.5,
+          lightShift:
+            generationRandom() - 0.5,
+          foreground: false,
+          source: "ambient"
+        };
 
     LLW.state.grassTufts.push(patch);
     return patch;

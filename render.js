@@ -2329,16 +2329,16 @@
     for (let i = 0; i < count; i++) {
       const offset =
         (i - (count - 1) / 2) *
-        tileSize * 0.052;
+        tileSize * 0.060;
       const height =
         tileSize *
-        (0.075 + hash01(seed, i, 31) * 0.065);
+        (0.090 + hash01(seed, i, 31) * 0.075);
       const width =
         tileSize *
-        (0.035 + hash01(seed, i, 32) * 0.020);
+        (0.045 + hash01(seed, i, 32) * 0.026);
       const bend =
         (hash01(seed, i, 33) - 0.5) *
-        tileSize * 0.035;
+        tileSize * 0.040;
       const hue = Math.round(
         105 -
         dryGround * 26 +
@@ -2610,6 +2610,9 @@
     }
 
     for (const patch of state.grassTufts || []) {
+      if (patch.foreground) {
+        continue;
+      }
       drawGrassTuftPatch(patch, tileSize, offsetX, offsetY);
     }
 
@@ -3930,6 +3933,24 @@
       });
     }
 
+    for (
+      const patch of
+      state.grassTufts || []
+    ) {
+      if (!patch.foreground) {
+        continue;
+      }
+
+      queue.push({
+        kind: "foreground_grass",
+        sortY:
+          patch.y +
+          0.93 +
+          (patch.offsetY || 0),
+        entity: patch
+      });
+    }
+
     queue.push({
       kind: "player",
       sortY:
@@ -3973,6 +3994,15 @@
         entry.kind === "stump"
       ) {
         drawStumpProp(
+          entry.entity,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      } else if (
+        entry.kind === "foreground_grass"
+      ) {
+        drawGrassTuftPatch(
           entry.entity,
           tileSize,
           offsetX,

@@ -4788,6 +4788,30 @@
       );
     }
 
+    function neighborMax(cell, field) {
+      let value = 0;
+
+      for (const [dx, dy] of [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1]
+      ]) {
+        const neighbor =
+          LLW.pcg.getCell(
+            cell.x + dx,
+            cell.y + dy
+          );
+
+        value = Math.max(
+          value,
+          neighbor?.[field] || 0
+        );
+      }
+
+      return value;
+    }
+
     for (const cell of cells) {
       if (!dryCell(cell)) {
         continue;
@@ -4832,6 +4856,43 @@
           ) /
           0.090
         );
+
+      // Grass now listens to edges and contact zones rather than behaving as
+      // generic green confetti. These values peak just OUTSIDE a used/wet
+      // surface, so tufts gather along path shoulders, mud rims and water
+      // margins while leaving the actual tread / mud core readable.
+      const nearbyTrail =
+        neighborMax(cell, "trailAmount");
+      const nearbyMud =
+        neighborMax(cell, "mudAmount");
+      const pathBoundary = clamp(
+        (nearbyTrail - trail) * 1.9
+      ) * (1 - trail * 0.72);
+      const mudBoundary = clamp(
+        Math.max(
+          (nearbyMud - mud) * 1.65,
+          bellPreference(
+            mud,
+            0.28,
+            0.24,
+            0.20
+          ) * 0.68
+        )
+      ) * (1 - bareMud * 0.78);
+      const waterEdge = clamp(
+        riparian *
+        (1 - (cell.visibleWaterFooting || 0)) *
+        1.18
+      );
+      const clearingRing =
+        bellPreference(
+          cell.woodlandClearingInfluence || 0,
+          0.48,
+          0.34,
+          0.27
+        ) * openGround;
+      const propShelter =
+        cell.propShelter || 0;
 
       const leafCluster =
         0.58 +
@@ -4936,19 +4997,24 @@
         LLW.CONFIG
           .groundGrassTuftDensity *
         clamp(
-          0.12 +
-          openGround * 0.44 +
-          edge * 0.26 +
-          woodland * 0.14 +
-          (1 - riparian) * 0.04
+          0.10 +
+          openGround * 0.34 +
+          edge * 0.20 +
+          woodland * 0.10 +
+          waterEdge * 0.30 +
+          pathBoundary * 0.46 +
+          mudBoundary * 0.36 +
+          clearingRing * 0.30 +
+          propShelter * 0.20
         ) *
-        (1 - mud * 0.72) *
-        (1 - bareMud * 0.84) *
-        (1 - trail * 0.72) *
-        (1 - dryBare * 0.62) *
-        (profile === "open_grass" ? 1.14 : 1) *
-        (profile === "dry_sparse" ? 0.58 : 1) *
-        (profile === "disturbed_trail" ? 0.72 : 1) *
+        (1 - mud * 0.52) *
+        (1 - bareMud * 0.88) *
+        (1 - trail * 0.62) *
+        (1 - dryBare * 0.58) *
+        (profile === "open_grass" ? 1.18 : 1) *
+        (profile === "pebbly_bank" ? 1.16 : 1) *
+        (profile === "dry_sparse" ? 0.64 : 1) *
+        (profile === "disturbed_trail" ? 0.90 : 1) *
         grassCluster;
 
       if (rng() < grassChance) {
@@ -5040,6 +5106,162 @@
           cell.y
         );
       }
+    }
+
+    // A second, independent pass lets grass physically belong to props without
+    // perturbing the existing groundcover RNG stream. These foreground tufts
+    // sit just below the visible contact point of trunks/rocks/wood and are
+    // Y-sorted later so they can overlap the prop base instead of floating
+    // behind it.
+    const anchorRng =
+      LLW.pcg.createRng(
+        seed,
+        "groundcover-grass-anchors"
+      );
+
+    function anchoredTuft(
+      entity,
+      source,
+      {
+        chance = 0.6,
+        extraChance = 0,
+        spreadX = 0.22,
+        frontMin = 0.075,
+        frontMax = 0.19,
+        scaleMin = 1.08,
+        scaleMax = 1.42
+      } = {}
+    ) {
+      const cell =
+        LLW.pcg.getCell(
+          entity.x,
+          entity.y
+        );
+
+      if (
+        !cell ||
+        !dryCell(cell) ||
+        anchorRng() > chance
+      ) {
+        return;
+      }
+
+      const place = (index = 0) => {
+        const side =
+          (anchorRng() - 0.5) *
+          spreadX * 2;
+        const front =
+          frontMin +
+          anchorRng() *
+          (frontMax - frontMin);
+        const scale =
+          scaleMin +
+          anchorRng() *
+          (scaleMax - scaleMin);
+
+        spawnGrassTuft(
+          entity.x,
+          entity.y,
+          {
+            exact: true,
+            offsetX:
+              (entity.offsetX || 0) +
+              side,
+            offsetY:
+              (entity.offsetY || 0) +
+              front +
+              index * 0.018,
+            scale,
+            count:
+              5 +
+              Math.floor(anchorRng() * 4),
+            scatter:
+              0.15 +
+              anchorRng() * 0.12,
+            colorShift:
+              anchorRng() - 0.5,
+            lightShift:
+              anchorRng() - 0.5,
+            foreground: true,
+            source
+          }
+        );
+      };
+
+      place(0);
+
+      if (
+        extraChance > 0 &&
+        anchorRng() < extraChance
+      ) {
+        place(1);
+      }
+    }
+
+    for (const tree of state.trees || []) {
+      anchoredTuft(
+        tree,
+        "tree_base",
+        {
+          chance: 0.62,
+          extraChance: 0.16,
+          spreadX: 0.25,
+          frontMin: 0.08,
+          frontMax: 0.18
+        }
+      );
+    }
+
+    for (const boulder of state.boulders || []) {
+      anchoredTuft(
+        boulder,
+        "boulder_base",
+        {
+          chance: 0.74,
+          extraChance: 0.18,
+          spreadX: 0.30,
+          frontMin: 0.09,
+          frontMax: 0.20,
+          scaleMin: 1.06,
+          scaleMax: 1.38
+        }
+      );
+    }
+
+    for (const stump of state.stumps || []) {
+      anchoredTuft(
+        stump,
+        "stump_base",
+        {
+          chance: 0.70,
+          extraChance: 0.10,
+          spreadX: 0.22,
+          frontMin: 0.07,
+          frontMax: 0.17,
+          scaleMin: 1.02,
+          scaleMax: 1.30
+        }
+      );
+    }
+
+    for (const log of state.fallenLogs || []) {
+      if (log.isBridge) {
+        continue;
+      }
+
+      anchoredTuft(
+        log,
+        "fallen_log_base",
+        {
+          chance: 0.78,
+          extraChance: 0.34,
+          spreadX: 0.38,
+          frontMin: 0.08,
+          frontMax: 0.22,
+          scaleMin: 1.04,
+          scaleMax: 1.36
+        }
+      );
     }
   }
 
