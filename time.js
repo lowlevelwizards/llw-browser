@@ -19,6 +19,11 @@
     return LLW.CONFIG.turnsPerHour * LLW.CONFIG.hoursPerDay;
   }
 
+  function cycleTurn(turn) {
+    const cycle = turnsPerDay();
+    return ((turn % cycle) + cycle) % cycle;
+  }
+
   function dayIndexForTurn(turn) {
     return Math.floor(turn / turnsPerDay());
   }
@@ -29,7 +34,7 @@
 
   function clockMinutesForTurn(turn) {
     const startMinutes = LLW.CONFIG.startHour * 60;
-    const totalMinutes = startMinutes + turn * minutesPerTurn();
+    const totalMinutes = startMinutes + cycleTurn(turn) * minutesPerTurn();
     const dayMinutes = LLW.CONFIG.hoursPerDay * 60;
 
     return ((totalMinutes % dayMinutes) + dayMinutes) % dayMinutes;
@@ -41,6 +46,10 @@
 
   LLW.time = {
     turnsPerDay,
+
+    getCycleTurn(turn = state.game.turn) {
+      return cycleTurn(turn);
+    },
 
     onNewDay(listener) {
       newDayListeners.push(listener);

@@ -134,8 +134,7 @@
       (sun.contactAlpha / 0.18);
 
     ctx.save();
-    ctx.fillStyle =
-      `rgba(0, 0, 0, ${scaledAlpha})`;
+    ctx.fillStyle = shadowTint(scaledAlpha * 0.78);
     ctx.beginPath();
     ctx.ellipse(
       centerX,
@@ -158,7 +157,7 @@
   ) {
     const sun = LLW.time.getSunState();
     ctx.save();
-    ctx.fillStyle = `rgba(0, 0, 0, ${sun.contactAlpha.toFixed(3)})`;
+    ctx.fillStyle = shadowTint(sun.contactAlpha * 0.78);
     ctx.beginPath();
     ctx.ellipse(
       centerX,
@@ -174,9 +173,9 @@
   }
 
   function shadowTint(alpha) {
-    // Cool, mossy blue-green rather than neutral black. The shadows are meant
-    // to feel like translucent cut paper laid over the painted ground.
-    return `rgba(48, 67, 70, ${Math.max(0, alpha)})`;
+    // Push the cast shadows away from grey-black and toward a cool mossy teal.
+    // This keeps them readable without feeling like soot stains on the map.
+    return `rgba(66, 106, 104, ${Math.max(0, alpha)})`;
   }
 
   function drawSoftShadowEllipse(
@@ -199,19 +198,19 @@
 
     const layers = [
       {
-        scaleX: 1.24,
-        scaleY: 1.30,
-        alpha: alpha * 0.16
+        scaleX: 1.20,
+        scaleY: 1.24,
+        alpha: alpha * 0.10
       },
       {
-        scaleX: 1.10,
-        scaleY: 1.13,
-        alpha: alpha * 0.30
+        scaleX: 1.08,
+        scaleY: 1.11,
+        alpha: alpha * 0.20
       },
       {
         scaleX: 1,
         scaleY: 1,
-        alpha
+        alpha: alpha * 0.74
       }
     ];
 
@@ -312,52 +311,56 @@
       (tree.trunkHeight || 1) * scale;
     const projection =
       tileSize *
-      (0.62 + trunkHeightFactor * 0.18) *
+      (0.50 + trunkHeightFactor * 0.15) *
       sun.lengthFactor;
 
-    // A soft shared under-shape joins the lobes into one readable cast mass.
+    // Base canopy mass.
     drawSoftShadowEllipse(
       centerX + sun.shadowX * projection,
       baseY + sun.shadowY * projection,
-      tileSize * 0.44 * scale * crownScaleX *
-        (1 + sun.lengthFactor * 0.11),
-      tileSize * 0.22 * scale * crownScaleY *
-        (1 + sun.lengthFactor * 0.08),
-      sun.angle * 0.28,
-      sun.castAlpha * 0.44
+      tileSize * 0.40 * scale * crownScaleX *
+        (1 + sun.lengthFactor * 0.07),
+      tileSize * 0.20 * scale * crownScaleY *
+        (1 + sun.lengthFactor * 0.05),
+      sun.angle * 0.22,
+      sun.castAlpha * 0.26
     );
 
-    const lobes = treeLobes(tree, tileSize);
+    // Narrow trunk shadow so the canopy does not feel disconnected.
+    drawSoftShadowEllipse(
+      centerX + sun.shadowX * (projection * 0.58),
+      baseY + sun.shadowY * (projection * 0.58),
+      tileSize * 0.14 * scale,
+      tileSize * 0.08 * scale,
+      sun.angle * 0.26,
+      sun.castAlpha * 0.28
+    );
+
+    const lobes = treeLobes(tree, tileSize)
+      .slice()
+      .sort((a, b) => b[2] - a[2])
+      .slice(0, 3);
 
     for (let i = 0; i < lobes.length; i++) {
       const [lx, ly, radius] = lobes[i];
 
       const localX = lx * scale * crownScaleX;
-      const localY = ly * scale * crownScaleY * 0.42;
+      const localY = ly * scale * crownScaleY * 0.28;
 
       const rotatedX =
         localX * cos - localY * sin;
       const rotatedY =
         localX * sin + localY * cos;
 
-      const lobeProjection =
-        projection *
-        (0.93 + hash01(i, tree.family || 0, 802) * 0.12);
-
       drawSoftShadowEllipse(
-        centerX +
-          rotatedX +
-          sun.shadowX * lobeProjection,
-        baseY +
-          rotatedY +
-          sun.shadowY * lobeProjection,
+        centerX + rotatedX + sun.shadowX * projection,
+        baseY + rotatedY + sun.shadowY * projection,
         radius * scale * crownScaleX *
-          (1.02 + sun.lengthFactor * 0.12),
+          (0.92 + sun.lengthFactor * 0.08),
         radius * scale * crownScaleY *
-          (0.56 + sun.lengthFactor * 0.045),
-        sun.angle * 0.20 + crownRotation * 0.22,
-        sun.castAlpha *
-          (0.72 + hash01(i, tree.family || 0, 803) * 0.16)
+          (0.44 + sun.lengthFactor * 0.03),
+        sun.angle * 0.16 + crownRotation * 0.14,
+        sun.castAlpha * (0.20 + i * 0.035)
       );
     }
   }
@@ -3051,8 +3054,8 @@
         centerY - tileSize * 0.10,
         tileSize * 0.26 * scale,
         tileSize * 0.10 * scale,
-        tileSize * 0.24,
-        0.72,
+        tileSize * 0.22,
+        0.42,
         sun.angle * 0.28,
         0.85
       );
