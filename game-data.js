@@ -5,6 +5,13 @@
     cols: 12,
     rows: 16,
 
+    // First PCG atoms. Change this number, or append ?seed=1234 to the URL,
+    // to inspect another deterministic little landscape.
+    worldSeed: 1842,
+    elevationSmoothPasses: 4,
+    pcgDebugElevation: true,
+    pcgDebugFlow: true,
+
     mushroomCount: 3,
 
     // Keep one familiar tree/bush, then add a few generated ones.
@@ -55,6 +62,11 @@
   };
 
   LLW.state = {
+    landscape: {
+      seed: null,
+      cells: []
+    },
+
     game: {
       turn: 0,
       vitality: 3,
@@ -109,6 +121,7 @@
   let nextItemId = 1;
   let nextTreeId = 1;
   let nextBushId = 1;
+  let generationRandom = Math.random;
 
   LLW.worldLocation = function (x, y) {
     return { kind: "world", x, y };
@@ -131,8 +144,31 @@
   };
 
   LLW.randomInt = function (min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+    return Math.floor(
+      generationRandom() *
+      (max - min + 1)
+    ) + min;
   };
+
+  function shuffleForGeneration(values) {
+    const result = [...values];
+
+    for (
+      let i = result.length - 1;
+      i > 0;
+      i--
+    ) {
+      const j = Math.floor(
+        generationRandom() *
+        (i + 1)
+      );
+
+      [result[i], result[j]] =
+        [result[j], result[i]];
+    }
+
+    return result;
+  }
 
   LLW.spawnItem = function (kind, location) {
     const item = {
@@ -250,7 +286,9 @@
       id: `bush_${nextBushId++}`,
       x,
       y,
-      hasBerries: Math.random() < LLW.CONFIG.berryStartChance
+      hasBerries:
+        generationRandom() <
+        LLW.CONFIG.berryStartChance
     };
 
     LLW.state.bushes.push(bush);
@@ -322,8 +360,10 @@
     for (const tree of LLW.state.trees) {
       const spawnCount = LLW.randomInt(0, 2);
 
-      const offsets = [...neighborOffsets]
-        .sort(() => Math.random() - 0.5);
+      const offsets =
+        shuffleForGeneration(
+          neighborOffsets
+        );
 
       let spawned = 0;
 
@@ -374,7 +414,23 @@
     }
   }
 
-  LLW.createWorld = function () {
+  LLW.createWorld = function (seed = null) {
+    const resolvedSeed =
+      LLW.pcg.resolveSeed(seed);
+
+    // Landscape truth first.
+    LLW.pcg.generateLandscape(
+      resolvedSeed
+    );
+
+    // Existing initial props also become repeatable for the same world,
+    // without yet making their placement depend on elevation.
+    generationRandom =
+      LLW.pcg.createRng(
+        resolvedSeed,
+        "initial-entities"
+      );
+
     nextItemId = 1;
     nextTreeId = 1;
     nextBushId = 1;

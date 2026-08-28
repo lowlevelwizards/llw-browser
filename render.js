@@ -151,6 +151,189 @@
     return value - Math.floor(value);
   }
 
+  function drawElevationDebug(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (
+      !LLW.CONFIG.pcgDebugElevation ||
+      !state.landscape.cells.length
+    ) {
+      return;
+    }
+
+    const low = [86, 132, 106];
+    const high = [205, 205, 133];
+
+    ctx.save();
+
+    for (
+      const cell of
+      state.landscape.cells
+    ) {
+      const p = gridToPixel(
+        cell.x,
+        cell.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      // Smooth interpolation keeps this readable as terrain rather than
+      // turning the debug view into hard biome bands.
+      const t =
+        cell.elevation *
+        cell.elevation *
+        (3 - 2 * cell.elevation);
+
+      const r = Math.round(
+        LLW.lerp(low[0], high[0], t)
+      );
+
+      const g = Math.round(
+        LLW.lerp(low[1], high[1], t)
+      );
+
+      const b = Math.round(
+        LLW.lerp(low[2], high[2], t)
+      );
+
+      ctx.fillStyle =
+        `rgba(${r}, ${g}, ${b}, 0.58)`;
+
+      ctx.fillRect(
+        p.x,
+        p.y,
+        tileSize,
+        tileSize
+      );
+    }
+
+    ctx.restore();
+  }
+
+  function drawDownhillDebug(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (
+      !LLW.CONFIG.pcgDebugFlow ||
+      !state.landscape.cells.length
+    ) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineWidth =
+      Math.max(
+        1,
+        tileSize * 0.022
+      );
+
+    for (
+      const cell of
+      state.landscape.cells
+    ) {
+      const from = gridToPixel(
+        cell.x,
+        cell.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const startX =
+        from.x + tileSize * 0.5;
+
+      const startY =
+        from.y + tileSize * 0.5;
+
+      const downhill =
+        LLW.pcg.getDownhillCell(cell);
+
+      if (!downhill) {
+        // A small cool dot marks a local depression: the first places
+        // future water accumulation can care about.
+        ctx.fillStyle =
+          "rgba(48, 82, 85, 0.50)";
+
+        ctx.beginPath();
+        ctx.arc(
+          startX,
+          startY,
+          Math.max(
+            1.5,
+            tileSize * 0.055
+          ),
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+
+        continue;
+      }
+
+      const to = gridToPixel(
+        downhill.x,
+        downhill.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const targetX =
+        to.x + tileSize * 0.5;
+
+      const targetY =
+        to.y + tileSize * 0.5;
+
+      // Don't draw a full center-to-center arrow. A short directional
+      // stroke is enough to reveal the flow field underneath the game.
+      const endX =
+        LLW.lerp(
+          startX,
+          targetX,
+          0.34
+        );
+
+      const endY =
+        LLW.lerp(
+          startY,
+          targetY,
+          0.34
+        );
+
+      ctx.strokeStyle =
+        "rgba(43, 76, 67, 0.27)";
+
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+
+      ctx.fillStyle =
+        "rgba(43, 76, 67, 0.34)";
+
+      ctx.beginPath();
+      ctx.arc(
+        endX,
+        endY,
+        Math.max(
+          1,
+          tileSize * 0.025
+        ),
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   function drawGrid(
     tileSize,
     offsetX,
@@ -1653,6 +1836,18 @@
       offsetY,
       mapWidth,
       mapHeight
+    );
+
+    drawElevationDebug(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawDownhillDebug(
+      tileSize,
+      offsetX,
+      offsetY
     );
 
     drawGrid(
