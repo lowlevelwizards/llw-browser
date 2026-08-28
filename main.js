@@ -46,6 +46,9 @@
   const treeSuitabilityToggleButton =
     document.getElementById("treeSuitabilityToggleButton");
 
+  const canopyToggleButton =
+    document.getElementById("canopyToggleButton");
+
   const pocketButtons = [
     ...document.querySelectorAll(
       ".pocket-slot"
@@ -307,6 +310,28 @@
     treeSuitabilityToggleButton.setAttribute(
       "aria-pressed",
       treeSuitabilityOn
+        ? "true"
+        : "false"
+    );
+
+    const canopyOn =
+      Boolean(
+        LLW.state.debug.canopy
+      );
+
+    canopyToggleButton.textContent =
+      canopyOn
+        ? "Canopy: On"
+        : "Canopy: Off";
+
+    canopyToggleButton.classList.toggle(
+      "active",
+      canopyOn
+    );
+
+    canopyToggleButton.setAttribute(
+      "aria-pressed",
+      canopyOn
         ? "true"
         : "false"
     );
@@ -662,6 +687,9 @@
       if (next) {
         LLW.state.debug.treeSuitability =
           false;
+
+        LLW.state.debug.canopy =
+          false;
       }
 
       syncSeedUI();
@@ -679,6 +707,30 @@
 
       if (next) {
         LLW.state.debug.moisture =
+          false;
+
+        LLW.state.debug.canopy =
+          false;
+      }
+
+      syncSeedUI();
+    }
+  );
+
+  bindPress(
+    canopyToggleButton,
+    () => {
+      const next =
+        !LLW.state.debug.canopy;
+
+      LLW.state.debug.canopy =
+        next;
+
+      if (next) {
+        LLW.state.debug.moisture =
+          false;
+
+        LLW.state.debug.treeSuitability =
           false;
       }
 

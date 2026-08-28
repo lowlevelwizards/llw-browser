@@ -20,6 +20,12 @@
     pixelsPerTile: 7
   };
 
+  let canopyCache = {
+    key: null,
+    canvas: null,
+    pixelsPerTile: 7
+  };
+
   let waterLayers = {
     width: 0,
     height: 0,
@@ -545,6 +551,11 @@
         view
       );
 
+      drawCanopyDebug(
+        ctx,
+        view
+      );
+
       return;
     }
 
@@ -676,6 +687,11 @@
     );
 
     drawTreeSuitabilityDebug(
+      ctx,
+      view
+    );
+
+    drawCanopyDebug(
       ctx,
       view
     );
@@ -1426,6 +1442,487 @@
       overview
         ? 0.66
         : 0.58;
+
+    ctx.imageSmoothingEnabled =
+      true;
+
+    ctx.imageSmoothingQuality =
+      "high";
+
+    if (overview) {
+      ctx.drawImage(
+        cache,
+
+        0.5 * scale,
+        0.5 * scale,
+
+        LLW.CONFIG.worldCols *
+          scale,
+
+        LLW.CONFIG.worldRows *
+          scale,
+
+        view.offsetX,
+        view.offsetY,
+        view.mapWidth,
+        view.mapHeight
+      );
+
+      ctx.restore();
+      return;
+    }
+
+    const visibleLeft =
+      state.camera.x -
+      view.offsetX /
+      view.tileSize;
+
+    const visibleTop =
+      state.camera.y -
+      view.offsetY /
+      view.tileSize;
+
+    const visibleRight =
+      visibleLeft +
+      view.width /
+      view.tileSize;
+
+    const visibleBottom =
+      visibleTop +
+      view.height /
+      view.tileSize;
+
+    const clippedLeft =
+      clamp(
+        visibleLeft,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedTop =
+      clamp(
+        visibleTop,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    const clippedRight =
+      clamp(
+        visibleRight,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedBottom =
+      clamp(
+        visibleBottom,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    if (
+      clippedRight >
+        clippedLeft &&
+      clippedBottom >
+        clippedTop
+    ) {
+      ctx.drawImage(
+        cache,
+
+        (
+          clippedLeft +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedTop +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        scale,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        scale,
+
+        (
+          clippedLeft -
+          visibleLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedTop -
+          visibleTop
+        ) *
+        view.tileSize,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        view.tileSize
+      );
+    }
+
+    ctx.restore();
+  }
+
+  function sampleCanopyField(
+    worldX,
+    worldY,
+    property
+  ) {
+    const x0 =
+      Math.floor(
+        worldX
+      );
+
+    const y0 =
+      Math.floor(
+        worldY
+      );
+
+    const x1 =
+      x0 + 1;
+
+    const y1 =
+      y0 + 1;
+
+    const tx =
+      worldX - x0;
+
+    const ty =
+      worldY - y0;
+
+    const a =
+      getCellClamped(
+        x0,
+        y0
+      );
+
+    const b =
+      getCellClamped(
+        x1,
+        y0
+      );
+
+    const c =
+      getCellClamped(
+        x0,
+        y1
+      );
+
+    const d =
+      getCellClamped(
+        x1,
+        y1
+      );
+
+    if (
+      !a ||
+      !b ||
+      !c ||
+      !d
+    ) {
+      return 0;
+    }
+
+    return lerp(
+      lerp(
+        a[property] || 0,
+        b[property] || 0,
+        tx
+      ),
+
+      lerp(
+        c[property] || 0,
+        d[property] || 0,
+        tx
+      ),
+
+      ty
+    );
+  }
+
+  function canopyDebugColor(
+    canopy,
+    edge
+  ) {
+    const open =
+      [201, 187, 128];
+
+    const covered =
+      [58, 112, 72];
+
+    const edgeColor =
+      [188, 157, 77];
+
+    let r =
+      lerp(
+        open[0],
+        covered[0],
+        Math.pow(
+          canopy,
+          0.82
+        )
+      );
+
+    let g =
+      lerp(
+        open[1],
+        covered[1],
+        Math.pow(
+          canopy,
+          0.82
+        )
+      );
+
+    let b =
+      lerp(
+        open[2],
+        covered[2],
+        Math.pow(
+          canopy,
+          0.82
+        )
+      );
+
+    const edgeMix =
+      edge * 0.78;
+
+    r =
+      lerp(
+        r,
+        edgeColor[0],
+        edgeMix
+      );
+
+    g =
+      lerp(
+        g,
+        edgeColor[1],
+        edgeMix
+      );
+
+    b =
+      lerp(
+        b,
+        edgeColor[2],
+        edgeMix
+      );
+
+    return [
+      Math.round(r),
+      Math.round(g),
+      Math.round(b)
+    ];
+  }
+
+  function ensureCanopyCache() {
+    if (
+      typeof document ===
+        "undefined" ||
+      !state.landscape
+        .cells.length
+    ) {
+      return null;
+    }
+
+    const scale =
+      canopyCache
+        .pixelsPerTile;
+
+    // Include the actual established tree pattern so this cache remains
+    // correct if tree state later changes without changing the world seed.
+    const treeSignature =
+      state.trees
+        .map(
+          (tree) =>
+            `${tree.x},${tree.y}`
+        )
+        .join(";");
+
+    const key =
+      [
+        state.landscape.seed,
+        LLW.CONFIG.worldCols,
+        LLW.CONFIG.worldRows,
+        scale,
+        treeSignature
+      ].join(":");
+
+    if (
+      canopyCache.key ===
+        key &&
+      canopyCache.canvas
+    ) {
+      return (
+        canopyCache.canvas
+      );
+    }
+
+    const canvas =
+      document.createElement(
+        "canvas"
+      );
+
+    canvas.width =
+      (
+        LLW.CONFIG.worldCols +
+        1
+      ) *
+      scale;
+
+    canvas.height =
+      (
+        LLW.CONFIG.worldRows +
+        1
+      ) *
+      scale;
+
+    const context =
+      canvas.getContext(
+        "2d"
+      );
+
+    const image =
+      context.createImageData(
+        canvas.width,
+        canvas.height
+      );
+
+    for (
+      let py = 0;
+      py <
+        canvas.height;
+      py++
+    ) {
+      const worldY =
+        py /
+        scale -
+        0.5;
+
+      for (
+        let px = 0;
+        px <
+          canvas.width;
+        px++
+      ) {
+        const worldX =
+          px /
+          scale -
+          0.5;
+
+        const canopy =
+          sampleCanopyField(
+            worldX,
+            worldY,
+            "canopy"
+          );
+
+        const edge =
+          sampleCanopyField(
+            worldX,
+            worldY,
+            "woodlandEdge"
+          );
+
+        const [
+          r,
+          g,
+          b
+        ] =
+          canopyDebugColor(
+            canopy,
+            edge
+          );
+
+        const index =
+          (
+            py *
+            canvas.width +
+            px
+          ) *
+          4;
+
+        image.data[
+          index
+        ] = r;
+
+        image.data[
+          index + 1
+        ] = g;
+
+        image.data[
+          index + 2
+        ] = b;
+
+        image.data[
+          index + 3
+        ] = 255;
+      }
+    }
+
+    context.putImageData(
+      image,
+      0,
+      0
+    );
+
+    canopyCache = {
+      ...canopyCache,
+      key,
+      canvas
+    };
+
+    return canvas;
+  }
+
+  function drawCanopyDebug(
+    ctx,
+    view
+  ) {
+    if (
+      !state.debug.canopy
+    ) {
+      return;
+    }
+
+    const cache =
+      ensureCanopyCache();
+
+    if (!cache) {
+      return;
+    }
+
+    const scale =
+      canopyCache
+        .pixelsPerTile;
+
+    const overview =
+      LLW.camera.isOverview();
+
+    ctx.save();
+
+    ctx.globalAlpha =
+      overview
+        ? 0.68
+        : 0.59;
 
     ctx.imageSmoothingEnabled =
       true;

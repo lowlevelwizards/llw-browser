@@ -59,6 +59,14 @@
     treeFallbackMinSuitability: 0.38,
     treeClusterMaxRadius: 4.6,
 
+    // Established trees alter the cells around them.
+    treeCanopyRadius: 2.35,
+
+    // Initial fallen wood is deliberately scarce: most trees contribute
+    // nothing, and a stick only appears on genuinely open ground nearby.
+    initialStickChancePerTree: 0.28,
+    initialStickMinOpenGround: 0.52,
+
     fireStartSticks: 3,
     fireMaxSticks: 5,
     fireBurnTurnsPerStick: 8,
@@ -111,7 +119,8 @@
 
     debug: {
       moisture: false,
-      treeSuitability: false
+      treeSuitability: false,
+      canopy: false
     },
 
     landscape: {
@@ -130,6 +139,16 @@
         mean: 0
       },
       treeAnchors: [],
+      canopyStats: {
+        min: 0,
+        mean: 0,
+        max: 0
+      },
+      woodlandEdgeStats: {
+        min: 0,
+        mean: 0,
+        max: 0
+      },
       geometry: {
         seed: null,
         waterBodies: [],
@@ -392,6 +411,10 @@
       spawnTree: addTree
     });
 
+    // Trees now change the land around them. Later organisms can listen to
+    // these fields rather than merely checking for a tree object nearby.
+    LLW.ecology.deriveCanopyFields();
+
     // Bushes remain deliberately unchanged in this pass so the effect of
     // ecological tree placement can be judged in isolation.
     const fixedBushes = [
@@ -478,50 +501,162 @@
     return occupied;
   }
 
-  function generateSticksAroundTrees(occupied) {
+  function generateSticksAroundTrees(
+    occupied
+  ) {
     const neighborOffsets = [
       [-1, -1], [0, -1], [1, -1],
       [-1,  0],           [1,  0],
       [-1,  1], [0,  1], [1,  1]
     ];
 
-    for (const tree of LLW.state.trees) {
-      const spawnCount = LLW.randomInt(0, 2);
+    for (
+      const tree of
+      LLW.state.trees
+    ) {
+      // Weighted strongly toward zero: most trees do not begin with a loose
+      // stick conveniently waiting beside them.
+      if (
+        generationRandom() >=
+        LLW.CONFIG
+          .initialStickChancePerTree
+      ) {
+        continue;
+      }
 
-      const offsets =
-        shuffleForGeneration(
-          neighborOffsets
-        );
+      const candidates = [];
 
-      let spawned = 0;
+      for (
+        const [dx, dy] of
+        neighborOffsets
+      ) {
+        const x =
+          tree.x + dx;
 
-      for (const [dx, dy] of offsets) {
-        if (spawned >= spawnCount) {
-          break;
-        }
-
-        const x = tree.x + dx;
-        const y = tree.y + dy;
+        const y =
+          tree.y + dy;
 
         if (
           x < 0 ||
           y < 0 ||
-          x >= LLW.CONFIG.worldCols ||
-          y >= LLW.CONFIG.worldRows
+          x >=
+            LLW.CONFIG.worldCols ||
+          y >=
+            LLW.CONFIG.worldRows
         ) {
           continue;
         }
 
-        const key = LLW.gridKey(x, y);
+        const key =
+          LLW.gridKey(
+            x,
+            y
+          );
 
-        if (occupied.has(key) || isBrambleTile(x, y)) {
+        if (
+          occupied.has(key) ||
+          isBrambleTile(
+            x,
+            y
+          )
+        ) {
           continue;
         }
 
-        LLW.spawnItem("stick", LLW.worldLocation(x, y));
-        occupied.add(key);
-        spawned++;
+        const cell =
+          LLW.pcg.getCell(
+            x,
+            y
+          );
+
+        if (
+          !cell ||
+          cell.surfaceWaterDepth >
+            0.00001 ||
+          cell.openGround <
+            LLW.CONFIG
+              .initialStickMinOpenGround
+        ) {
+          continue;
+        }
+
+        candidates.push({
+          x,
+          y,
+          cell
+        });
       }
+
+      // No suitable patch of ground? Nothing spawns. The generator does not
+      // owe every tree a collectible.
+      if (!candidates.length) {
+        continue;
+      }
+
+      let totalWeight = 0;
+
+      const weighted =
+        candidates.map(
+          (candidate) => {
+            const weight =
+              Math.pow(
+                candidate.cell.openGround,
+                2.2
+              ) *
+              (
+                0.72 +
+                candidate.cell.woodlandEdge *
+                0.28
+              );
+
+            totalWeight +=
+              weight;
+
+            return {
+              candidate,
+              weight
+            };
+          }
+        );
+
+      let roll =
+        generationRandom() *
+        totalWeight;
+
+      let chosen =
+        weighted[
+          weighted.length - 1
+        ].candidate;
+
+      for (
+        const entry of
+        weighted
+      ) {
+        roll -=
+          entry.weight;
+
+        if (roll <= 0) {
+          chosen =
+            entry.candidate;
+
+          break;
+        }
+      }
+
+      LLW.spawnItem(
+        "stick",
+        LLW.worldLocation(
+          chosen.x,
+          chosen.y
+        )
+      );
+
+      occupied.add(
+        LLW.gridKey(
+          chosen.x,
+          chosen.y
+        )
+      );
     }
   }
 

@@ -906,8 +906,244 @@
     );
   }
 
+
+  function canopyContribution(
+    distanceFromTree
+  ) {
+    const radius =
+      LLW.CONFIG
+        .treeCanopyRadius;
+
+    if (
+      distanceFromTree >
+      radius
+    ) {
+      return 0;
+    }
+
+    // Strong directly beneath the crown, then taper naturally through the
+    // neighboring cells. Multiple nearby trees combine rather than overwrite.
+    const normalized =
+      1 -
+      distanceFromTree /
+      radius;
+
+    return (
+      Math.pow(
+        clamp(normalized),
+        1.45
+      ) *
+      0.94
+    );
+  }
+
+  function deriveCanopyFields(
+    cells =
+      state.landscape.cells
+  ) {
+    if (!cells.length) {
+      state.landscape.canopyStats = {
+        min: 0,
+        mean: 0,
+        max: 0
+      };
+
+      state.landscape.woodlandEdgeStats = {
+        min: 0,
+        mean: 0,
+        max: 0
+      };
+
+      return;
+    }
+
+    for (const cell of cells) {
+      let remainingOpenSky = 1;
+
+      for (
+        const tree of
+        state.trees
+      ) {
+        const contribution =
+          canopyContribution(
+            distance(
+              cell,
+              tree
+            )
+          );
+
+        if (
+          contribution <=
+          EPSILON
+        ) {
+          continue;
+        }
+
+        // Union-style accumulation: overlapping crowns strengthen a stand
+        // interior but can never exceed complete canopy cover.
+        remainingOpenSky *=
+          1 - contribution;
+      }
+
+      cell.canopy =
+        clamp(
+          1 -
+          remainingOpenSky
+        );
+    }
+
+    // Shade is slightly softer than physical crown cover because nearby
+    // crowns still darken open cells at the edge of a stand.
+    for (const cell of cells) {
+      const neighbors =
+        cell.neighborIndexes.map(
+          (index) =>
+            cells[index]
+        );
+
+      const neighborhoodMean =
+        neighbors.length
+          ? neighbors.reduce(
+              (sum, neighbor) =>
+                sum +
+                neighbor.canopy,
+              0
+            ) /
+            neighbors.length
+          : cell.canopy;
+
+      cell.shade =
+        clamp(
+          cell.canopy *
+            0.78 +
+          neighborhoodMean *
+            0.22
+        );
+
+      cell.openGround =
+        clamp(
+          1 -
+          cell.canopy
+        );
+    }
+
+    let canopyMin = Infinity;
+    let canopyMax = -Infinity;
+    let canopyTotal = 0;
+
+    let edgeMin = Infinity;
+    let edgeMax = -Infinity;
+    let edgeTotal = 0;
+
+    for (const cell of cells) {
+      const nearbyCanopy = [
+        cell.canopy,
+        ...cell.neighborIndexes.map(
+          (index) =>
+            cells[index].canopy
+        )
+      ];
+
+      const localMax =
+        Math.max(
+          ...nearbyCanopy
+        );
+
+      const localMin =
+        Math.min(
+          ...nearbyCanopy
+        );
+
+      const contrast =
+        localMax -
+        localMin;
+
+      // Edge should peak where a meaningful crown transition exists, not in
+      // an empty meadow and not deep inside a uniformly closed stand.
+      const transitionPresence =
+        smoothstep01(
+          localMax /
+          0.55
+        );
+
+      const contrastStrength =
+        smoothstep01(
+          contrast /
+          0.58
+        );
+
+      const partialCover =
+        1 -
+        clamp(
+          Math.abs(
+            cell.canopy -
+            0.38
+          ) /
+          0.62
+        );
+
+      cell.woodlandEdge =
+        clamp(
+          transitionPresence *
+          contrastStrength *
+          (
+            0.62 +
+            partialCover *
+            0.38
+          )
+        );
+
+      canopyMin =
+        Math.min(
+          canopyMin,
+          cell.canopy
+        );
+
+      canopyMax =
+        Math.max(
+          canopyMax,
+          cell.canopy
+        );
+
+      canopyTotal +=
+        cell.canopy;
+
+      edgeMin =
+        Math.min(
+          edgeMin,
+          cell.woodlandEdge
+        );
+
+      edgeMax =
+        Math.max(
+          edgeMax,
+          cell.woodlandEdge
+        );
+
+      edgeTotal +=
+        cell.woodlandEdge;
+    }
+
+    state.landscape.canopyStats = {
+      min: canopyMin,
+      mean:
+        canopyTotal /
+        cells.length,
+      max: canopyMax
+    };
+
+    state.landscape.woodlandEdgeStats = {
+      min: edgeMin,
+      mean:
+        edgeTotal /
+        cells.length,
+      max: edgeMax
+    };
+  }
+
   LLW.ecology = {
     deriveTreeSuitability,
-    generateTrees
+    generateTrees,
+    deriveCanopyFields
   };
 })();
