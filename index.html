@@ -31,6 +31,54 @@
         World
       </button>
 
+      <button
+        id="seedMenuButton"
+        class="seed-menu-button"
+        type="button"
+        aria-label="Open world seed tools"
+        hidden
+      >
+        Seed
+      </button>
+
+      <div
+        id="seedMenu"
+        class="seed-menu"
+        aria-label="World seed tools"
+        hidden
+      >
+        <div class="seed-menu-heading">
+          <span>World seed</span>
+          <span id="currentSeedLabel" class="current-seed-label"></span>
+        </div>
+
+        <input
+          id="seedInput"
+          class="seed-input"
+          type="text"
+          inputmode="text"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-label="World seed"
+        />
+
+        <div class="seed-menu-actions">
+          <button id="applySeedButton" type="button">Use Seed</button>
+          <button id="regenerateSeedButton" type="button">Again</button>
+          <button id="randomSeedButton" type="button">Random</button>
+        </div>
+
+        <button
+          id="moistureToggleButton"
+          class="moisture-toggle-button"
+          type="button"
+          aria-pressed="false"
+        >
+          Moisture: Off
+        </button>
+      </div>
+
       <div class="hud hud-top-right">
         <span id="turnStatus">Turn 0</span>
       </div>
@@ -106,6 +154,7 @@
   <script src="game-data.js"></script>
   <script src="pcg.js"></script>
   <script src="hydrology.js"></script>
+  <script src="moisture.js"></script>
   <script src="landscape-geometry.js"></script>
   <script src="camera.js"></script>
   <script src="juice.js"></script>

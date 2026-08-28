@@ -8,6 +8,12 @@
     pixelsPerTile: 7
   };
 
+  let moistureCache = {
+    key: null,
+    canvas: null,
+    pixelsPerTile: 7
+  };
+
   let waterLayers = {
     width: 0,
     height: 0,
@@ -522,6 +528,12 @@
       );
 
       ctx.restore();
+
+      drawMoistureDebug(
+        ctx,
+        view
+      );
+
       return;
     }
 
@@ -642,6 +654,436 @@
         destinationY,
         destinationWidth,
         destinationHeight
+      );
+    }
+
+    ctx.restore();
+
+    drawMoistureDebug(
+      ctx,
+      view
+    );
+  }
+
+  function sampleMoisture(
+    worldX,
+    worldY
+  ) {
+    const x0 =
+      Math.floor(worldX);
+
+    const y0 =
+      Math.floor(worldY);
+
+    const x1 = x0 + 1;
+    const y1 = y0 + 1;
+
+    const tx =
+      worldX - x0;
+
+    const ty =
+      worldY - y0;
+
+    const a =
+      getCellClamped(
+        x0,
+        y0
+      );
+
+    const b =
+      getCellClamped(
+        x1,
+        y0
+      );
+
+    const c =
+      getCellClamped(
+        x0,
+        y1
+      );
+
+    const d =
+      getCellClamped(
+        x1,
+        y1
+      );
+
+    if (!a || !b || !c || !d) {
+      return 0;
+    }
+
+    return lerp(
+      lerp(
+        a.moisture || 0,
+        b.moisture || 0,
+        tx
+      ),
+
+      lerp(
+        c.moisture || 0,
+        d.moisture || 0,
+        tx
+      ),
+
+      ty
+    );
+  }
+
+  function moistureColor(
+    moisture
+  ) {
+    const dry =
+      [205, 181, 111];
+
+    const middle =
+      [115, 166, 112];
+
+    const wet =
+      [55, 126, 139];
+
+    if (moisture < 0.5) {
+      const t =
+        moisture / 0.5;
+
+      return [
+        Math.round(
+          lerp(
+            dry[0],
+            middle[0],
+            t
+          )
+        ),
+
+        Math.round(
+          lerp(
+            dry[1],
+            middle[1],
+            t
+          )
+        ),
+
+        Math.round(
+          lerp(
+            dry[2],
+            middle[2],
+            t
+          )
+        )
+      ];
+    }
+
+    const t =
+      (
+        moisture - 0.5
+      ) /
+      0.5;
+
+    return [
+      Math.round(
+        lerp(
+          middle[0],
+          wet[0],
+          t
+        )
+      ),
+
+      Math.round(
+        lerp(
+          middle[1],
+          wet[1],
+          t
+        )
+      ),
+
+      Math.round(
+        lerp(
+          middle[2],
+          wet[2],
+          t
+        )
+      )
+    ];
+  }
+
+  function ensureMoistureCache() {
+    if (
+      typeof document ===
+        "undefined" ||
+      !state.landscape.cells.length
+    ) {
+      return null;
+    }
+
+    const scale =
+      moistureCache
+        .pixelsPerTile;
+
+    const key =
+      [
+        state.landscape.seed,
+        LLW.CONFIG.worldCols,
+        LLW.CONFIG.worldRows,
+        scale
+      ].join(":");
+
+    if (
+      moistureCache.key ===
+        key &&
+      moistureCache.canvas
+    ) {
+      return (
+        moistureCache.canvas
+      );
+    }
+
+    const canvas =
+      document.createElement(
+        "canvas"
+      );
+
+    canvas.width =
+      (
+        LLW.CONFIG.worldCols +
+        1
+      ) *
+      scale;
+
+    canvas.height =
+      (
+        LLW.CONFIG.worldRows +
+        1
+      ) *
+      scale;
+
+    const context =
+      canvas.getContext("2d");
+
+    const image =
+      context.createImageData(
+        canvas.width,
+        canvas.height
+      );
+
+    for (
+      let py = 0;
+      py < canvas.height;
+      py++
+    ) {
+      const worldY =
+        py / scale -
+        0.5;
+
+      for (
+        let px = 0;
+        px < canvas.width;
+        px++
+      ) {
+        const worldX =
+          px / scale -
+          0.5;
+
+        const [r, g, b] =
+          moistureColor(
+            sampleMoisture(
+              worldX,
+              worldY
+            )
+          );
+
+        const index =
+          (
+            py *
+            canvas.width +
+            px
+          ) *
+          4;
+
+        image.data[index] = r;
+        image.data[index + 1] = g;
+        image.data[index + 2] = b;
+        image.data[index + 3] = 255;
+      }
+    }
+
+    context.putImageData(
+      image,
+      0,
+      0
+    );
+
+    moistureCache = {
+      ...moistureCache,
+      key,
+      canvas
+    };
+
+    return canvas;
+  }
+
+  function drawMoistureDebug(
+    ctx,
+    view
+  ) {
+    if (
+      !state.debug.moisture
+    ) {
+      return;
+    }
+
+    const cache =
+      ensureMoistureCache();
+
+    if (!cache) {
+      return;
+    }
+
+    const scale =
+      moistureCache
+        .pixelsPerTile;
+
+    const overview =
+      LLW.camera.isOverview();
+
+    ctx.save();
+
+    ctx.globalAlpha =
+      overview
+        ? 0.66
+        : 0.58;
+
+    ctx.imageSmoothingEnabled =
+      true;
+
+    ctx.imageSmoothingQuality =
+      "high";
+
+    if (overview) {
+      ctx.drawImage(
+        cache,
+
+        0.5 * scale,
+        0.5 * scale,
+
+        LLW.CONFIG.worldCols *
+          scale,
+
+        LLW.CONFIG.worldRows *
+          scale,
+
+        view.offsetX,
+        view.offsetY,
+        view.mapWidth,
+        view.mapHeight
+      );
+
+      ctx.restore();
+      return;
+    }
+
+    const visibleLeft =
+      state.camera.x -
+      view.offsetX /
+      view.tileSize;
+
+    const visibleTop =
+      state.camera.y -
+      view.offsetY /
+      view.tileSize;
+
+    const visibleRight =
+      visibleLeft +
+      view.width /
+      view.tileSize;
+
+    const visibleBottom =
+      visibleTop +
+      view.height /
+      view.tileSize;
+
+    const clippedLeft =
+      clamp(
+        visibleLeft,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedTop =
+      clamp(
+        visibleTop,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    const clippedRight =
+      clamp(
+        visibleRight,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedBottom =
+      clamp(
+        visibleBottom,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    if (
+      clippedRight >
+        clippedLeft &&
+      clippedBottom >
+        clippedTop
+    ) {
+      ctx.drawImage(
+        cache,
+
+        (
+          clippedLeft +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedTop +
+          0.5
+        ) *
+        scale,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        scale,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        scale,
+
+        (
+          clippedLeft -
+          visibleLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedTop -
+          visibleTop
+        ) *
+        view.tileSize,
+
+        (
+          clippedRight -
+          clippedLeft
+        ) *
+        view.tileSize,
+
+        (
+          clippedBottom -
+          clippedTop
+        ) *
+        view.tileSize
       );
     }
 

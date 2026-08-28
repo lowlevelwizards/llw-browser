@@ -99,11 +99,20 @@
       y: 0
     },
 
+    debug: {
+      moisture: false
+    },
+
     landscape: {
       seed: null,
       cells: [],
       catchments: [],
       channelEdges: [],
+      moistureStats: {
+        min: 0,
+        max: 0,
+        mean: 0
+      },
       geometry: {
         seed: null,
         waterBodies: [],
@@ -580,6 +589,10 @@
     LLW.pcg.generateLandscape(
       resolvedSeed
     );
+
+    // First ecological atom: how wet is each place, given only the truths
+    // that already exist in the terrain and hydrology?
+    LLW.moisture.derive();
 
     // Hydrology stays discrete. Compile it once into connected vector
     // landforms for presentation, Crossroads-style.

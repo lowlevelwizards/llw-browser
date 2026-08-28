@@ -110,6 +110,130 @@ button {
   transform: translateX(-50%) translateY(1px);
 }
 
+
+.seed-menu-button {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  z-index: 14;
+  transform: translateX(-50%);
+  min-height: 26px;
+  appearance: none;
+  border: 1.5px solid rgba(124, 109, 82, 0.62);
+  border-radius: 999px;
+  background: rgba(243, 237, 220, 0.88);
+  color: #344322;
+  box-shadow: 0 2px 0 rgba(77, 64, 43, 0.14);
+  padding: 4px 10px;
+  font-size: 0.61rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  backdrop-filter: blur(3px);
+}
+
+.seed-menu-button:active {
+  transform: translateX(-50%) translateY(1px);
+}
+
+.seed-menu {
+  position: absolute;
+  top: 82px;
+  left: 50%;
+  z-index: 24;
+  width: min(86vw, 320px);
+  transform: translateX(-50%);
+  padding: 10px;
+  border: 1.5px solid rgba(124, 109, 82, 0.72);
+  border-radius: 14px;
+  background: rgba(243, 237, 220, 0.96);
+  box-shadow: 0 4px 0 rgba(77, 64, 43, 0.18);
+  backdrop-filter: blur(5px);
+}
+
+.seed-menu-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: #344322;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.current-seed-label {
+  max-width: 60%;
+  overflow: hidden;
+  color: rgba(52, 67, 34, 0.68);
+  font-size: 0.63rem;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.seed-input {
+  width: 100%;
+  min-height: 34px;
+  border: 1.5px solid rgba(124, 109, 82, 0.62);
+  border-radius: 9px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.50);
+  color: #243018;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.seed-input:focus {
+  border-color: #657c4a;
+  box-shadow: 0 0 0 2px rgba(101, 124, 74, 0.16);
+}
+
+.seed-menu-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.seed-menu-actions button,
+.moisture-toggle-button {
+  min-height: 32px;
+  appearance: none;
+  border: 1.5px solid rgba(124, 109, 82, 0.62);
+  border-radius: 9px;
+  background: #d9c792;
+  color: #344322;
+  box-shadow: 0 2px 0 rgba(77, 64, 43, 0.14);
+  padding: 5px 7px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.seed-menu-actions button:active,
+.moisture-toggle-button:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(77, 64, 43, 0.12);
+}
+
+.moisture-toggle-button {
+  width: 100%;
+  margin-top: 7px;
+  background: #b9c99d;
+}
+
+.moisture-toggle-button.active {
+  background: #7eada3;
+}
+
 .vitality-pips {
   display: inline-flex;
   gap: 5px;
@@ -427,6 +551,14 @@ button {
 
   .overview-button {
     top: 14px;
+  }
+
+  .seed-menu-button {
+    top: 54px;
+  }
+
+  .seed-menu {
+    top: 88px;
   }
 
   .dpad {

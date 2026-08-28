@@ -19,6 +19,30 @@
   const overviewButton =
     document.getElementById("overviewButton");
 
+  const seedMenuButton =
+    document.getElementById("seedMenuButton");
+
+  const seedMenu =
+    document.getElementById("seedMenu");
+
+  const currentSeedLabel =
+    document.getElementById("currentSeedLabel");
+
+  const seedInput =
+    document.getElementById("seedInput");
+
+  const applySeedButton =
+    document.getElementById("applySeedButton");
+
+  const regenerateSeedButton =
+    document.getElementById("regenerateSeedButton");
+
+  const randomSeedButton =
+    document.getElementById("randomSeedButton");
+
+  const moistureToggleButton =
+    document.getElementById("moistureToggleButton");
+
   const pocketButtons = [
     ...document.querySelectorAll(
       ".pocket-slot"
@@ -222,6 +246,177 @@
     updateContextActions();
   }
 
+  function syncSeedUI() {
+    const seed =
+      String(
+        LLW.state.landscape.seed ||
+        LLW.CONFIG.worldSeed
+      );
+
+    currentSeedLabel.textContent =
+      seed;
+
+    if (
+      document.activeElement !==
+      seedInput
+    ) {
+      seedInput.value =
+        seed;
+    }
+
+    const moistureOn =
+      Boolean(
+        LLW.state.debug.moisture
+      );
+
+    moistureToggleButton.textContent =
+      moistureOn
+        ? "Moisture: On"
+        : "Moisture: Off";
+
+    moistureToggleButton.classList.toggle(
+      "active",
+      moistureOn
+    );
+
+    moistureToggleButton.setAttribute(
+      "aria-pressed",
+      moistureOn
+        ? "true"
+        : "false"
+    );
+  }
+
+  function updateSeedURL(seed) {
+    if (
+      typeof history ===
+        "undefined" ||
+      typeof URL ===
+        "undefined"
+    ) {
+      return;
+    }
+
+    const url =
+      new URL(
+        window.location.href
+      );
+
+    url.searchParams.set(
+      "seed",
+      seed
+    );
+
+    history.replaceState(
+      null,
+      "",
+      url
+    );
+  }
+
+  function regenerateWorld(
+    requestedSeed,
+    message = null
+  ) {
+    const seed =
+      String(
+        requestedSeed ?? ""
+      ).trim();
+
+    if (!seed) {
+      LLW.notify(
+        "Give the world a seed."
+      );
+
+      return;
+    }
+
+    LLW.heldMovement.active = false;
+    LLW.heldMovement.dx = 0;
+    LLW.heldMovement.dy = 0;
+    LLW.heldMovement.source = null;
+    LLW.heldMovement.key = null;
+
+    LLW.createWorld(seed);
+
+    if (
+      LLW.camera.isOverview()
+    ) {
+      LLW.state.camera.x = 0;
+      LLW.state.camera.y = 0;
+    } else {
+      LLW.camera.snapToPlayer();
+    }
+
+    lastPocketItemIds.fill(
+      null
+    );
+
+    updateSeedURL(
+      LLW.state.landscape.seed
+    );
+
+    seedInput.value =
+      LLW.state.landscape.seed;
+
+    syncSeedUI();
+    refreshUI();
+
+    if (message) {
+      LLW.notify(message);
+    }
+  }
+
+  function randomSeed() {
+    if (
+      window.crypto?.getRandomValues
+    ) {
+      const values =
+        new Uint32Array(2);
+
+      window.crypto.getRandomValues(
+        values
+      );
+
+      return (
+        "llw-" +
+        values[0].toString(36) +
+        values[1].toString(36)
+      );
+    }
+
+    return (
+      "llw-" +
+      Date.now().toString(36)
+    );
+  }
+
+  function setOverviewUI(mode) {
+    const overview =
+      mode === "overview";
+
+    overviewButton.textContent =
+      overview
+        ? "Local"
+        : "World";
+
+    overviewButton.setAttribute(
+      "aria-label",
+      overview
+        ? "Return to local player view"
+        : "Show full generated world"
+    );
+
+    seedMenuButton.hidden =
+      !overview;
+
+    if (!overview) {
+      seedMenu.hidden = true;
+    }
+
+    syncSeedUI();
+  }
+
   function bindPress(button, action) {
     button.addEventListener(
       "touchstart",
@@ -379,17 +574,84 @@
       const mode =
         LLW.camera.toggleOverview();
 
-      overviewButton.textContent =
-        mode === "overview"
-          ? "Local"
-          : "World";
+      setOverviewUI(mode);
+    }
+  );
 
-      overviewButton.setAttribute(
-        "aria-label",
-        mode === "overview"
-          ? "Return to local player view"
-          : "Show full generated world"
+  bindPress(
+    seedMenuButton,
+    () => {
+      seedMenu.hidden =
+        !seedMenu.hidden;
+
+      if (!seedMenu.hidden) {
+        syncSeedUI();
+      }
+    }
+  );
+
+  bindPress(
+    applySeedButton,
+    () => {
+      regenerateWorld(
+        seedInput.value,
+        `Seed ${seedInput.value.trim()}`
       );
+    }
+  );
+
+  bindPress(
+    regenerateSeedButton,
+    () => {
+      regenerateWorld(
+        LLW.state.landscape.seed,
+        "World regenerated."
+      );
+    }
+  );
+
+  bindPress(
+    randomSeedButton,
+    () => {
+      const seed =
+        randomSeed();
+
+      seedInput.value = seed;
+
+      regenerateWorld(
+        seed,
+        `New seed ${seed}`
+      );
+    }
+  );
+
+  bindPress(
+    moistureToggleButton,
+    () => {
+      LLW.state.debug.moisture =
+        !LLW.state.debug.moisture;
+
+      syncSeedUI();
+    }
+  );
+
+  seedInput.addEventListener(
+    "keydown",
+    (event) => {
+      if (
+        event.key !== "Enter"
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+
+      regenerateWorld(
+        seedInput.value,
+        `Seed ${seedInput.value.trim()}`
+      );
+
+      seedInput.blur();
     }
   );
 
@@ -418,6 +680,12 @@
   };
 
   function handleKeyDown(event) {
+    if (
+      event.target === seedInput
+    ) {
+      return;
+    }
+
     const move = keyMoves[event.key];
 
     if (move) {
@@ -534,6 +802,11 @@
   LLW.createWorld();
   LLW.camera.snapToPlayer();
   LLW.initRenderer(canvas);
+  setOverviewUI(
+    LLW.state.camera.mode
+  );
+  seedInput.value =
+    LLW.state.landscape.seed;
   refreshUI();
   requestAnimationFrame(animate);
 })();
