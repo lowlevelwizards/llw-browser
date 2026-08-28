@@ -213,6 +213,197 @@
     ctx.restore();
   }
 
+  function drawPotentialBasinsDebug(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (
+      !LLW.CONFIG.pcgDebugBasins ||
+      !state.landscape.catchments.length
+    ) {
+      return;
+    }
+
+    ctx.save();
+
+    for (
+      const catchment of
+      state.landscape.catchments
+    ) {
+      if (
+        catchment.depressionDepth <=
+          0.00001 ||
+        catchment.potentialFloodArea <=
+          0
+      ) {
+        continue;
+      }
+
+      const depthRange =
+        Math.max(
+          0.00001,
+          catchment.depressionDepth
+        );
+
+      for (
+        const cellIndex of
+        catchment.floodedCellIndexes
+      ) {
+        const cell =
+          state.landscape.cells[
+            cellIndex
+          ];
+
+        const p = gridToPixel(
+          cell.x,
+          cell.y,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+
+        const normalizedDepth =
+          Math.max(
+            0,
+            Math.min(
+              1,
+              cell.potentialWaterDepth /
+                depthRange
+            )
+          );
+
+        // This is intentionally quiet: it means "land below this basin's
+        // spill level", not "there is definitely water here."
+        const alpha =
+          0.07 +
+          normalizedDepth * 0.15;
+
+        ctx.fillStyle =
+          `rgba(80, 163, 177, ${alpha})`;
+
+        ctx.fillRect(
+          p.x,
+          p.y,
+          tileSize,
+          tileSize
+        );
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawSpillPointsDebug(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    if (
+      !LLW.CONFIG.pcgDebugSpillPoints ||
+      !state.landscape.catchments.length
+    ) {
+      return;
+    }
+
+    ctx.save();
+
+    for (
+      const catchment of
+      state.landscape.catchments
+    ) {
+      const spillCell =
+        LLW.hydrology.getSpillCell(
+          catchment
+        );
+
+      if (!spillCell) {
+        continue;
+      }
+
+      const p = gridToPixel(
+        spillCell.x,
+        spillCell.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+
+      const centerX =
+        p.x + tileSize * 0.5;
+
+      const centerY =
+        p.y + tileSize * 0.5;
+
+      const size =
+        Math.max(
+          2,
+          tileSize * 0.075
+        );
+
+      ctx.save();
+      ctx.translate(
+        centerX,
+        centerY
+      );
+      ctx.rotate(Math.PI / 4);
+
+      ctx.fillStyle =
+        catchment.spillsOffMap
+          ? "rgba(202, 150, 86, 0.70)"
+          : "rgba(57, 133, 151, 0.76)";
+
+      ctx.fillRect(
+        -size,
+        -size,
+        size * 2,
+        size * 2
+      );
+
+      ctx.restore();
+
+      const spillNeighbor =
+        LLW.hydrology.getSpillNeighbor(
+          catchment
+        );
+
+      if (spillNeighbor) {
+        const neighborP =
+          gridToPixel(
+            spillNeighbor.x,
+            spillNeighbor.y,
+            tileSize,
+            offsetX,
+            offsetY
+          );
+
+        ctx.strokeStyle =
+          "rgba(57, 133, 151, 0.48)";
+
+        ctx.lineWidth =
+          Math.max(
+            1,
+            tileSize * 0.025
+          );
+
+        ctx.beginPath();
+        ctx.moveTo(
+          centerX,
+          centerY
+        );
+        ctx.lineTo(
+          neighborP.x +
+            tileSize * 0.5,
+          neighborP.y +
+            tileSize * 0.5
+        );
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
   function drawDownhillDebug(
     tileSize,
     offsetX,
@@ -267,7 +458,7 @@
             logMaxFlow;
 
       const downhill =
-        LLW.pcg.getDownhillCell(cell);
+        LLW.hydrology.getDownhillCell(cell);
 
       if (!downhill) {
         // Sink size now tells us how much of the landscape ultimately
@@ -1945,7 +2136,19 @@
       offsetY
     );
 
+    drawPotentialBasinsDebug(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
     drawDownhillDebug(
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawSpillPointsDebug(
       tileSize,
       offsetX,
       offsetY

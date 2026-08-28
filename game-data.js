@@ -12,6 +12,8 @@
     pcgDebugElevation: true,
     pcgDebugFlow: true,
     pcgDebugFlowNumbers: false,
+    pcgDebugBasins: true,
+    pcgDebugSpillPoints: true,
 
     mushroomCount: 3,
 

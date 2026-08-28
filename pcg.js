@@ -113,131 +113,6 @@
     return normalizeValues(current);
   }
 
-  function calculateDownhill(cells) {
-    for (const cell of cells) {
-      let lowestIndex = null;
-      let lowestElevation = cell.elevation;
-
-      for (
-        const neighborIndex of cell.neighborIndexes
-      ) {
-        const neighbor = cells[neighborIndex];
-
-        if (
-          neighbor.elevation <
-          lowestElevation - 0.00001
-        ) {
-          lowestElevation = neighbor.elevation;
-          lowestIndex = neighborIndex;
-        }
-      }
-
-      // null is meaningful: this cell is currently a local depression.
-      cell.downhillIndex = lowestIndex;
-    }
-  }
-
-
-  function calculateFlowAccumulation(cells) {
-    // Every cell contributes one unit of imaginary rainfall/runoff.
-    for (const cell of cells) {
-      cell.flowAccumulation = 1;
-    }
-
-    // Because downhill always points to strictly lower elevation, sorting
-    // high -> low gives us a simple acyclic accumulation pass.
-    const highToLow = [...cells].sort(
-      (a, b) =>
-        b.elevation - a.elevation ||
-        a.index - b.index
-    );
-
-    for (const cell of highToLow) {
-      if (cell.downhillIndex === null) {
-        continue;
-      }
-
-      cells[cell.downhillIndex].flowAccumulation +=
-        cell.flowAccumulation;
-    }
-  }
-
-  function assignCatchments(cells) {
-    const sinks = cells
-      .filter(
-        (cell) =>
-          cell.downhillIndex === null
-      )
-      .sort((a, b) => a.index - b.index);
-
-    const catchments = sinks.map(
-      (sink, index) => ({
-        id: `basin_${index + 1}`,
-        sinkIndex: sink.index,
-        cellCount: 0,
-        accumulatedFlow:
-          sink.flowAccumulation
-      })
-    );
-
-    const basinBySinkIndex = new Map(
-      catchments.map(
-        (catchment) => [
-          catchment.sinkIndex,
-          catchment.id
-        ]
-      )
-    );
-
-    // Low -> high means every cell's downstream cell has already learned
-    // which sink it ultimately belongs to.
-    const lowToHigh = [...cells].sort(
-      (a, b) =>
-        a.elevation - b.elevation ||
-        a.index - b.index
-    );
-
-    for (const cell of lowToHigh) {
-      if (cell.downhillIndex === null) {
-        cell.catchmentId =
-          basinBySinkIndex.get(cell.index);
-
-        cell.drainageSinkIndex =
-          cell.index;
-      } else {
-        const downhill =
-          cells[cell.downhillIndex];
-
-        cell.catchmentId =
-          downhill.catchmentId;
-
-        cell.drainageSinkIndex =
-          downhill.drainageSinkIndex;
-      }
-    }
-
-    const catchmentById = new Map(
-      catchments.map(
-        (catchment) => [
-          catchment.id,
-          catchment
-        ]
-      )
-    );
-
-    for (const cell of cells) {
-      const catchment =
-        catchmentById.get(
-          cell.catchmentId
-        );
-
-      if (catchment) {
-        catchment.cellCount += 1;
-      }
-    }
-
-    return catchments;
-  }
 
   LLW.pcg = {
     resolveSeed(explicitSeed = null) {
@@ -302,50 +177,8 @@
       );
     },
 
-    getDownhillCell(cell) {
-      if (
-        !cell ||
-        cell.downhillIndex === null
-      ) {
-        return null;
-      }
 
-      return (
-        state.landscape.cells[
-          cell.downhillIndex
-        ] || null
-      );
-    },
 
-    getCatchment(cell) {
-      if (!cell?.catchmentId) {
-        return null;
-      }
-
-      return (
-        state.landscape.catchments.find(
-          (catchment) =>
-            catchment.id ===
-            cell.catchmentId
-        ) || null
-      );
-    },
-
-    getDrainageSink(cell) {
-      if (
-        !cell ||
-        cell.drainageSinkIndex === null ||
-        cell.drainageSinkIndex === undefined
-      ) {
-        return null;
-      }
-
-      return (
-        state.landscape.cells[
-          cell.drainageSinkIndex
-        ] || null
-      );
-    },
 
     generateLandscape(seed = null) {
       const resolvedSeed =
@@ -381,7 +214,9 @@
             downhillIndex: null,
             flowAccumulation: 1,
             catchmentId: null,
-            drainageSinkIndex: null
+            drainageSinkIndex: null,
+            potentialWaterDepth: 0,
+            belowSpillLevel: false
           });
         }
       }
@@ -444,20 +279,16 @@
           elevations[cell.index];
       }
 
-      calculateDownhill(cells);
-      calculateFlowAccumulation(cells);
-
-      const catchments =
-        assignCatchments(cells);
-
       state.landscape.seed =
         resolvedSeed;
 
+      // Hydrology reads/writes through the shared landscape state, so make
+      // the newly generated terrain cells canonical before deriving flow.
       state.landscape.cells =
         cells;
 
       state.landscape.catchments =
-        catchments;
+        LLW.hydrology.derive(cells);
 
       return state.landscape;
     }
