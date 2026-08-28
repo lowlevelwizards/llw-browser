@@ -1391,39 +1391,52 @@
     style,
     inner = false
   ) {
-    const total = points.length - 1;
-
-    for (let i = 0; i < total; i++) {
-      const a = points[i];
-      const b = points[i + 1];
-      const t = (i + 0.5) / total;
-      const envelope = trailEnvelope(t);
-      const baseWidth = inner
-        ? style.innerWidth
-        : style.outerWidth;
-
-      ctx.strokeStyle = inner
-        ? style.inner
-        : style.outer;
-      const widthVariation =
-        0.90 +
-        hash01(
-          total,
-          i,
-          inner ? 842 : 841
-        ) *
-        0.18;
-
-      ctx.lineWidth =
-        view.tileSize *
-        baseWidth *
-        (0.44 + envelope * 0.56) *
-        widthVariation;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+    if (points.length < 2) {
+      return;
     }
+
+    // Paint each trail as ONE continuous translucent ribbon. The older pass
+    // stroked every tiny segment separately; round line caps then stacked
+    // alpha at every joint and exposed the route as a chain of circles.
+    const baseWidth = inner
+      ? style.innerWidth
+      : style.outerWidth;
+
+    ctx.strokeStyle = inner
+      ? style.inner
+      : style.outer;
+    ctx.lineWidth =
+      view.tileSize * baseWidth;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+
+    for (
+      let i = 1;
+      i < points.length - 1;
+      i++
+    ) {
+      const current = points[i];
+      const next = points[i + 1];
+      const midX =
+        (current.x + next.x) * 0.5;
+      const midY =
+        (current.y + next.y) * 0.5;
+
+      ctx.quadraticCurveTo(
+        current.x,
+        current.y,
+        midX,
+        midY
+      );
+    }
+
+    const last =
+      points[points.length - 1];
+    ctx.lineTo(last.x, last.y);
+    ctx.stroke();
   }
 
   function drawTrailDressing(
@@ -4282,6 +4295,36 @@
     context.stroke();
   }
 
+  function fillChannelCap(
+    context,
+    sample,
+    view,
+    extraRadius = 0
+  ) {
+    if (!sample) {
+      return;
+    }
+
+    const center =
+      worldPointToPixel(sample, view);
+
+    context.beginPath();
+    context.arc(
+      center.x,
+      center.y,
+      Math.max(
+        1,
+        sample.width *
+          view.tileSize *
+          0.5 +
+          extraRadius
+      ),
+      0,
+      Math.PI * 2
+    );
+    context.fill();
+  }
+
   function paintGeometryToLayers(
     view
   ) {
@@ -4397,6 +4440,36 @@
         channel.polygon,
         view
       );
+
+      const firstSample =
+        channel.centerline?.[0];
+      const lastSample =
+        channel.centerline?.[
+          channel.centerline.length - 1
+        ];
+
+      fillChannelCap(
+        bank,
+        firstSample,
+        view,
+        view.tileSize * 0.09
+      );
+      fillChannelCap(
+        bank,
+        lastSample,
+        view,
+        view.tileSize * 0.09
+      );
+      fillChannelCap(
+        water,
+        firstSample,
+        view
+      );
+      fillChannelCap(
+        water,
+        lastSample,
+        view
+      );
     }
 
     // Explicit holes are subtracted AFTER the union of outer pond shapes.
@@ -4438,8 +4511,17 @@
     bank.globalCompositeOperation =
       "source-in";
 
-    bank.fillStyle =
-      "#477c67";
+    const bankGradient =
+      bank.createLinearGradient(
+        0,
+        0,
+        view.width,
+        view.height
+      );
+    bankGradient.addColorStop(0, "#aa9a70");
+    bankGradient.addColorStop(0.55, "#928660");
+    bankGradient.addColorStop(1, "#768064");
+    bank.fillStyle = bankGradient;
 
     bank.fillRect(
       0,
@@ -4455,8 +4537,19 @@
     water.globalCompositeOperation =
       "source-in";
 
-    water.fillStyle =
-      "#4599b2";
+    // Shared light grammar with the land/rocks: slightly warmer/lighter
+    // toward the upper-lit side, cooler/deeper away from it.
+    const waterGradient =
+      water.createLinearGradient(
+        0,
+        0,
+        view.width * 0.72,
+        view.height
+      );
+    waterGradient.addColorStop(0, "#58aabd");
+    waterGradient.addColorStop(0.52, "#489bb3");
+    waterGradient.addColorStop(1, "#3f8ca8");
+    water.fillStyle = waterGradient;
 
     water.fillRect(
       0,
@@ -4614,9 +4707,43 @@
     ctx.restore();
   }
 
-  function drawWater(
+  function drawShoreEdge(
     ctx,
     view
+  ) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    ctx.save();
+    ctx.strokeStyle =
+      "rgba(218, 231, 203, 0.34)";
+    ctx.lineWidth =
+      Math.max(1, view.tileSize * 0.075);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    for (const body of geometry.waterBodies) {
+      strokePolygon(ctx, body.outer, view);
+      for (const hole of body.holes || []) {
+        strokePolygon(ctx, hole, view);
+      }
+    }
+
+    for (const channel of geometry.channels) {
+      strokePolygon(ctx, channel.polygon, view);
+    }
+
+    ctx.restore();
+  }
+
+  function drawWater(
+    ctx,
+    view,
+    now = 0
   ) {
     if (
       !LLW.CONFIG
@@ -4653,7 +4780,7 @@
 
     ctx.save();
 
-    ctx.globalAlpha = 0.30;
+    ctx.globalAlpha = 0.34;
 
     ctx.drawImage(
       waterLayers.bankCanvas,
@@ -4661,25 +4788,32 @@
       0
     );
 
-    ctx.globalAlpha = 0.84;
+    ctx.restore();
 
+    // Draw the pale shoreline before the blue body, leaving only the soft
+    // outer half visible instead of outlining the water like a sticker.
+    drawShoreEdge(ctx, view);
+
+    ctx.save();
+    ctx.globalAlpha = 0.90;
     ctx.drawImage(
       waterLayers.waterCanvas,
       0,
       0
     );
-
     ctx.restore();
 
     drawHighlights(
       ctx,
-      view
+      view,
+      now
     );
   }
 
   function drawHighlights(
     ctx,
-    view
+    view,
+    now = 0
   ) {
     const geometry =
       state.landscape.geometry;
@@ -4737,16 +4871,27 @@
         0.5;
 
       const count =
-        width > 3 ||
-        height > 3
-          ? 2
-          : 1;
+        width > 4 || height > 4
+          ? 4
+          : width > 2 || height > 2
+            ? 3
+            : 2;
+
+      const rippleSeed =
+        Number(
+          String(body.id || "1").replace(/\D/g, "")
+        ) || 1;
 
       for (
         let i = 0;
         i < count;
         i++
       ) {
+        const phase =
+          now * 0.00055 +
+          rippleSeed * 0.41 +
+          i * 1.73;
+
         const y =
           centerY +
           (
@@ -4756,12 +4901,15 @@
             ) *
             0.5
           ) *
-          0.72;
+          0.54 +
+          Math.sin(phase) * 0.055;
 
         const half =
           Math.min(
-            0.62,
-            width * 0.18
+            0.72,
+            width *
+              (0.13 +
+                hash01(rippleSeed, i, 730) * 0.06)
           );
 
         const left =
@@ -4769,7 +4917,8 @@
             {
               x:
                 centerX -
-                half,
+                half +
+                Math.cos(phase * 0.83) * 0.045,
 
               y
             },
@@ -4781,7 +4930,8 @@
             {
               x:
                 centerX +
-                half,
+                half +
+                Math.cos(phase * 0.83) * 0.045,
 
               y
             },
@@ -4876,11 +5026,13 @@
 
     drawChannels(
       ctx,
-      view
+      view,
+      now = 0
     ) {
       drawWater(
         ctx,
-        view
+        view,
+        now
       );
     },
 

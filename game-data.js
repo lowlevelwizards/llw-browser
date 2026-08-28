@@ -94,8 +94,11 @@
     slowMoveTurns: 2,
     squeezeMoveTurns: 2,
     normalMoveDuration: 190,
-    slowMoveDuration: 285,
-    squeezeMoveDuration: 245,
+    // Two-turn terrain should be visible in the wizard's body, not only in
+    // the clock. Mud, brush/bramble and squeeze moves now get a true
+    // two-beat travel window: two short hops over twice the normal duration.
+    slowMoveDuration: 380,
+    squeezeMoveDuration: 380,
 
     // More trunks must not mean a carpet of free fuel, but woodland now
     // wants a little more obvious fallen wood on the floor.
@@ -729,8 +732,8 @@
         1.16 +
         generationRandom() * 0.98,
       thicknessScale:
-        0.88 +
-        generationRandom() * 0.30,
+        1.14 +
+        generationRandom() * 0.38,
       rotation:
         generationRandom() * Math.PI,
       branch:

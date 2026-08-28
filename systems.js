@@ -240,6 +240,8 @@
       LLW.CONFIG.normalMoveTurns;
     player.traversalMode =
       traversal.mode || "normal";
+    player.traversalReason =
+      traversal.reason || null;
     player.movementPath =
       traversal.movementPath || null;
 

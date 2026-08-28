@@ -346,14 +346,22 @@
     return true;
   }
 
-  function getTerrainMoveCost(x, y) {
+  function getTerrainMoveProfile(x, y) {
     const cell = LLW.pcg.getCell(x, y);
 
     if (
       LLW.crossings &&
       LLW.crossings.isCrossingCell(x, y)
     ) {
-      return LLW.CONFIG.crossingMoveTurns;
+      return {
+        turnCost: LLW.CONFIG.crossingMoveTurns,
+        duration:
+          LLW.CONFIG.crossingMoveTurns >
+          LLW.CONFIG.normalMoveTurns
+            ? LLW.CONFIG.slowMoveDuration
+            : LLW.CONFIG.normalMoveDuration,
+        reason: "crossing"
+      };
     }
 
     if (
@@ -361,10 +369,44 @@
       (cell.mudAmount || 0) >=
         LLW.CONFIG.mudMovementThreshold
     ) {
-      return LLW.CONFIG.slowMoveTurns;
+      return {
+        turnCost: LLW.CONFIG.slowMoveTurns,
+        duration: LLW.CONFIG.slowMoveDuration,
+        reason: "mud"
+      };
     }
 
-    return LLW.CONFIG.normalMoveTurns;
+    const bramble =
+      LLW.terrain?.getBramblePatchAt(x, y);
+
+    if (bramble) {
+      return {
+        turnCost: LLW.CONFIG.slowMoveTurns,
+        duration: LLW.CONFIG.slowMoveDuration,
+        reason: "bramble"
+      };
+    }
+
+    const bush =
+      LLW.terrain?.getBushAt(x, y);
+
+    if (bush) {
+      return {
+        turnCost: LLW.CONFIG.slowMoveTurns,
+        duration: LLW.CONFIG.slowMoveDuration,
+        reason: "bush"
+      };
+    }
+
+    return {
+      turnCost: LLW.CONFIG.normalMoveTurns,
+      duration: LLW.CONFIG.normalMoveDuration,
+      reason: null
+    };
+  }
+
+  function getTerrainMoveCost(x, y) {
+    return getTerrainMoveProfile(x, y).turnCost;
   }
 
   function getMudModifier(x, y) {
@@ -542,19 +584,19 @@
       );
 
     if (!normalCollision) {
-      const terrainTurns =
-        getTerrainMoveCost(toX, toY);
+      const terrainProfile =
+        getTerrainMoveProfile(toX, toY);
 
       if (
-        terrainTurns >
+        terrainProfile.turnCost >
         LLW.CONFIG.normalMoveTurns
       ) {
         return {
           allowed: true,
           mode: "slow",
-          turnCost: terrainTurns,
-          duration: LLW.CONFIG.slowMoveDuration,
-          reason: "mud",
+          turnCost: terrainProfile.turnCost,
+          duration: terrainProfile.duration,
+          reason: terrainProfile.reason,
           movementPath: null
         };
       }
@@ -562,9 +604,9 @@
       return {
         allowed: true,
         mode: "normal",
-        turnCost: LLW.CONFIG.normalMoveTurns,
-        duration: LLW.CONFIG.normalMoveDuration,
-        reason: null,
+        turnCost: terrainProfile.turnCost,
+        duration: terrainProfile.duration,
+        reason: terrainProfile.reason,
         movementPath: null
       };
     }
@@ -789,6 +831,7 @@
     evaluateIntentMove,
     getEffectiveBodyRadius,
     getTerrainMoveCost,
+    getTerrainMoveProfile,
     getMudModifier,
     canSqueeze,
     pointInWater

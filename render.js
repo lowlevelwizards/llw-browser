@@ -975,7 +975,7 @@
 
     const centerY =
       p.y +
-      tileSize * 0.62 +
+      tileSize * 0.64 +
       tileOffsetY;
 
     const groundY =
@@ -986,24 +986,9 @@
     drawShadow(
       centerX,
       groundY,
-      tileSize * 0.38,
-      tileSize * 0.095
+      tileSize * 0.40,
+      tileSize * 0.10
     );
-
-    const twigColors = [
-      "#6f5367",
-      "#79544e",
-      "#855d68",
-      "#684b58"
-    ];
-
-    const crosses = [
-      { cx: -0.22, cy: -0.01, size: 0.24, angle: -0.08 },
-      { cx:  0.00, cy: -0.07, size: 0.30, angle:  0.10 },
-      { cx:  0.20, cy:  0.02, size: 0.23, angle: -0.14 },
-      { cx: -0.11, cy:  0.12, size: 0.22, angle:  0.16 },
-      { cx:  0.11, cy:  0.13, size: 0.25, angle: -0.04 }
-    ];
 
     const wiggle =
       LLW.juice.getBrambleWiggle(
@@ -1024,87 +1009,110 @@
       wiggle.scale,
       wiggle.scale
     );
+
+    // A bramble is now a low tangled plant first, hazard glyph second. The
+    // cool leafy mass keeps it in the woodland vocabulary while wine-colored
+    // thorn canes preserve immediate danger/readability at phone scale.
+    const foliageLobes = [
+      [-0.24,  0.05, 0.17, 0.10],
+      [-0.08, -0.03, 0.20, 0.12],
+      [ 0.10, -0.05, 0.19, 0.11],
+      [ 0.25,  0.05, 0.15, 0.09],
+      [ 0.00,  0.11, 0.22, 0.10]
+    ];
+
+    for (
+      let i = 0;
+      i < foliageLobes.length;
+      i++
+    ) {
+      const [lx, ly, rx, ry] =
+        foliageLobes[i];
+      const local =
+        hash01(x, y, 120 + i) - 0.5;
+
+      ctx.fillStyle =
+        `hsla(${Math.round(112 + local * 12)}, ${34 + Math.round(local * 5)}%, ${34 + Math.round(local * 6)}%, 0.86)`;
+      ctx.beginPath();
+      ctx.ellipse(
+        tileSize * (lx + local * 0.025),
+        tileSize * (ly + local * 0.018),
+        tileSize * rx,
+        tileSize * ry,
+        local * 0.55,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    const caneColors = [
+      "rgba(106, 69, 89, 0.94)",
+      "rgba(126, 73, 78, 0.92)",
+      "rgba(91, 63, 78, 0.92)"
+    ];
+
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.lineWidth =
-      Math.max(2, tileSize * 0.055);
+      Math.max(2, tileSize * 0.043);
 
-    crosses.forEach(
-      (cross, index) => {
-        const jitterX =
-          (hash01(
-            x,
-            y,
-            10 + index
-          ) - 0.5) *
-          tileSize *
-          0.055;
+    for (let i = 0; i < 6; i++) {
+      const startX =
+        (-0.28 + i * 0.11) * tileSize;
+      const startY =
+        (0.10 +
+          (hash01(x, y, 210 + i) - 0.5) * 0.08) *
+        tileSize;
+      const endX =
+        (0.22 - i * 0.08 +
+          (hash01(x, y, 220 + i) - 0.5) * 0.18) *
+        tileSize;
+      const endY =
+        (-0.15 +
+          (hash01(x, y, 230 + i) - 0.5) * 0.18) *
+        tileSize;
+      const controlX =
+        (startX + endX) * 0.5 +
+        (hash01(x, y, 240 + i) - 0.5) *
+          tileSize * 0.16;
+      const controlY =
+        (startY + endY) * 0.5 +
+        (hash01(x, y, 250 + i) - 0.5) *
+          tileSize * 0.14;
 
-        const jitterY =
-          (hash01(
-            x,
-            y,
-            20 + index
-          ) - 0.5) *
-          tileSize *
-          0.045;
+      ctx.strokeStyle =
+        caneColors[(i + x + y) % caneColors.length];
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.quadraticCurveTo(
+        controlX,
+        controlY,
+        endX,
+        endY
+      );
+      ctx.stroke();
 
-        const jitterAngle =
-          (hash01(
-            x,
-            y,
-            30 + index
-          ) - 0.5) *
-          0.18;
-
-        const cx =
-          tileSize * cross.cx +
-          jitterX;
-
-        const cy =
-          tileSize * cross.cy +
-          jitterY;
-
-        const half =
-          tileSize * cross.size * 0.5;
-
+      if (i % 2 === 0) {
+        const tx =
+          (startX + endX) * 0.54;
+        const ty =
+          (startY + endY) * 0.54;
         ctx.strokeStyle =
-          twigColors[
-            (index + x * 2 + y) %
-            twigColors.length
-          ];
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(
-          cross.angle +
-          jitterAngle
-        );
-
+          "rgba(221, 190, 166, 0.54)";
+        ctx.lineWidth =
+          Math.max(1, tileSize * 0.016);
         ctx.beginPath();
-        ctx.moveTo(
-          -half,
-          -half * 0.72
-        );
+        ctx.moveTo(tx, ty);
         ctx.lineTo(
-          half,
-          half * 0.72
+          tx + tileSize * 0.045,
+          ty - tileSize * 0.045
         );
         ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(
-          -half,
-          half * 0.72
-        );
-        ctx.lineTo(
-          half,
-          -half * 0.72
-        );
-        ctx.stroke();
-
-        ctx.restore();
+        ctx.lineWidth =
+          Math.max(2, tileSize * 0.043);
       }
-    );
+    }
 
     ctx.restore();
   }
@@ -1532,13 +1540,58 @@
           vertical * 0.68 +
           localJitter * 0.22;
 
-        ctx.fillStyle = foliageColor(
-          hue,
-          (tree.colorShift || 0) + localJitter * 0.22,
-          lightShift,
-          36 + treeShade * 6,
-          44 - treeShade * 5 + vertical * 5
+        const lobeColorShift =
+          (tree.colorShift || 0) +
+          localJitter * 0.22;
+        const lobeSaturation =
+          36 + treeShade * 6;
+        const lobeLightness =
+          44 -
+          treeShade * 5 +
+          vertical * 5;
+
+        // Keep every tree's rolled local palette, then apply the same material
+        // grammar that made the boulders work: each individual foliage blob
+        // warms/lifts toward its top and cools/deepens toward its underside.
+        const lobeGradient =
+          ctx.createLinearGradient(
+            x,
+            y - r,
+            x,
+            y + r
+          );
+        lobeGradient.addColorStop(
+          0,
+          foliageColor(
+            hue - 6,
+            lobeColorShift,
+            lightShift + 0.72,
+            lobeSaturation + 2,
+            lobeLightness + 4
+          )
         );
+        lobeGradient.addColorStop(
+          0.52,
+          foliageColor(
+            hue,
+            lobeColorShift,
+            lightShift,
+            lobeSaturation,
+            lobeLightness
+          )
+        );
+        lobeGradient.addColorStop(
+          1,
+          foliageColor(
+            hue + 10,
+            lobeColorShift,
+            lightShift - 0.66,
+            lobeSaturation + 3,
+            lobeLightness - 4
+          )
+        );
+
+        ctx.fillStyle = lobeGradient;
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -1873,10 +1926,10 @@
     );
     roundedCapsule(
       -tileSize * 0.35,
-      -tileSize * 0.098,
+      -tileSize * 0.112,
       tileSize * 0.70,
-      tileSize * 0.19,
-      tileSize * 0.078
+      tileSize * 0.22,
+      tileSize * 0.092
     );
     ctx.fill();
 
@@ -1896,25 +1949,72 @@
     }
 
     if (log.branch) {
-      ctx.save();
-      ctx.translate(
-        tileSize * (log.branch.at || 0),
-        -tileSize * 0.01
-      );
-      ctx.rotate(log.branch.angle || 0);
-      ctx.scale(
+      const drawBranch = (
+        at,
+        angle,
+        lengthScale,
+        thicknessScale
+      ) => {
+        ctx.save();
+        ctx.translate(
+          tileSize * at,
+          -tileSize * 0.01
+        );
+        ctx.rotate(angle);
+        ctx.scale(
+          lengthScale,
+          thicknessScale
+        );
+        roundedCapsule(
+          0,
+          -tileSize * 0.052,
+          tileSize * 0.28,
+          tileSize * 0.105,
+          tileSize * 0.046
+        );
+        ctx.fill();
+        ctx.restore();
+      };
+
+      drawBranch(
+        log.branch.at || 0,
+        log.branch.angle || 0,
         log.branch.lengthScale || 0.4,
         log.branch.thicknessScale || 0.5
       );
-      roundedCapsule(
-        0,
-        -tileSize * 0.045,
-        tileSize * 0.24,
-        tileSize * 0.09,
-        tileSize * 0.04
-      );
-      ctx.fill();
-      ctx.restore();
+
+      const branchSeed =
+        Number(
+          String(log.id).replace(/\D/g, "")
+        ) || 1;
+
+      // Some trunks keep a second crooked limb. Derive it from identity rather
+      // than consuming generation RNG so the surrounding seed layout remains
+      // stable when this purely visual variation changes.
+      if (
+        hash01(
+          log.x + branchSeed,
+          log.y,
+          1911
+        ) < 0.34
+      ) {
+        const opposite =
+          (log.branch.angle || 0) >= 0
+            ? -1
+            : 1;
+
+        drawBranch(
+          -0.18 +
+            hash01(branchSeed, log.x, 1912) * 0.16,
+          opposite *
+            (0.55 +
+              hash01(branchSeed, log.y, 1913) * 0.42),
+          0.25 +
+            hash01(branchSeed, log.x, 1914) * 0.19,
+          0.34 +
+            hash01(branchSeed, log.y, 1915) * 0.18
+        );
+      }
     }
 
     ctx.fillStyle = "rgba(233, 223, 188, 0.88)";
@@ -3295,24 +3395,62 @@
     const traversalMode =
       player.traversalMode || "normal";
 
-    const bounceStrength =
-      traversalMode === "slow"
-        ? 0.045
-        : traversalMode === "squeeze"
-          ? 0.032
-          : 0.09;
+    const traversalReason =
+      player.traversalReason || null;
 
-    const bounce = moving
-      ? -Math.sin(walkT * Math.PI) *
-        tileSize *
-        bounceStrength
+    // One spent turn = one visible body beat. Two-turn terrain therefore
+    // becomes a true double-hop instead of one slow glide with a larger clock
+    // deduction. This is intentionally readable with the UI hidden.
+    const movementBeats = moving
+      ? Math.max(
+          1,
+          Math.round(
+            player.moveTurnCost ||
+            LLW.CONFIG.normalMoveTurns
+          )
+        )
+      : 1;
+
+    const hopWave = moving
+      ? Math.abs(
+          Math.sin(
+            walkT *
+            Math.PI *
+            movementBeats
+          )
+        )
       : 0;
+
+    const bounceStrength =
+      traversalMode === "squeeze"
+        ? 0.034
+        : traversalReason === "mud"
+          ? 0.043
+          : traversalMode === "slow"
+            ? 0.054
+            : 0.09;
+
+    const bounce =
+      -hopWave *
+      tileSize *
+      bounceStrength;
+
+    const mudSink =
+      moving && traversalReason === "mud"
+        ? hopWave * tileSize * 0.010
+        : 0;
 
     const step = moving
-      ? Math.sin(walkT * Math.PI * 2)
+      ? Math.sin(
+          walkT *
+          Math.PI *
+          2 *
+          movementBeats
+        )
       : 0;
 
-    const bodyY = p.y + bounce;
+    const bodyY =
+      p.y + bounce + mudSink;
 
     ctx.save();
 
@@ -3327,7 +3465,13 @@
         centerX,
         squeezeCenterY
       );
-      ctx.scale(0.82, 1.05);
+      const squeezePulse =
+        0.5 + hopWave * 0.5;
+
+      ctx.scale(
+        0.86 - squeezePulse * 0.07,
+        1.02 + squeezePulse * 0.05
+      );
       ctx.translate(
         -centerX,
         -squeezeCenterY
@@ -3943,8 +4087,6 @@
     const walkT =
       LLW.updatePlayer(now);
 
-    LLW.camera.update();
-
     const {
       width,
       height,
@@ -3954,6 +4096,16 @@
       offsetX,
       offsetY
     } = getLayout();
+
+    LLW.camera.setRenderMetrics?.({
+      width,
+      height,
+      tileSize,
+      offsetX,
+      offsetY
+    });
+
+    LLW.camera.update();
 
     ctx.clearRect(0, 0, width, height);
 
@@ -4006,7 +4158,8 @@
 
     LLW.landscapeRenderer.drawChannels(
       ctx,
-      landscapeView
+      landscapeView,
+      now
     );
 
     LLW.landscapeRenderer.drawSurfaceWater(

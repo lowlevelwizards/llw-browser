@@ -13,6 +13,58 @@
     );
   }
 
+  let renderMetrics = null;
+
+  function localCameraBounds() {
+    // Local play deliberately lets the landscape continue through any spare
+    // canvas area around the nominal 12x16 framing. On tall phones that means
+    // the camera can reveal more than 16 rows. Clamp against the *actual*
+    // visible canvas footprint so reaching a world edge never exposes the
+    // flat backstage color above/below the generated land.
+    if (
+      renderMetrics &&
+      renderMetrics.tileSize > 0
+    ) {
+      const {
+        width,
+        height,
+        tileSize,
+        offsetX,
+        offsetY
+      } = renderMetrics;
+
+      return {
+        minX: offsetX / tileSize,
+        minY: offsetY / tileSize,
+        maxX: Math.max(
+          offsetX / tileSize,
+          LLW.CONFIG.worldCols -
+            (width - offsetX) / tileSize
+        ),
+        maxY: Math.max(
+          offsetY / tileSize,
+          LLW.CONFIG.worldRows -
+            (height - offsetY) / tileSize
+        )
+      };
+    }
+
+    return {
+      minX: 0,
+      minY: 0,
+      maxX: Math.max(
+        0,
+        LLW.CONFIG.worldCols -
+          LLW.CONFIG.viewportCols
+      ),
+      maxY: Math.max(
+        0,
+        LLW.CONFIG.worldRows -
+          LLW.CONFIG.viewportRows
+      )
+    };
+  }
+
   function localTarget() {
     const halfX =
       (LLW.CONFIG.viewportCols - 1) *
@@ -22,32 +74,29 @@
       (LLW.CONFIG.viewportRows - 1) *
       0.5;
 
+    const bounds =
+      localCameraBounds();
+
     return {
       x: clamp(
-        state.player.renderX -
-          halfX,
-        0,
-        Math.max(
-          0,
-          LLW.CONFIG.worldCols -
-            LLW.CONFIG.viewportCols
-        )
+        state.player.renderX - halfX,
+        bounds.minX,
+        bounds.maxX
       ),
 
       y: clamp(
-        state.player.renderY -
-          halfY,
-        0,
-        Math.max(
-          0,
-          LLW.CONFIG.worldRows -
-            LLW.CONFIG.viewportRows
-        )
+        state.player.renderY - halfY,
+        bounds.minY,
+        bounds.maxY
       )
     };
   }
 
   LLW.camera = {
+    setRenderMetrics(metrics) {
+      renderMetrics = metrics || null;
+    },
+
     isOverview() {
       return (
         state.camera.mode ===

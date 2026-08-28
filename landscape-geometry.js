@@ -1914,33 +1914,36 @@
 
         if (
           startDangling &&
-          progress < 0.40
+          progress < 0.28
         ) {
           const taper =
             smoothstep01(
-              progress / 0.40
+              progress / 0.28
             );
 
+          // A weak creek can become a seep, but it should never collapse into
+          // a long blue needle. Keep a readable rounded throat and let the
+          // mud/ditch terminal finish the transition into ground.
           width *=
-            0.05 +
-            taper * 0.95;
+            0.40 +
+            taper * 0.60;
         }
 
         if (
           endDangling &&
-          progress > 0.60
+          progress > 0.72
         ) {
           const taper =
             smoothstep01(
               (
                 1 - progress
               ) /
-              0.40
+              0.28
             );
 
           width *=
-            0.05 +
-            taper * 0.95;
+            0.40 +
+            taper * 0.60;
         }
 
         samples.push({
