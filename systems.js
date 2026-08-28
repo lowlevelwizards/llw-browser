@@ -231,6 +231,8 @@
       LLW.CONFIG.normalMoveTurns;
     player.traversalMode =
       traversal.mode || "normal";
+    player.movementPath =
+      traversal.movementPath || null;
 
     return true;
   };
@@ -319,17 +321,67 @@
 
     const travelT = LLW.smoothstep(rawT);
 
-    player.renderX = LLW.lerp(
-      player.startX,
-      player.targetX,
-      travelT
-    );
+    if (
+      player.movementPath &&
+      player.movementPath.length >= 2
+    ) {
+      const path = player.movementPath;
+      const lengths = [];
+      let totalLength = 0;
 
-    player.renderY = LLW.lerp(
-      player.startY,
-      player.targetY,
-      travelT
-    );
+      for (let i = 0; i < path.length - 1; i++) {
+        const length = Math.hypot(
+          path[i + 1].x - path[i].x,
+          path[i + 1].y - path[i].y
+        );
+        lengths.push(length);
+        totalLength += length;
+      }
+
+      let remaining = travelT * totalLength;
+      let segmentIndex = 0;
+
+      while (
+        segmentIndex < lengths.length - 1 &&
+        remaining > lengths[segmentIndex]
+      ) {
+        remaining -= lengths[segmentIndex];
+        segmentIndex++;
+      }
+
+      const segmentLength =
+        Math.max(0.0001, lengths[segmentIndex]);
+      const localT = LLW.clamp(
+        remaining / segmentLength,
+        0,
+        1
+      );
+      const a = path[segmentIndex];
+      const b = path[segmentIndex + 1];
+
+      player.renderX = LLW.lerp(
+        a.x,
+        b.x,
+        localT
+      );
+      player.renderY = LLW.lerp(
+        a.y,
+        b.y,
+        localT
+      );
+    } else {
+      player.renderX = LLW.lerp(
+        player.startX,
+        player.targetX,
+        travelT
+      );
+
+      player.renderY = LLW.lerp(
+        player.startY,
+        player.targetY,
+        travelT
+      );
+    }
 
     if (rawT >= 1) {
       player.x = player.targetX;
@@ -337,6 +389,7 @@
       player.renderX = player.x;
       player.renderY = player.y;
       player.moving = false;
+      player.movementPath = null;
 
       const moveTurnCost =
         player.moveTurnCost ||

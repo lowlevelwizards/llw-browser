@@ -32,23 +32,26 @@
 
     // Water presentation coherence. Hydrology keeps all drainage truth;
     // geometry decides which of it deserves to read as permanent open water.
-    visibleChannelMinStrength: 0.18,
-    visibleChannelMinBranchEdges: 2,
-    visibleChannelStrongStubStrength: 0.42,
-    visibleChannelWaterStubStrength: 0.34,
-    visibleChannelSeepStrength: 0.38,
-    visibleChannelDitchStrength: 0.50,
+    visibleChannelMinStrength: 0.20,
+    visibleChannelMinBranchEdges: 3,
+    visibleChannelStrongStubStrength: 0.48,
+    visibleChannelWaterStubStrength: 0.40,
+    visibleChannelSeepStrength: 0.42,
+    visibleChannelDitchStrength: 0.56,
     visibleWaterMinCells: 2,
     visibleWaterDeepSingleCell: 0.055,
 
     // Soft wet terrain. Mud is friction, not damage: it spends time rather
     // than Vitality, and gives weak/seasonal drainage somewhere truthful to
     // visually resolve into.
-    mudMinPotential: 0.08,
-    mudMovementThreshold: 0.35,
+    mudMinPotential: 0.055,
+    mudVisualThreshold: 0.14,
+    mudBareThreshold: 0.34,
+    mudMovementThreshold: 0.48,
     mudPatchMinCells: 2,
-    mudPatchMaxCells: 9,
-    mudEndpointBoostRadius: 2.15,
+    mudPatchMaxCells: 12,
+    mudEndpointBoostRadius: 2.65,
+    mudPatchExpansionChance: 0.34,
 
     // Static prototype runoff. This is a relative volume per landscape cell,
     // not literal rainfall yet.
@@ -83,6 +86,8 @@
     // clearance, but can squeeze through a narrow truthful gap at a turn cost.
     playerNormalRadius: 0.19,
     playerSqueezeRadius: 0.105,
+    squeezeMicroPathMaxOffset: 0.30,
+    squeezeMicroPathSamples: 8,
     normalMoveTurns: 1,
     slowMoveTurns: 2,
     squeezeMoveTurns: 2,
@@ -108,6 +113,19 @@
     groundCloverPatchDensity: 0.12,
     groundWildflowerPatchDensity: 0.08,
     groundPebblePatchDensity: 0.10,
+    groundSedgePatchDensity: 0.12,
+
+    // First desire-line layer. Trails are evidence of use, not roads: a few
+    // routes connect camp to easy exits/clearings while preferring dry,
+    // passable ground and merging into existing paths.
+    trailTargetCount: 3,
+    trailOuterWidth: 0.46,
+    trailInnerWidth: 0.22,
+    trailMudPenalty: 4.8,
+    trailBramblePenalty: 8.0,
+    trailWoodlandPenalty: 1.25,
+    trailSlopePenalty: 1.35,
+    trailMergeBonus: 0.52,
 
     // Understory establishment.
     bushMinSuitability: 0.31,
@@ -260,10 +278,17 @@
         min: 0,
         mean: 0,
         max: 0,
+        visualMudCells: 0,
+        bareMudCells: 0,
         muddyCells: 0
       },
       mudPatches: [],
       waterTerminals: [],
+      trailStats: {
+        trailCount: 0,
+        trailCells: 0
+      },
+      trails: [],
       geometry: {
         seed: null,
         waterBodies: [],
@@ -294,6 +319,7 @@
       moveDuration: 190,
       moveTurnCost: 1,
       traversalMode: "normal",
+      movementPath: null,
       mudExposure: 0
     },
 
@@ -320,6 +346,7 @@
     wildflowerPatches: [],
     grassTufts: [],
     pebblePatches: [],
+    sedgePatches: [],
     items: []
   };
 
@@ -339,6 +366,7 @@
   let nextWildflowerPatchId = 1;
   let nextGrassTuftId = 1;
   let nextPebblePatchId = 1;
+  let nextSedgePatchId = 1;
   let generationRandom = Math.random;
 
   LLW.worldLocation = function (x, y) {
@@ -886,6 +914,32 @@
     return patch;
   }
 
+
+  function addSedgePatch(x, y) {
+    const patch = {
+      id: `sedge_patch_${nextSedgePatchId++}`,
+      x,
+      y,
+      offsetX:
+        (generationRandom() - 0.5) * 0.18,
+      offsetY:
+        (generationRandom() - 0.5) * 0.10,
+      scale:
+        0.88 + generationRandom() * 0.34,
+      count:
+        3 + Math.floor(generationRandom() * 5),
+      spread:
+        0.08 + generationRandom() * 0.10,
+      hueShift:
+        generationRandom() - 0.5,
+      heightShift:
+        generationRandom() - 0.5
+    };
+
+    LLW.state.sedgePatches.push(patch);
+    return patch;
+  }
+
   function addBramblePatch(
     tiles
   ) {
@@ -955,7 +1009,8 @@
       spawnMossPatch: addMossPatch,
       spawnWildflowerPatch: addWildflowerPatch,
       spawnGrassTuft: addGrassTuft,
-      spawnPebblePatch: addPebblePatch
+      spawnPebblePatch: addPebblePatch,
+      spawnSedgePatch: addSedgePatch
     });
   }
 
@@ -1215,6 +1270,7 @@
     nextWildflowerPatchId = 1;
     nextGrassTuftId = 1;
     nextPebblePatchId = 1;
+    nextSedgePatchId = 1;
 
     LLW.state.game.turn = 0;
     LLW.state.game.vitality = LLW.state.game.maxVitality;
@@ -1237,6 +1293,7 @@
     player.moving = false;
     player.moveTurnCost = 1;
     player.traversalMode = "normal";
+    player.movementPath = null;
     player.mudExposure = 0;
 
     LLW.state.firepit.sticks = 0;
@@ -1256,7 +1313,13 @@
     LLW.state.wildflowerPatches = [];
     LLW.state.grassTufts = [];
     LLW.state.pebblePatches = [];
+    LLW.state.sedgePatches = [];
     LLW.state.bramblePatches = [];
+    LLW.state.landscape.trails = [];
+    LLW.state.landscape.trailStats = {
+      trailCount: 0,
+      trailCells: 0
+    };
     LLW.state.items = [];
 
     const occupied =
@@ -1264,12 +1327,16 @@
         resolvedSeed
       );
 
-    generateGroundcover(
+    generateForestFloorProps(
+      occupied,
       resolvedSeed
     );
 
-    generateForestFloorProps(
-      occupied,
+    LLW.trails.generate(
+      resolvedSeed
+    );
+
+    generateGroundcover(
       resolvedSeed
     );
 

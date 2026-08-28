@@ -423,6 +423,8 @@
       state.landscape.seed,
       LLW.CONFIG.worldCols,
       LLW.CONFIG.worldRows,
+      state.landscape.mudStats?.visualMudCells || 0,
+      state.landscape.mudStats?.bareMudCells || 0,
       state.landscape.mudStats?.muddyCells || 0,
       scale
     ].join(":");
@@ -471,7 +473,14 @@
           sampleScalarField(
             worldX,
             worldY,
-            "mudAmount"
+            "mudVisualAmount"
+          );
+
+        const bare =
+          sampleScalarField(
+            worldX,
+            worldY,
+            "mudBareAmount"
           );
 
         const moisture =
@@ -488,36 +497,71 @@
             "shade"
           );
 
-        const alpha =
+        const softAlpha =
           smoothstep(
-            (mud - 0.08) / 0.82
+            (mud - 0.02) / 0.72
+          );
+
+        const coreAlpha =
+          smoothstep(
+            (bare - 0.04) / 0.72
           );
 
         const warmth =
           1 - shade;
 
+        // Exposed wet earth: lit mud is warmer ochre-brown, deep/shaded mud
+        // shifts cooler olive/grey rather than simply becoming black.
+        const softColor = [
+          lerp(118, 139, warmth),
+          lerp(116, 126, warmth),
+          lerp(82, 78, warmth)
+        ];
+
+        const coreColor = [
+          lerp(91, 111, warmth),
+          lerp(92, 91, warmth),
+          lerp(72, 58, warmth)
+        ];
+
+        const mix =
+          clamp(coreAlpha * 0.88, 0, 1);
+
         const r = Math.round(
           lerp(
-            102,
-            122,
-            warmth * 0.55
+            softColor[0],
+            coreColor[0],
+            mix
           )
         );
 
         const g = Math.round(
           lerp(
-            105,
-            116,
-            moisture * 0.55
+            softColor[1],
+            coreColor[1],
+            mix
           )
         );
 
         const b = Math.round(
           lerp(
-            73,
-            80,
-            1 - warmth
+            softColor[2],
+            coreColor[2],
+            mix
           )
+        );
+
+        const wetBoost =
+          smoothstep(
+            (moisture - 0.58) / 0.32
+          );
+
+        const alpha = clamp(
+          softAlpha * 0.58 +
+          coreAlpha * 0.56 +
+          wetBoost * coreAlpha * 0.08,
+          0,
+          1
         );
 
         const index =
@@ -527,7 +571,7 @@
         image.data[index + 1] = g;
         image.data[index + 2] = b;
         image.data[index + 3] =
-          Math.round(alpha * 215);
+          Math.round(alpha * 238);
       }
     }
 
@@ -566,7 +610,7 @@
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.globalAlpha = overview ? 0.48 : 0.66;
+    ctx.globalAlpha = overview ? 0.62 : 0.88;
 
     if (overview) {
       ctx.drawImage(
@@ -1020,6 +1064,187 @@
     return canvas;
   }
 
+  function drawMudDetails(
+    ctx,
+    view
+  ) {
+    const cells = state.landscape.cells;
+
+    if (!cells.length) {
+      return;
+    }
+
+    const overview = LLW.camera.isOverview();
+    const detailScale = overview ? 0.58 : 1;
+
+    ctx.save();
+
+    for (const cell of cells) {
+      const mud = cell.mudAmount || 0;
+      const bare = cell.mudBareAmount || 0;
+
+      if (
+        mud < LLW.CONFIG.mudVisualThreshold * 0.72
+      ) {
+        continue;
+      }
+
+      const center = worldPointToPixel(
+        {
+          x: cell.x + 0.5,
+          y: cell.y + 0.73
+        },
+        view
+      );
+
+      if (
+        center.x < -view.tileSize ||
+        center.y < -view.tileSize ||
+        center.x > view.width + view.tileSize ||
+        center.y > view.height + view.tileSize
+      ) {
+        continue;
+      }
+
+      const count =
+        1 +
+        Math.floor(
+          bare * 3 +
+          hash01(cell.x, cell.y, 701) * 2
+        );
+
+      for (let i = 0; i < count; i++) {
+        const angle =
+          hash01(cell.x, cell.y, 710 + i) *
+          Math.PI * 2;
+        const radius =
+          view.tileSize *
+          (
+            0.04 +
+            hash01(cell.x, cell.y, 720 + i) *
+            (0.16 + bare * 0.10)
+          );
+        const x =
+          center.x + Math.cos(angle) * radius;
+        const y =
+          center.y + Math.sin(angle) * radius * 0.68;
+        const rx =
+          view.tileSize *
+          (
+            0.055 +
+            hash01(cell.x, cell.y, 730 + i) *
+            (0.05 + bare * 0.075)
+          ) * detailScale;
+        const ry =
+          rx *
+          (
+            0.32 +
+            hash01(cell.x, cell.y, 740 + i) * 0.34
+          );
+
+        const cool = cell.shade || 0;
+        const hue = Math.round(
+          lerp(36, 72, cool * 0.72)
+        );
+        const light = Math.round(
+          lerp(42, 31, bare)
+        );
+
+        ctx.fillStyle =
+          `hsla(${hue}, 22%, ${light}%, ${0.18 + bare * 0.28})`;
+        ctx.beginPath();
+        ctx.ellipse(
+          x,
+          y,
+          rx,
+          ry,
+          angle * 0.45,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      if (
+        bare > 0.48 &&
+        (cell.moisture || 0) > 0.66 &&
+        hash01(cell.x, cell.y, 799) > 0.58
+      ) {
+        ctx.strokeStyle =
+          `rgba(205, 219, 178, ${0.08 + bare * 0.10})`;
+        ctx.lineWidth = Math.max(
+          1,
+          view.tileSize * 0.018 * detailScale
+        );
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(
+          center.x - view.tileSize * 0.09,
+          center.y - view.tileSize * 0.03
+        );
+        ctx.lineTo(
+          center.x + view.tileSize * 0.05,
+          center.y - view.tileSize * 0.04
+        );
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawTrails(
+    ctx,
+    view
+  ) {
+    const trails =
+      state.landscape.trails || [];
+
+    if (!trails.length) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (const trail of trails) {
+      if (!trail.points || trail.points.length < 2) {
+        continue;
+      }
+
+      const points = trail.points.map(
+        (point) => worldPointToPixel(point, view)
+      );
+
+      ctx.strokeStyle =
+        "rgba(157, 151, 91, 0.20)";
+      ctx.lineWidth =
+        view.tileSize *
+        LLW.CONFIG.trailOuterWidth;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle =
+        "rgba(122, 112, 73, 0.18)";
+      ctx.lineWidth =
+        view.tileSize *
+        LLW.CONFIG.trailInnerWidth;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
   function drawTerrain(
     ctx,
     view
@@ -1082,6 +1307,16 @@
       ctx.restore();
 
       drawMudOverlay(
+        ctx,
+        view
+      );
+
+      drawMudDetails(
+        ctx,
+        view
+      );
+
+      drawTrails(
         ctx,
         view
       );
@@ -1237,6 +1472,16 @@
     ctx.restore();
 
     drawMudOverlay(
+      ctx,
+      view
+    );
+
+    drawMudDetails(
+      ctx,
+      view
+    );
+
+    drawTrails(
       ctx,
       view
     );
@@ -3911,8 +4156,8 @@
 
       const length =
         terminal.kind === "ditch"
-          ? 0.62
-          : 0.38;
+          ? 0.88
+          : 0.56;
 
       const vectorLength =
         Math.max(
@@ -3953,41 +4198,60 @@
           view
         );
 
-      ctx.strokeStyle =
-        terminal.kind === "ditch"
-          ? "rgba(99, 104, 67, 0.50)"
-          : "rgba(105, 113, 76, 0.42)";
-
-      ctx.lineWidth =
-        view.tileSize *
-        (
-          terminal.kind === "ditch"
-            ? 0.18
-            : 0.13
-        );
-
-      ctx.beginPath();
-      ctx.moveTo(
-        start.x,
-        start.y
-      );
-      ctx.quadraticCurveTo(
+      const controlX =
         lerp(
           start.x,
           end.x,
           0.55
         ) +
-          dy *
-          view.tileSize *
-          0.05,
+        dy * view.tileSize * 0.05;
+      const controlY =
         lerp(
           start.y,
           end.y,
           0.55
         ) -
-          dx *
-          view.tileSize *
-          0.05,
+        dx * view.tileSize * 0.05;
+
+      // Broad sparse-earth scar first, then a narrower damp runnel. This lets
+      // weak blue water dissolve into wet ground instead of ending as a pipe.
+      ctx.strokeStyle =
+        terminal.kind === "ditch"
+          ? "rgba(118, 106, 70, 0.42)"
+          : "rgba(121, 116, 78, 0.34)";
+      ctx.lineWidth =
+        view.tileSize *
+        (
+          terminal.kind === "ditch"
+            ? 0.30
+            : 0.22
+        );
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.quadraticCurveTo(
+        controlX,
+        controlY,
+        end.x,
+        end.y
+      );
+      ctx.stroke();
+
+      ctx.strokeStyle =
+        terminal.kind === "ditch"
+          ? "rgba(78, 100, 72, 0.44)"
+          : "rgba(84, 105, 76, 0.34)";
+      ctx.lineWidth =
+        view.tileSize *
+        (
+          terminal.kind === "ditch"
+            ? 0.11
+            : 0.075
+        );
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.quadraticCurveTo(
+        controlX,
+        controlY,
         end.x,
         end.y
       );

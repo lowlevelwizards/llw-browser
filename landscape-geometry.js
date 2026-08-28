@@ -1914,33 +1914,33 @@
 
         if (
           startDangling &&
-          progress < 0.30
+          progress < 0.40
         ) {
           const taper =
             smoothstep01(
-              progress / 0.30
+              progress / 0.40
             );
 
           width *=
-            0.18 +
-            taper * 0.82;
+            0.05 +
+            taper * 0.95;
         }
 
         if (
           endDangling &&
-          progress > 0.70
+          progress > 0.60
         ) {
           const taper =
             smoothstep01(
               (
                 1 - progress
               ) /
-              0.30
+              0.40
             );
 
           width *=
-            0.18 +
-            taper * 0.82;
+            0.05 +
+            taper * 0.95;
         }
 
         samples.push({

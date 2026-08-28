@@ -1943,6 +1943,11 @@
     const centerX = p.x + tileSize * (0.5 + (patch.offsetX || 0));
     const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
     const seed = itemSeed(patch);
+    const mossCell = LLW.pcg.getCell(
+      patch.x,
+      patch.y
+    );
+    const wetness = mossCell?.moisture || 0;
 
     ctx.save();
     ctx.translate(centerX, centerY);
@@ -1956,8 +1961,17 @@
       const y = Math.sin(angle) * radius * 0.72;
       const rx = tileSize * (0.08 + hash01(seed, i, 23) * 0.06);
       const ry = tileSize * (0.04 + hash01(seed, i, 24) * 0.04);
-      const hue = Math.round(105 + (patch.colorShift || 0) * 12 + hash01(seed, i, 25) * 8);
-      const light = Math.round(34 + hash01(seed, i, 26) * 8);
+      const hue = Math.round(
+        105 +
+        wetness * 14 +
+        (patch.colorShift || 0) * 12 +
+        hash01(seed, i, 25) * 8
+      );
+      const light = Math.round(
+        36 -
+        wetness * 7 +
+        hash01(seed, i, 26) * 8
+      );
       ctx.fillStyle = `hsla(${hue}, 28%, ${light}%, 0.82)`;
       ctx.beginPath();
       ctx.ellipse(x, y, rx, ry, hash01(seed, i, 27) * Math.PI, 0, Math.PI * 2);
@@ -2131,6 +2145,76 @@
     ctx.restore();
   }
 
+  function drawSedgePatch(
+    patch,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const p = gridToPixel(
+      patch.x,
+      patch.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+    const centerX =
+      p.x + tileSize * (0.5 + (patch.offsetX || 0));
+    const centerY =
+      p.y + tileSize * (0.83 + (patch.offsetY || 0));
+    const seed = itemSeed(patch);
+    const count = patch.count || 5;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(patch.scale || 1, patch.scale || 1);
+    ctx.lineCap = "round";
+
+    for (let i = 0; i < count; i++) {
+      const spread = patch.spread || 0.12;
+      const x =
+        (hash01(seed, i, 81) - 0.5) *
+        tileSize * spread * 2;
+      const height =
+        tileSize *
+        (
+          0.10 +
+          hash01(seed, i, 82) * 0.13 +
+          (patch.heightShift || 0) * 0.025
+        );
+      const bend =
+        (hash01(seed, i, 83) - 0.5) *
+        tileSize * 0.05;
+      const hue = Math.round(
+        82 +
+        (patch.hueShift || 0) * 12 +
+        hash01(seed, i, 84) * 10
+      );
+      const light = Math.round(
+        35 + hash01(seed, i, 85) * 8
+      );
+
+      ctx.strokeStyle =
+        `hsla(${hue}, 34%, ${light}%, 0.72)`;
+      ctx.lineWidth = Math.max(
+        1,
+        tileSize *
+        (0.014 + hash01(seed, i, 86) * 0.008)
+      );
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.quadraticCurveTo(
+        x + bend * 0.45,
+        -height * 0.58,
+        x + bend,
+        -height
+      );
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
   function drawGroundcover(
     tileSize,
     offsetX,
@@ -2138,6 +2222,10 @@
   ) {
     for (const patch of state.mossPatches || []) {
       drawMossPatch(patch, tileSize, offsetX, offsetY);
+    }
+
+    for (const patch of state.sedgePatches || []) {
+      drawSedgePatch(patch, tileSize, offsetX, offsetY);
     }
 
     for (const patch of state.leafLitterPatches || []) {

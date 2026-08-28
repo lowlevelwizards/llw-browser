@@ -1286,9 +1286,6 @@
           terminal.kind === "ditch"
       );
 
-    const cols =
-      LLW.CONFIG.worldCols;
-
     const rng =
       LLW.pcg.createRng(
         seed,
@@ -1306,9 +1303,9 @@
       const wetness =
         smoothstep01(
           (
-            moisture - 0.42
+            moisture - 0.36
           ) /
-          0.46
+          0.50
         );
 
       const flatness =
@@ -1316,7 +1313,7 @@
         smoothstep01(
           (
             (cell.terrainSteepness || 0) -
-            0.018
+            0.014
           ) /
           0.105
         );
@@ -1332,9 +1329,9 @@
 
       const openBias =
         clamp(
-          0.52 +
-          clearing * 0.28 +
-          (1 - woodland) * 0.16
+          0.58 +
+          clearing * 0.24 +
+          (1 - woodland) * 0.18
         );
 
       let endpointBoost = 0;
@@ -1367,21 +1364,31 @@
           );
       }
 
+      const waterMargin =
+        clamp(
+          (cell.riparian || 0) *
+          (
+            1 -
+            (cell.visibleWaterFooting || 0)
+          )
+        );
+
       let potential =
         (
-          wetness * 0.52 +
-          riparian * 0.34 +
-          endpointBoost * 0.58
+          wetness * 0.48 +
+          riparian * 0.44 +
+          waterMargin * 0.18 +
+          endpointBoost * 0.72
         ) *
         (
-          0.38 +
-          flatness * 0.62
+          0.42 +
+          flatness * 0.58
         ) *
         openBias;
 
       potential *=
-        0.91 +
-        rng() * 0.18;
+        0.88 +
+        rng() * 0.24;
 
       const campDistance =
         Math.hypot(
@@ -1411,14 +1418,13 @@
       total += cell.mudPotential;
     }
 
-    // A tiny neighborhood pass turns moisture into patches rather than a
-    // peppering of isolated brown cells.
+    // A neighborhood pass turns continuous wetness into broad muddy places.
     const smoothed =
       cells.map(
         (cell) => {
           let sum =
-            cell.mudPotential * 2.1;
-          let weight = 2.1;
+            cell.mudPotential * 2.4;
+          let weight = 2.4;
 
           for (
             const neighborIndex of
@@ -1442,7 +1448,7 @@
     ) {
       const cell = cells[i];
 
-      cell.mudAmount =
+      let amount =
         smoothstep01(
           (
             smoothed[i] -
@@ -1450,20 +1456,82 @@
           ) /
           Math.max(
             0.0001,
-            0.40 -
+            0.34 -
             LLW.CONFIG.mudMinPotential
+          )
+        );
+
+      // Let convincing muddy cores feather into adjacent barren/sparse soil
+      // without making the entire wet region mechanically slow.
+      if (amount < 0.28) {
+        let strongestNeighbor = 0;
+
+        for (
+          const neighborIndex of
+          cell.neighborIndexes
+        ) {
+          strongestNeighbor =
+            Math.max(
+              strongestNeighbor,
+              smoothstep01(
+                (
+                  smoothed[neighborIndex] -
+                  LLW.CONFIG.mudMinPotential
+                ) /
+                Math.max(
+                  0.0001,
+                  0.34 -
+                  LLW.CONFIG.mudMinPotential
+                )
+              )
+            );
+        }
+
+        if (
+          strongestNeighbor > 0.48 &&
+          rng() <
+            LLW.CONFIG.mudPatchExpansionChance
+        ) {
+          amount = Math.max(
+            amount,
+            strongestNeighbor *
+              (0.24 + rng() * 0.18)
+          );
+        }
+      }
+
+      cell.mudAmount = clamp(amount);
+      cell.mudVisualAmount =
+        smoothstep01(
+          (
+            cell.mudAmount -
+            LLW.CONFIG.mudVisualThreshold * 0.45
+          ) /
+          0.62
+        );
+      cell.mudBareAmount =
+        smoothstep01(
+          (
+            cell.mudAmount -
+            LLW.CONFIG.mudBareThreshold
+          ) /
+          Math.max(
+            0.0001,
+            0.78 -
+            LLW.CONFIG.mudBareThreshold
           )
         );
     }
 
-    // Connected patch bookkeeping is useful to gameplay/debugging even
-    // though presentation remains a soft scalar field.
+    // Connected patch bookkeeping is useful to gameplay/debugging. Visual
+    // dampness may feather beyond these patch cores.
     const candidate =
       new Set(
         cells
           .filter(
             (cell) =>
-              cell.mudAmount >= 0.22
+              cell.mudAmount >=
+                LLW.CONFIG.mudVisualThreshold
           )
           .map(
             (cell) => cell.index
@@ -1515,15 +1583,29 @@
           cellCount: indexes.length
         });
       } else {
-        // Lonely damp specks remain visual dampness but do not count as a
-        // meaningful muddy traversal patch.
+        // Lonely damp specks remain faint dampness, not obvious mud islands.
         for (
           const index of indexes
         ) {
-          cells[index].mudAmount *= 0.38;
+          cells[index].mudAmount *= 0.34;
+          cells[index].mudVisualAmount *= 0.34;
+          cells[index].mudBareAmount = 0;
         }
       }
     }
+
+    const visualMudCells =
+      cells.filter(
+        (cell) =>
+          cell.mudAmount >=
+          LLW.CONFIG.mudVisualThreshold
+      ).length;
+
+    const bareMudCells =
+      cells.filter(
+        (cell) =>
+          cell.mudBareAmount >= 0.30
+      ).length;
 
     const muddyCells =
       cells.filter(
@@ -1539,6 +1621,8 @@
         total /
         cells.length,
       max,
+      visualMudCells,
+      bareMudCells,
       muddyCells
     };
   }
@@ -1566,7 +1650,8 @@
       cell.surfaceWaterDepth >
         EPSILON ||
       (cell.visibleWaterFooting || 0) >=
-        0.18
+        0.18 ||
+      (cell.mudBareAmount || 0) >= 0.78
     ) {
       return true;
     }
@@ -4267,7 +4352,8 @@
     spawnMossPatch,
     spawnWildflowerPatch,
     spawnGrassTuft,
-    spawnPebblePatch
+    spawnPebblePatch,
+    spawnSedgePatch
   }) {
     const cells =
       state.landscape.cells;
@@ -4355,6 +4441,10 @@
         cell.riparian || 0;
       const mud =
         cell.mudAmount || 0;
+      const bareMud =
+        cell.mudBareAmount || 0;
+      const trail =
+        cell.trailAmount || 0;
       const steepness =
         smoothstep01(
           (
@@ -4393,6 +4483,8 @@
           openGround * 0.18 +
           riparian * 0.08
         ) *
+        (1 - bareMud * 0.88) *
+        (1 - trail * 0.52) *
         leafCluster;
 
       if (rng() < leafLitterChance) {
@@ -4417,6 +4509,8 @@
             0.34 +
           riparian * 0.24
         ) *
+        (1 - bareMud * 0.62) *
+        (1 - trail * 0.44) *
         mossCluster;
 
       if (rng() < mossChance) {
@@ -4442,6 +4536,8 @@
           openGround * 0.30 +
           (1 - shade) * 0.12
         ) *
+        (1 - bareMud * 0.90) *
+        (1 - trail * 0.78) *
         cloverCluster;
 
       if (rng() < cloverChance) {
@@ -4461,7 +4557,9 @@
           woodland * 0.14 +
           (1 - riparian) * 0.04
         ) *
-        (1 - mud * 0.58) *
+        (1 - mud * 0.72) *
+        (1 - bareMud * 0.84) *
+        (1 - trail * 0.72) *
         grassCluster;
 
       if (rng() < grassChance) {
@@ -4487,7 +4585,9 @@
           ) *
             0.14
         ) *
-        (1 - mud * 0.72) *
+        (1 - mud * 0.86) *
+        (1 - bareMud * 0.95) *
+        (1 - trail * 0.88) *
         flowerCluster;
 
       if (rng() < flowerChance) {
@@ -4507,10 +4607,42 @@
           edge * 0.14 +
           riparian * 0.18
         ) *
+        (0.82 + trail * 0.34) *
+        (0.86 + mud * 0.24) *
         pebbleCluster;
 
       if (rng() < pebbleChance) {
         spawnPebblePatch(
+          cell.x,
+          cell.y
+        );
+      }
+
+      const sedgeCluster =
+        0.46 +
+        clusterField(cell, 251, 3.1) * 0.92;
+
+      const sedgeChance =
+        LLW.CONFIG
+          .groundSedgePatchDensity *
+        clamp(
+          0.03 +
+          riparian * 0.52 +
+          bellPreference(
+            moisture,
+            0.72,
+            0.28,
+            0.22
+          ) *
+            0.34 +
+          mud * 0.24
+        ) *
+        (1 - bareMud * 0.66) *
+        (1 - trail * 0.48) *
+        sedgeCluster;
+
+      if (rng() < sedgeChance) {
+        spawnSedgePatch(
           cell.x,
           cell.y
         );

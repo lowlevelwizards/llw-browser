@@ -207,15 +207,21 @@
     );
   }
 
-  function collidesAlongMove(
+  function collidesAlongSegment(
     from,
     to,
-    bodyRadius
+    bodyRadius,
+    footprints
   ) {
-    const footprints =
-      getBlockingFootprints();
+    const distance = Math.hypot(
+      to.x - from.x,
+      to.y - from.y
+    );
 
-    const steps = 10;
+    const steps = Math.max(
+      5,
+      Math.ceil(distance * 16)
+    );
 
     for (let step = 1; step <= steps; step++) {
       const t = step / steps;
@@ -243,11 +249,34 @@
     return null;
   }
 
-  function waterBlocksMove(from, to) {
+  function collidesAlongPath(
+    points,
+    bodyRadius
+  ) {
+    const footprints = getBlockingFootprints();
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const collision = collidesAlongSegment(
+        points[i],
+        points[i + 1],
+        bodyRadius,
+        footprints
+      );
+
+      if (collision) {
+        return collision;
+      }
+    }
+
+    return null;
+  }
+
+  function waterBlocksPath(points) {
+    const last = points[points.length - 1];
     const targetCell =
       LLW.pcg.getCell(
-        Math.floor(to.x),
-        Math.floor(to.y)
+        Math.floor(last.x),
+        Math.floor(last.y)
       );
 
     if (
@@ -260,21 +289,29 @@
       return true;
     }
 
-    const steps = 12;
+    for (let i = 0; i < points.length - 1; i++) {
+      const from = points[i];
+      const to = points[i + 1];
+      const distance = Math.hypot(
+        to.x - from.x,
+        to.y - from.y
+      );
+      const steps = Math.max(6, Math.ceil(distance * 18));
 
-    for (let step = 2; step <= steps; step++) {
-      const t = step / steps;
-      const point = {
-        x:
-          from.x +
-          (to.x - from.x) * t,
-        y:
-          from.y +
-          (to.y - from.y) * t
-      };
+      for (let step = 2; step <= steps; step++) {
+        const t = step / steps;
+        const point = {
+          x:
+            from.x +
+            (to.x - from.x) * t,
+          y:
+            from.y +
+            (to.y - from.y) * t
+        };
 
-      if (pointInWater(point)) {
-        return true;
+        if (pointInWater(point)) {
+          return true;
+        }
       }
     }
 
@@ -314,6 +351,140 @@
     return cell?.mudAmount || 0;
   }
 
+  function microPathCandidates(from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.max(
+      0.0001,
+      Math.hypot(dx, dy)
+    );
+
+    const perpendicular = {
+      x: -dy / length,
+      y: dx / length
+    };
+
+    const maxOffset =
+      LLW.CONFIG.squeezeMicroPathMaxOffset;
+
+    const samples = Math.max(
+      2,
+      LLW.CONFIG.squeezeMicroPathSamples
+    );
+
+    const offsets = [0];
+
+    for (let i = 1; i <= samples; i++) {
+      const offset = maxOffset * i / samples;
+      offsets.push(offset, -offset);
+    }
+
+    const paths = [];
+
+    for (const offset of offsets) {
+      const first = {
+        x:
+          from.x + dx * 0.34 +
+          perpendicular.x * offset,
+        y:
+          from.y + dy * 0.34 +
+          perpendicular.y * offset
+      };
+
+      const second = {
+        x:
+          from.x + dx * 0.66 +
+          perpendicular.x * offset,
+        y:
+          from.y + dy * 0.66 +
+          perpendicular.y * offset
+      };
+
+      paths.push([
+        from,
+        first,
+        second,
+        to
+      ]);
+    }
+
+    // A couple of asymmetric bends help when the two trunks are staggered
+    // rather than forming a perfectly centered doorway.
+    for (const sign of [-1, 1]) {
+      const a =
+        sign * maxOffset * 0.44;
+      const b =
+        sign * maxOffset * 0.82;
+
+      paths.push([
+        from,
+        {
+          x:
+            from.x + dx * 0.30 +
+            perpendicular.x * a,
+          y:
+            from.y + dy * 0.30 +
+            perpendicular.y * a
+        },
+        {
+          x:
+            from.x + dx * 0.66 +
+            perpendicular.x * b,
+          y:
+            from.y + dy * 0.66 +
+            perpendicular.y * b
+        },
+        to
+      ]);
+
+      paths.push([
+        from,
+        {
+          x:
+            from.x + dx * 0.34 +
+            perpendicular.x * b,
+          y:
+            from.y + dy * 0.34 +
+            perpendicular.y * b
+        },
+        {
+          x:
+            from.x + dx * 0.70 +
+            perpendicular.x * a,
+          y:
+            from.y + dy * 0.70 +
+            perpendicular.y * a
+        },
+        to
+      ]);
+    }
+
+    return paths;
+  }
+
+  function movementPathFromFeet(path) {
+    return path.map((point) => ({
+      x: point.x - 0.5,
+      y: point.y - 0.78
+    }));
+  }
+
+  function collisionMessage(collision) {
+    if (!collision) {
+      return "There is no clear gap.";
+    }
+
+    if (collision.kind === "fallen_log") {
+      return "The fallen log blocks the way.";
+    }
+
+    if (collision.kind === "boulder") {
+      return "The boulder blocks the way.";
+    }
+
+    return "The trunks leave no clear gap.";
+  }
+
   function evaluateMove(
     fromX,
     fromY,
@@ -321,8 +492,7 @@
     toY
   ) {
     // Movement geometry follows the wizard's feet, not the visual center of
-    // the sprite. That keeps tall trees/canopies cosmetic while trunks remain
-    // truthful blockers at ground level.
+    // the sprite. Tall canopy is presentation; trunks are physical truth.
     const from = {
       x: fromX + 0.5,
       y: fromY + 0.78
@@ -333,7 +503,9 @@
       y: toY + 0.78
     };
 
-    if (waterBlocksMove(from, to)) {
+    const straight = [from, to];
+
+    if (waterBlocksPath(straight)) {
       return {
         allowed: false,
         mode: "blocked",
@@ -342,45 +514,68 @@
       };
     }
 
-    const squeezeCollision =
-      collidesAlongMove(
-        from,
-        to,
-        getEffectiveBodyRadius("squeeze")
-      );
-
-    if (squeezeCollision) {
-      const message =
-        squeezeCollision.kind === "fallen_log"
-          ? "The fallen log blocks the way."
-          : squeezeCollision.kind === "boulder"
-            ? "The boulder blocks the way."
-            : "The trunks leave no clear gap.";
-
-      return {
-        allowed: false,
-        mode: "blocked",
-        reason: squeezeCollision.kind,
-        entity: squeezeCollision.entity,
-        message
-      };
-    }
-
     const normalCollision =
-      collidesAlongMove(
-        from,
-        to,
+      collidesAlongPath(
+        straight,
         getEffectiveBodyRadius("normal")
       );
 
-    if (normalCollision) {
-      if (!canSqueeze()) {
+    if (!normalCollision) {
+      const terrainTurns =
+        getTerrainMoveCost(toX, toY);
+
+      if (
+        terrainTurns >
+        LLW.CONFIG.normalMoveTurns
+      ) {
         return {
-          allowed: false,
-          mode: "blocked",
-          reason: "too_loaded_to_squeeze",
-          message: "There is a gap, but not enough room to squeeze through."
+          allowed: true,
+          mode: "slow",
+          turnCost: terrainTurns,
+          duration: LLW.CONFIG.slowMoveDuration,
+          reason: "mud",
+          movementPath: null
         };
+      }
+
+      return {
+        allowed: true,
+        mode: "normal",
+        turnCost: LLW.CONFIG.normalMoveTurns,
+        duration: LLW.CONFIG.normalMoveDuration,
+        reason: null,
+        movementPath: null
+      };
+    }
+
+    if (!canSqueeze()) {
+      return {
+        allowed: false,
+        mode: "blocked",
+        reason: "too_loaded_to_squeeze",
+        message: "There is a gap, but not enough room to squeeze through."
+      };
+    }
+
+    let lastCollision = normalCollision;
+
+    for (
+      const candidate of
+      microPathCandidates(from, to)
+    ) {
+      if (waterBlocksPath(candidate)) {
+        continue;
+      }
+
+      const collision =
+        collidesAlongPath(
+          candidate,
+          getEffectiveBodyRadius("squeeze")
+        );
+
+      if (collision) {
+        lastCollision = collision;
+        continue;
       }
 
       return {
@@ -388,32 +583,18 @@
         mode: "squeeze",
         turnCost: LLW.CONFIG.squeezeMoveTurns,
         duration: LLW.CONFIG.squeezeMoveDuration,
-        reason: normalCollision.kind
-      };
-    }
-
-    const terrainTurns =
-      getTerrainMoveCost(toX, toY);
-
-    if (
-      terrainTurns >
-      LLW.CONFIG.normalMoveTurns
-    ) {
-      return {
-        allowed: true,
-        mode: "slow",
-        turnCost: terrainTurns,
-        duration: LLW.CONFIG.slowMoveDuration,
-        reason: "mud"
+        reason: normalCollision.kind,
+        movementPath:
+          movementPathFromFeet(candidate)
       };
     }
 
     return {
-      allowed: true,
-      mode: "normal",
-      turnCost: LLW.CONFIG.normalMoveTurns,
-      duration: LLW.CONFIG.normalMoveDuration,
-      reason: null
+      allowed: false,
+      mode: "blocked",
+      reason: lastCollision?.kind || "no_gap",
+      entity: lastCollision?.entity || null,
+      message: collisionMessage(lastCollision)
     };
   }
 
