@@ -94,7 +94,12 @@
       seed: null,
       cells: [],
       catchments: [],
-      channelEdges: []
+      channelEdges: [],
+      geometry: {
+        seed: null,
+        waterBodies: [],
+        channels: []
+      }
     },
 
     game: {
@@ -566,6 +571,10 @@
     LLW.pcg.generateLandscape(
       resolvedSeed
     );
+
+    // Hydrology stays discrete. Compile it once into connected vector
+    // landforms for presentation, Crossroads-style.
+    LLW.landscapeGeometry.build();
 
     // Existing initial props also become repeatable for the same world,
     // without yet making their placement depend on elevation.

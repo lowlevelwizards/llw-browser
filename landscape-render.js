@@ -2,12 +2,10 @@
   const LLW = window.LLW;
   const state = LLW.state;
 
-  const EPSILON = 0.00001;
-
   let elevationCache = {
     key: null,
     canvas: null,
-    pixelsPerTile: 6
+    pixelsPerTile: 7
   };
 
   function clamp(value, min, max) {
@@ -29,25 +27,6 @@
       value *
       value *
       (3 - 2 * value)
-    );
-  }
-
-  function hash01(
-    x,
-    y,
-    salt = 0
-  ) {
-    const value =
-      Math.sin(
-        x * 12.9898 +
-        y * 78.233 +
-        salt * 37.719
-      ) *
-      43758.5453;
-
-    return (
-      value -
-      Math.floor(value)
     );
   }
 
@@ -95,16 +74,28 @@
       worldY - y0;
 
     const a =
-      getCellClamped(x0, y0);
+      getCellClamped(
+        x0,
+        y0
+      );
 
     const b =
-      getCellClamped(x1, y0);
+      getCellClamped(
+        x1,
+        y0
+      );
 
     const c =
-      getCellClamped(x0, y1);
+      getCellClamped(
+        x0,
+        y1
+      );
 
     const d =
-      getCellClamped(x1, y1);
+      getCellClamped(
+        x1,
+        y1
+      );
 
     if (!a || !b || !c || !d) {
       return 0.5;
@@ -131,9 +122,16 @@
     const t =
       smoothstep(elevation);
 
-    const low = [91, 139, 104];
-    const mid = [150, 179, 112];
-    const high = [205, 204, 132];
+    // Stronger than v22. The old tile shading carried useful topography;
+    // this keeps that amplitude while removing the visible cell boundaries.
+    const low =
+      [70, 125, 99];
+
+    const mid =
+      [145, 178, 105];
+
+    const high =
+      [216, 204, 118];
 
     let r;
     let g;
@@ -162,7 +160,10 @@
       );
     } else {
       const local =
-        (t - 0.52) / 0.48;
+        (
+          t - 0.52
+        ) /
+        0.48;
 
       r = lerp(
         mid[0],
@@ -192,7 +193,8 @@
 
   function ensureElevationCache() {
     if (
-      typeof document === "undefined" ||
+      typeof document ===
+        "undefined" ||
       !state.landscape.cells.length
     ) {
       return null;
@@ -213,7 +215,9 @@
       elevationCache.key === key &&
       elevationCache.canvas
     ) {
-      return elevationCache.canvas;
+      return (
+        elevationCache.canvas
+      );
     }
 
     const canvas =
@@ -221,19 +225,15 @@
         "canvas"
       );
 
-    // Extra tile of sampling space lets us crop from true tile boundaries
-    // while the values themselves live at tile centers.
     canvas.width =
       (
-        LLW.CONFIG.worldCols +
-        1
+        LLW.CONFIG.worldCols + 1
       ) *
       scale;
 
     canvas.height =
       (
-        LLW.CONFIG.worldRows +
-        1
+        LLW.CONFIG.worldRows + 1
       ) *
       scale;
 
@@ -318,11 +318,11 @@
       return;
     }
 
-    const scale =
-      elevationCache.pixelsPerTile;
-
     const overview =
       LLW.camera.isOverview();
+
+    const scale =
+      elevationCache.pixelsPerTile;
 
     const originX =
       overview
@@ -348,8 +348,8 @@
 
     ctx.globalAlpha =
       overview
-        ? 0.43
-        : 0.20;
+        ? 0.58
+        : 0.36;
 
     ctx.imageSmoothingEnabled =
       true;
@@ -360,11 +360,15 @@
     ctx.drawImage(
       cache,
 
-      (originX + 0.5) *
-        scale,
+      (
+        originX + 0.5
+      ) *
+      scale,
 
-      (originY + 0.5) *
-        scale,
+      (
+        originY + 0.5
+      ) *
+      scale,
 
       columns * scale,
       rows * scale,
@@ -378,1114 +382,380 @@
     ctx.restore();
   }
 
-  function buildWetComponents() {
-    const wet =
-      state.landscape.cells.filter(
-        (cell) =>
-          cell.surfaceWaterDepth >
-          EPSILON
-      );
-
-    const wetSet =
-      new Set(
-        wet.map(
-          (cell) =>
-            cell.index
-        )
-      );
-
-    const visited =
-      new Set();
-
-    const components = [];
-
-    for (const cell of wet) {
-      if (
-        visited.has(
-          cell.index
-        )
-      ) {
-        continue;
-      }
-
-      const queue =
-        [cell.index];
-
-      const component = [];
-
-      visited.add(
-        cell.index
-      );
-
-      while (queue.length) {
-        const index =
-          queue.shift();
-
-        const current =
-          state.landscape.cells[
-            index
-          ];
-
-        if (!current) {
-          continue;
-        }
-
-        component.push(
-          current
-        );
-
-        for (
-          const neighborIndex of
-          current.neighborIndexes
-        ) {
-          if (
-            !wetSet.has(
-              neighborIndex
-            ) ||
-            visited.has(
-              neighborIndex
-            )
-          ) {
-            continue;
-          }
-
-          visited.add(
-            neighborIndex
-          );
-
-          queue.push(
-            neighborIndex
-          );
-        }
-      }
-
-      components.push(
-        component
-      );
-    }
-
-    return components;
-  }
-
-  function visibleComponent(
-    component
+  function worldPointToPixel(
+    point,
+    view
   ) {
-    return component.some(
-      (cell) =>
-        LLW.camera.isTileVisible(
-          cell.x,
-          cell.y,
-          1
-        )
-    );
-  }
+    const cameraX =
+      LLW.camera.isOverview()
+        ? 0
+        : state.camera.x;
 
-  function waterNode(
-    cell,
-    view,
-    maxDepth
-  ) {
-    const p =
-      view.gridToPixel(
-        cell.x,
-        cell.y,
-        view.tileSize,
-        view.offsetX,
-        view.offsetY
-      );
-
-    const depth =
-      maxDepth > EPSILON
-        ? Math.sqrt(
-            cell.surfaceWaterDepth /
-            maxDepth
-          )
-        : 0;
-
-    const jitterX =
-      (
-        hash01(
-          cell.x,
-          cell.y,
-          701
-        ) -
-        0.5
-      ) *
-      view.tileSize *
-      0.12;
-
-    const jitterY =
-      (
-        hash01(
-          cell.x,
-          cell.y,
-          702
-        ) -
-        0.5
-      ) *
-      view.tileSize *
-      0.10;
+    const cameraY =
+      LLW.camera.isOverview()
+        ? 0
+        : state.camera.y;
 
     return {
       x:
-        p.x +
-        view.tileSize *
-        0.5 +
-        jitterX,
+        view.offsetX +
+        (
+          point.x -
+          cameraX
+        ) *
+        view.tileSize,
 
       y:
-        p.y +
-        view.tileSize *
-        0.53 +
-        jitterY,
-
-      radius:
-        view.tileSize *
+        view.offsetY +
         (
-          0.34 +
-          depth * 0.13
-        ),
-
-      depth
+          point.y -
+          cameraY
+        ) *
+        view.tileSize
     };
   }
 
-  function drawBlobLayer(
+  function appendPolygon(
     ctx,
-    component,
-    nodes,
-    radiusBoost,
-    fillStyle
-  ) {
-    const nodeByIndex =
-      new Map();
-
-    component.forEach(
-      (cell, index) => {
-        nodeByIndex.set(
-          cell.index,
-          nodes[index]
-        );
-      }
-    );
-
-    ctx.fillStyle =
-      fillStyle;
-
-    ctx.strokeStyle =
-      fillStyle;
-
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    // Join neighboring wet samples into a single body before drawing lobes.
-    // Hydrology is still discrete; only the visible shoreline is continuous.
-    for (const cell of component) {
-      const from =
-        nodeByIndex.get(
-          cell.index
-        );
-
-      if (!from) {
-        continue;
-      }
-
-      for (
-        const neighborIndex of
-        cell.neighborIndexes
-      ) {
-        if (
-          neighborIndex <=
-          cell.index
-        ) {
-          continue;
-        }
-
-        const to =
-          nodeByIndex.get(
-            neighborIndex
-          );
-
-        if (!to) {
-          continue;
-        }
-
-        ctx.lineWidth =
-          Math.max(
-            1,
-            (
-              Math.min(
-                from.radius,
-                to.radius
-              ) +
-              radiusBoost
-            ) *
-            1.55
-          );
-
-        ctx.beginPath();
-        ctx.moveTo(
-          from.x,
-          from.y
-        );
-        ctx.lineTo(
-          to.x,
-          to.y
-        );
-        ctx.stroke();
-      }
-    }
-
-    for (
-      let i = 0;
-      i < component.length;
-      i++
-    ) {
-      const cell =
-        component[i];
-
-      const node =
-        nodes[i];
-
-      const stretch =
-        0.90 +
-        hash01(
-          cell.x,
-          cell.y,
-          704
-        ) *
-        0.20;
-
-      const rotation =
-        (
-          hash01(
-            cell.x,
-            cell.y,
-            705
-          ) -
-          0.5
-        ) *
-        0.46;
-
-      ctx.beginPath();
-
-      ctx.ellipse(
-        node.x,
-        node.y,
-        node.radius +
-          radiusBoost,
-        (
-          node.radius +
-          radiusBoost
-        ) *
-          stretch,
-        rotation,
-        0,
-        Math.PI * 2
-      );
-
-      ctx.fill();
-    }
-  }
-
-  function drawSurfaceWater(
-    ctx,
+    points,
     view
   ) {
     if (
-      !LLW.CONFIG.surfaceWaterVisible ||
-      !state.landscape.cells.length
+      !points ||
+      points.length < 3
     ) {
       return;
     }
 
-    const components =
-      buildWetComponents();
-
-    for (
-      const component of
-      components
-    ) {
-      if (
-        !component.length ||
-        !visibleComponent(
-          component
-        )
-      ) {
-        continue;
-      }
-
-      const maxDepth =
-        Math.max(
-          EPSILON,
-          ...component.map(
-            (cell) =>
-              cell.surfaceWaterDepth
-          )
-        );
-
-      const nodes =
-        component.map(
-          (cell) =>
-            waterNode(
-              cell,
-              view,
-              maxDepth
-            )
-        );
-
-      ctx.save();
-
-      // Damp/saturated bank. This is intentionally a broad stain rather than
-      // a crisp vector outline.
-      drawBlobLayer(
-        ctx,
-        component,
-        nodes,
-        view.tileSize * 0.075,
-        "rgba(72, 125, 103, 0.23)"
+    const first =
+      worldPointToPixel(
+        points[0],
+        view
       );
 
-      drawBlobLayer(
-        ctx,
-        component,
-        nodes,
-        0,
-        "rgba(73, 151, 173, 0.62)"
-      );
-
-      ctx.strokeStyle =
-        "rgba(199, 230, 222, 0.40)";
-
-      ctx.lineCap = "round";
-
-      ctx.lineWidth =
-        Math.max(
-          1,
-          view.tileSize * 0.025
-        );
-
-      const glintCount =
-        Math.min(
-          4,
-          Math.max(
-            1,
-            Math.ceil(
-              component.length / 5
-            )
-          )
-        );
-
-      const sorted =
-        [...nodes].sort(
-          (a, b) =>
-            a.y - b.y ||
-            a.x - b.x
-        );
-
-      for (
-        let i = 0;
-        i < glintCount;
-        i++
-      ) {
-        const index =
-          Math.min(
-            sorted.length - 1,
-            Math.floor(
-              (
-                i +
-                0.55
-              ) /
-              glintCount *
-              sorted.length
-            )
-          );
-
-        const node =
-          sorted[index];
-
-        if (!node) {
-          continue;
-        }
-
-        const half =
-          view.tileSize *
-          (
-            0.15 +
-            node.depth *
-            0.09
-          );
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-          node.x - half,
-          node.y -
-            view.tileSize *
-            0.06
-        );
-
-        ctx.quadraticCurveTo(
-          node.x,
-          node.y -
-            view.tileSize *
-            0.085,
-          node.x + half,
-          node.y -
-            view.tileSize *
-            0.06
-        );
-
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    }
-  }
-
-  function buildChannelTraces() {
-    const edges =
-      state.landscape.channelEdges;
-
-    if (!edges.length) {
-      return [];
-    }
-
-    const outgoing =
-      new Map();
-
-    const incomingCount =
-      new Map();
-
-    const outgoingCount =
-      new Map();
-
-    for (
-      let edgeIndex = 0;
-      edgeIndex < edges.length;
-      edgeIndex++
-    ) {
-      const edge =
-        edges[edgeIndex];
-
-      if (
-        !outgoing.has(
-          edge.fromIndex
-        )
-      ) {
-        outgoing.set(
-          edge.fromIndex,
-          []
-        );
-      }
-
-      outgoing.get(
-        edge.fromIndex
-      ).push(
-        edgeIndex
-      );
-
-      outgoingCount.set(
-        edge.fromIndex,
-        (
-          outgoingCount.get(
-            edge.fromIndex
-          ) || 0
-        ) + 1
-      );
-
-      incomingCount.set(
-        edge.toIndex,
-        (
-          incomingCount.get(
-            edge.toIndex
-          ) || 0
-        ) + 1
-      );
-    }
-
-    const visited =
-      new Set();
-
-    const traces = [];
-
-    function traceFrom(
-      edgeIndex
-    ) {
-      if (
-        visited.has(
-          edgeIndex
-        )
-      ) {
-        return;
-      }
-
-      const traceEdges = [];
-      let currentEdgeIndex =
-        edgeIndex;
-
-      while (
-        currentEdgeIndex !==
-          undefined &&
-        !visited.has(
-          currentEdgeIndex
-        )
-      ) {
-        visited.add(
-          currentEdgeIndex
-        );
-
-        const edge =
-          edges[
-            currentEdgeIndex
-          ];
-
-        traceEdges.push(
-          edge
-        );
-
-        const nextNode =
-          edge.toIndex;
-
-        const incoming =
-          incomingCount.get(
-            nextNode
-          ) || 0;
-
-        const outgoingEdges =
-          outgoing.get(
-            nextNode
-          ) || [];
-
-        if (
-          incoming !== 1 ||
-          outgoingEdges.length !== 1
-        ) {
-          break;
-        }
-
-        currentEdgeIndex =
-          outgoingEdges[0];
-      }
-
-      if (traceEdges.length) {
-        traces.push(
-          traceEdges
-        );
-      }
-    }
-
-    for (
-      let edgeIndex = 0;
-      edgeIndex < edges.length;
-      edgeIndex++
-    ) {
-      const edge =
-        edges[edgeIndex];
-
-      const incoming =
-        incomingCount.get(
-          edge.fromIndex
-        ) || 0;
-
-      const outgoingForNode =
-        outgoingCount.get(
-          edge.fromIndex
-        ) || 0;
-
-      if (
-        incoming !== 1 ||
-        outgoingForNode !== 1
-      ) {
-        traceFrom(
-          edgeIndex
-        );
-      }
-    }
-
-    // Defensive fallback for any leftover isolated loop/sequence.
-    for (
-      let edgeIndex = 0;
-      edgeIndex < edges.length;
-      edgeIndex++
-    ) {
-      traceFrom(
-        edgeIndex
-      );
-    }
-
-    return traces;
-  }
-
-  function channelNode(
-    cell,
-    view
-  ) {
-    const p =
-      view.gridToPixel(
-        cell.x,
-        cell.y,
-        view.tileSize,
-        view.offsetX,
-        view.offsetY
-      );
-
-    // Node-based jitter means all tributaries meeting at this cell share the
-    // same visible meeting point.
-    const jitterX =
-      (
-        hash01(
-          cell.x,
-          cell.y,
-          811
-        ) -
-        0.5
-      ) *
-      view.tileSize *
-      0.14;
-
-    const jitterY =
-      (
-        hash01(
-          cell.x,
-          cell.y,
-          812
-        ) -
-        0.5
-      ) *
-      view.tileSize *
-      0.14;
-
-    return {
-      x:
-        p.x +
-        view.tileSize *
-        0.5 +
-        jitterX,
-
-      y:
-        p.y +
-        view.tileSize *
-        0.5 +
-        jitterY
-    };
-  }
-
-  function catmullRomPoint(
-    p0,
-    p1,
-    p2,
-    p3,
-    t
-  ) {
-    const t2 =
-      t * t;
-
-    const t3 =
-      t2 * t;
-
-    return {
-      x:
-        0.5 *
-        (
-          2 * p1.x +
-          (-p0.x + p2.x) *
-            t +
-          (
-            2 * p0.x -
-            5 * p1.x +
-            4 * p2.x -
-            p3.x
-          ) *
-            t2 +
-          (
-            -p0.x +
-            3 * p1.x -
-            3 * p2.x +
-            p3.x
-          ) *
-            t3
-        ),
-
-      y:
-        0.5 *
-        (
-          2 * p1.y +
-          (-p0.y + p2.y) *
-            t +
-          (
-            2 * p0.y -
-            5 * p1.y +
-            4 * p2.y -
-            p3.y
-          ) *
-            t2 +
-          (
-            -p0.y +
-            3 * p1.y -
-            3 * p2.y +
-            p3.y
-          ) *
-            t3
-        )
-    };
-  }
-
-  function sampleTrace(
-    trace,
-    view
-  ) {
-    if (!trace.length) {
-      return [];
-    }
-
-    const cellIndexes = [
-      trace[0].fromIndex,
-      ...trace.map(
-        (edge) =>
-          edge.toIndex
-      )
-    ];
-
-    const points =
-      cellIndexes.map(
-        (cellIndex) => {
-          const cell =
-            state.landscape.cells[
-              cellIndex
-            ];
-
-          return channelNode(
-            cell,
-            view
-          );
-        }
-      );
-
-    const nodeStrength = [
-      trace[0].strength
-    ];
+    ctx.moveTo(
+      first.x,
+      first.y
+    );
 
     for (
       let i = 1;
-      i < points.length - 1;
+      i < points.length;
       i++
     ) {
-      nodeStrength.push(
-        (
-          trace[i - 1].strength +
-          trace[i].strength
-        ) *
-        0.5
-      );
-    }
-
-    nodeStrength.push(
-      trace[
-        trace.length - 1
-      ].strength
-    );
-
-    const samples = [];
-
-    for (
-      let segment = 0;
-      segment < points.length - 1;
-      segment++
-    ) {
-      const p0 =
-        points[
-          Math.max(
-            0,
-            segment - 1
-          )
-        ];
-
-      const p1 =
-        points[segment];
-
-      const p2 =
-        points[
-          segment + 1
-        ];
-
-      const p3 =
-        points[
-          Math.min(
-            points.length - 1,
-            segment + 2
-          )
-        ];
-
-      const steps = 7;
-
-      for (
-        let step = 0;
-        step <= steps;
-        step++
-      ) {
-        if (
-          segment > 0 &&
-          step === 0
-        ) {
-          continue;
-        }
-
-        const t =
-          step / steps;
-
-        const point =
-          catmullRomPoint(
-            p0,
-            p1,
-            p2,
-            p3,
-            t
-          );
-
-        samples.push({
-          ...point,
-
-          strength:
-            lerp(
-              nodeStrength[
-                segment
-              ],
-              nodeStrength[
-                segment + 1
-              ],
-              t
-            )
-        });
-      }
-    }
-
-    return samples;
-  }
-
-  function drawVariableStroke(
-    ctx,
-    samples,
-    tileSize,
-    widthMultiplier,
-    colorForStrength
-  ) {
-    if (
-      samples.length < 2
-    ) {
-      return;
-    }
-
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    for (
-      let i = 1;
-      i < samples.length;
-      i++
-    ) {
-      const a =
-        samples[i - 1];
-
-      const b =
-        samples[i];
-
-      const strength =
-        (
-          a.strength +
-          b.strength
-        ) *
-        0.5;
-
-      ctx.strokeStyle =
-        colorForStrength(
-          strength
-        );
-
-      ctx.lineWidth =
-        Math.max(
-          1,
-          tileSize *
-          (
-            0.042 +
-            strength *
-            0.135
-          ) *
-          widthMultiplier
-        );
-
-      ctx.beginPath();
-
-      ctx.moveTo(
-        a.x,
-        a.y
-      );
-
-      ctx.lineTo(
-        b.x,
-        b.y
-      );
-
-      ctx.stroke();
-    }
-  }
-
-  function drawChannelHighlights(
-    ctx,
-    samples,
-    tileSize
-  ) {
-    ctx.lineCap = "round";
-
-    for (
-      let i = 2;
-      i < samples.length;
-      i += 6
-    ) {
-      const a =
-        samples[i - 1];
-
-      const b =
-        samples[i];
-
-      const strength =
-        (
-          a.strength +
-          b.strength
-        ) *
-        0.5;
-
-      if (
-        strength <= 0.42
-      ) {
-        continue;
-      }
-
-      ctx.strokeStyle =
-        `rgba(205, 233, 226, ${
-          0.12 +
-          strength *
-          0.13
-        })`;
-
-      ctx.lineWidth =
-        Math.max(
-          0.8,
-          tileSize *
-          (
-            0.008 +
-            strength *
-            0.012
-          )
-        );
-
-      ctx.beginPath();
-      ctx.moveTo(
-        a.x,
-        a.y
-      );
-      ctx.lineTo(
-        b.x,
-        b.y
-      );
-      ctx.stroke();
-    }
-  }
-
-  function drawChannels(
-    ctx,
-    view
-  ) {
-    if (
-      !LLW.CONFIG.channelWaterVisible ||
-      !state.landscape.channelEdges.length
-    ) {
-      return;
-    }
-
-    const traces =
-      buildChannelTraces();
-
-    ctx.save();
-
-    for (const trace of traces) {
-      const anyVisible =
-        trace.some(
-          (edge) => {
-            const from =
-              state.landscape.cells[
-                edge.fromIndex
-              ];
-
-            const to =
-              state.landscape.cells[
-                edge.toIndex
-              ];
-
-            return (
-              (
-                from &&
-                LLW.camera.isTileVisible(
-                  from.x,
-                  from.y,
-                  2
-                )
-              ) ||
-              (
-                to &&
-                LLW.camera.isTileVisible(
-                  to.x,
-                  to.y,
-                  2
-                )
-              )
-            );
-          }
-        );
-
-      if (!anyVisible) {
-        continue;
-      }
-
-      const samples =
-        sampleTrace(
-          trace,
+      const point =
+        worldPointToPixel(
+          points[i],
           view
         );
 
-      // Damp bank / creek bed.
-      drawVariableStroke(
+      ctx.lineTo(
+        point.x,
+        point.y
+      );
+    }
+
+    ctx.closePath();
+  }
+
+  function appendAllWaterGeometry(
+    ctx,
+    view
+  ) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    for (
+      const body of
+      geometry.waterBodies
+    ) {
+      appendPolygon(
         ctx,
-        samples,
-        view.tileSize,
-        1.48,
-        (strength) =>
-          `rgba(50, 117, 126, ${
-            0.23 +
-            strength *
-            0.23
-          })`
+        body.points,
+        view
+      );
+    }
+
+    for (
+      const channel of
+      geometry.channels
+    ) {
+      appendPolygon(
+        ctx,
+        channel.polygon,
+        view
+      );
+    }
+  }
+
+  function drawWater(
+    ctx,
+    view
+  ) {
+    if (
+      !LLW.CONFIG.surfaceWaterVisible &&
+      !LLW.CONFIG.channelWaterVisible
+    ) {
+      return;
+    }
+
+    const geometry =
+      state.landscape.geometry;
+
+    if (
+      !geometry ||
+      (
+        !geometry.waterBodies.length &&
+        !geometry.channels.length
+      )
+    ) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    // ONE combined path for all standing and moving water. Overlapping
+    // channels, tributaries and ponds are therefore painted once rather than
+    // darkening every time transparent primitives cross.
+    ctx.beginPath();
+    appendAllWaterGeometry(
+      ctx,
+      view
+    );
+
+    // Saturated bank / wet edge under the water body.
+    ctx.fillStyle =
+      "rgba(72, 123, 99, 0.22)";
+
+    ctx.strokeStyle =
+      "rgba(72, 123, 99, 0.28)";
+
+    ctx.lineWidth =
+      Math.max(
+        2,
+        view.tileSize * 0.15
       );
 
-      // Water body. Width grows continuously as throughput converges.
-      drawVariableStroke(
-        ctx,
-        samples,
-        view.tileSize,
+    ctx.fill();
+    ctx.stroke();
+
+    // Rebuild the same path and paint the water exactly once.
+    ctx.beginPath();
+    appendAllWaterGeometry(
+      ctx,
+      view
+    );
+
+    ctx.fillStyle =
+      "rgba(68, 151, 177, 0.78)";
+
+    ctx.fill();
+
+    // Slightly darker single shoreline, still one stroke operation.
+    ctx.strokeStyle =
+      "rgba(49, 122, 142, 0.50)";
+
+    ctx.lineWidth =
+      Math.max(
         1,
-        (strength) =>
-          `rgba(80, 160, 180, ${
-            0.66 +
-            strength *
-            0.17
-          })`
+        view.tileSize * 0.035
       );
 
-      drawChannelHighlights(
-        ctx,
-        samples,
-        view.tileSize
+    ctx.stroke();
+
+    ctx.restore();
+
+    drawWaterHighlights(
+      ctx,
+      view
+    );
+  }
+
+  function drawWaterHighlights(
+    ctx,
+    view
+  ) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    ctx.save();
+
+    ctx.strokeStyle =
+      "rgba(204, 232, 225, 0.34)";
+
+    ctx.lineCap = "round";
+
+    ctx.lineWidth =
+      Math.max(
+        1,
+        view.tileSize * 0.022
       );
+
+    // One or two glints per actual water body, positioned from its vector
+    // bounds rather than one glint per simulation cell.
+    for (
+      const body of
+      geometry.waterBodies
+    ) {
+      const width =
+        body.bounds.maxX -
+        body.bounds.minX;
+
+      const height =
+        body.bounds.maxY -
+        body.bounds.minY;
+
+      const center = {
+        x:
+          (
+            body.bounds.minX +
+            body.bounds.maxX
+          ) *
+          0.5,
+
+        y:
+          (
+            body.bounds.minY +
+            body.bounds.maxY
+          ) *
+          0.5
+      };
+
+      const count =
+        width > 3.2 ||
+        height > 3.2
+          ? 2
+          : 1;
+
+      for (
+        let i = 0;
+        i < count;
+        i++
+      ) {
+        const worldY =
+          center.y +
+          (
+            i -
+            (
+              count - 1
+            ) *
+            0.5
+          ) *
+          0.68;
+
+        const left =
+          worldPointToPixel(
+            {
+              x:
+                center.x -
+                Math.min(
+                  0.58,
+                  width * 0.18
+                ),
+
+              y: worldY
+            },
+            view
+          );
+
+        const right =
+          worldPointToPixel(
+            {
+              x:
+                center.x +
+                Math.min(
+                  0.58,
+                  width * 0.18
+                ),
+
+              y: worldY
+            },
+            view
+          );
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+          left.x,
+          left.y
+        );
+
+        ctx.quadraticCurveTo(
+          (
+            left.x +
+            right.x
+          ) *
+          0.5,
+          left.y -
+            view.tileSize *
+            0.035,
+          right.x,
+          right.y
+        );
+
+        ctx.stroke();
+      }
+    }
+
+    // Sparse creek glints use the already interpolated centerline geometry,
+    // not tiny repeated round-capped segments.
+    for (
+      const channel of
+      geometry.channels
+    ) {
+      const points =
+        channel.centerline;
+
+      if (
+        points.length < 10 ||
+        channel.maxWidth < 0.34
+      ) {
+        continue;
+      }
+
+      for (
+        let i = 5;
+        i < points.length - 2;
+        i += 15
+      ) {
+        const a =
+          worldPointToPixel(
+            points[i],
+            view
+          );
+
+        const b =
+          worldPointToPixel(
+            points[
+              Math.min(
+                points.length - 1,
+                i + 2
+              )
+            ],
+            view
+          );
+
+        ctx.beginPath();
+        ctx.moveTo(
+          a.x,
+          a.y
+        );
+        ctx.lineTo(
+          b.x,
+          b.y
+        );
+        ctx.stroke();
+      }
     }
 
     ctx.restore();
@@ -1493,10 +763,20 @@
 
   LLW.landscapeRenderer = {
     drawTerrain,
-    drawChannels,
-    drawSurfaceWater,
 
-    // Exposed for development inspection only; simulation never depends on it.
-    buildChannelTraces
+    // render.js still calls channels then surface water. The combined water
+    // body must only paint once, so channels owns the unified draw and the
+    // surface-water call is intentionally a no-op compatibility seam.
+    drawChannels(
+      ctx,
+      view
+    ) {
+      drawWater(
+        ctx,
+        view
+      );
+    },
+
+    drawSurfaceWater() {}
   };
 })();
