@@ -307,6 +307,60 @@
     );
   }
 
+  function drawAttachedProjectedShadow(
+    sun,
+    baseX,
+    baseY,
+    radiusX,
+    radiusY,
+    baseDistance,
+    alphaScale = 1,
+    rotation = sun.angle,
+    stretch = 1,
+    connectorWidth = Math.max(radiusY * 2.1, radiusX * 0.55),
+    connectorAlphaScale = 0.78,
+    connectorStartBias = 0.14
+  ) {
+    if (!sun.visible) {
+      return;
+    }
+
+    const shift =
+      baseDistance * sun.lengthFactor;
+
+    const shadowX =
+      baseX + sun.shadowX * shift;
+
+    const shadowY =
+      baseY + sun.shadowY * shift;
+
+    const rx =
+      radiusX *
+      (1.04 + sun.lengthFactor * 0.18 * stretch);
+
+    const ry =
+      radiusY *
+      (1.03 + sun.lengthFactor * 0.10 * stretch);
+
+    drawShadowConnector(
+      baseX + sun.shadowX * (shift * connectorStartBias),
+      baseY + sun.shadowY * (shift * connectorStartBias),
+      baseX + sun.shadowX * (shift * 0.74),
+      baseY + sun.shadowY * (shift * 0.74),
+      connectorWidth,
+      sun.castAlpha * alphaScale * connectorAlphaScale
+    );
+
+    drawSoftShadowEllipse(
+      shadowX,
+      shadowY,
+      rx,
+      ry,
+      rotation,
+      sun.castAlpha * alphaScale
+    );
+  }
+
   function drawTreePapercraftShadow(
     tree,
     sun,
@@ -3086,16 +3140,19 @@
         tileSize * 0.11 * scale
       );
 
-      drawProjectedShadowBlob(
+      drawAttachedProjectedShadow(
         sun,
         centerX,
-        centerY - tileSize * 0.10,
-        tileSize * 0.26 * scale,
-        tileSize * 0.10 * scale,
-        tileSize * 0.22,
+        centerY,
+        tileSize * 0.22 * scale,
+        tileSize * 0.09 * scale,
+        tileSize * 0.16,
         0.42,
-        sun.angle * 0.28,
-        0.85
+        sun.angle * 0.26,
+        0.82,
+        tileSize * 0.11 * scale,
+        0.82,
+        0.06
       );
     }
 
@@ -3164,17 +3221,6 @@
         0.17
       );
 
-      drawProjectedShadowBlob(
-        sun,
-        centerX,
-        centerY - tileSize * 0.08,
-        tileSize * 0.33 * lengthScale,
-        tileSize * 0.075 * thicknessScale,
-        tileSize * 0.21,
-        0.56,
-        (log.rotation || 0) * 0.78 + sun.angle * 0.18,
-        0.95
-      );
     }
 
     for (const patch of state.bramblePatches || []) {
@@ -3182,16 +3228,19 @@
         const p = gridToPixel(tile.x, tile.y, tileSize, offsetX, offsetY);
         const centerX = p.x + tileSize * 0.5;
         const centerY = p.y + tileSize * 0.78;
-        drawProjectedShadowBlob(
+        drawAttachedProjectedShadow(
           sun,
           centerX,
-          centerY - tileSize * 0.05,
-          tileSize * 0.20,
-          tileSize * 0.06,
-          tileSize * 0.10,
+          centerY,
+          tileSize * 0.17,
+          tileSize * 0.055,
+          tileSize * 0.08,
           0.36,
-          sun.angle * 0.24,
-          0.60
+          sun.angle * 0.22,
+          0.54,
+          tileSize * 0.075,
+          0.88,
+          0.02
         );
       }
     }
@@ -3211,17 +3260,6 @@
           tileSize * 0.085,
           angle,
           0.16
-        );
-        drawProjectedShadowBlob(
-          sun,
-          (a.x + b.x) / 2,
-          (a.y + b.y) / 2,
-          length * 0.43,
-          tileSize * 0.060,
-          tileSize * 0.13,
-          0.32,
-          angle * 0.82 + sun.angle * 0.12,
-          0.95
         );
         continue;
       }
@@ -4789,6 +4827,82 @@
     }
   }
 
+  function drawCloudShadowField(
+    width,
+    height,
+    tileSize,
+    offsetX,
+    offsetY,
+    now
+  ) {
+    const sun = LLW.time.getSunState();
+
+    if (sun.isNight) {
+      return;
+    }
+
+    const lighting = LLW.time.getLighting();
+    const worldWidth = LLW.CONFIG.worldCols;
+    const worldHeight = LLW.CONFIG.worldRows;
+    const driftTime = now * 0.000012;
+    const phaseFactor =
+      lighting.phase === "day"
+        ? 1
+        : lighting.phase === "sunrise" || lighting.phase === "sunset"
+          ? 0.78
+          : 0.58;
+    const baseAlpha =
+      (0.040 + sun.altitude * 0.022) * phaseFactor;
+
+    if (baseAlpha <= 0.003) {
+      return;
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.clip();
+
+    for (let i = 0; i < 4; i++) {
+      const seedA = 6401 + i * 19;
+      const seedB = 6473 + i * 23;
+      const bandY = 0.16 + i * 0.20 + (hash01(seedA, seedB, 1) - 0.5) * 0.05;
+      const driftX = (((driftTime * (0.55 + i * 0.14)) + hash01(seedA, seedB, 2) * 1.7) % (worldWidth + 10)) - 5;
+      const wobbleY = Math.sin(driftTime * (0.8 + i * 0.18) + hash01(seedB, seedA, 3) * Math.PI * 2) * 0.75;
+      const baseWorldX = driftX;
+      const baseWorldY = worldHeight * bandY + wobbleY;
+      const screen = worldPointToScreen(baseWorldX, baseWorldY, tileSize, offsetX, offsetY);
+      const majorRadiusX = tileSize * (1.8 + hash01(seedA, seedB, 4) * 1.2);
+      const majorRadiusY = tileSize * (0.70 + hash01(seedB, seedA, 5) * 0.46);
+      const rotation = -0.12 + hash01(seedA, seedB, 6) * 0.24;
+
+      drawSoftShadowEllipse(
+        screen.x,
+        screen.y,
+        majorRadiusX,
+        majorRadiusY,
+        rotation,
+        baseAlpha * (0.95 + i * 0.04)
+      );
+
+      for (let j = 0; j < 2; j++) {
+        const lobeOffsetX = tileSize * (0.95 + j * 0.95);
+        const lobeOffsetY = tileSize * (j === 0 ? -0.22 : 0.18);
+        const sign = j === 0 ? -1 : 1;
+        drawSoftShadowEllipse(
+          screen.x + sign * lobeOffsetX,
+          screen.y + lobeOffsetY,
+          majorRadiusX * (0.56 - j * 0.05),
+          majorRadiusY * (0.82 - j * 0.10),
+          rotation + sign * 0.10,
+          baseAlpha * 0.72
+        );
+      }
+    }
+
+    ctx.restore();
+  }
+
   function drawDayNightOverlay(
     width,
     height,
@@ -5027,6 +5141,15 @@
       tileSize,
       offsetX,
       offsetY
+    );
+
+    drawCloudShadowField(
+      width,
+      height,
+      tileSize,
+      offsetX,
+      offsetY,
+      now
     );
 
     drawDayNightOverlay(

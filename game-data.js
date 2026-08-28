@@ -190,7 +190,7 @@
     pocketCount: 4,
 
     // Prototype clock: 10 turns = 1 hour, 240 turns = one full day cycle.
-    turnsPerHour: 10,
+    turnsPerHour: 20,
     hoursPerDay: 24,
     startHour: 8,
 
