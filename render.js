@@ -128,8 +128,14 @@
     rotation = 0,
     alpha = 0.18
   ) {
+    const sun = LLW.time.getSunState();
+    const scaledAlpha =
+      alpha *
+      (sun.contactAlpha / 0.18);
+
     ctx.save();
-    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+    ctx.fillStyle =
+      `rgba(0, 0, 0, ${scaledAlpha})`;
     ctx.beginPath();
     ctx.ellipse(
       centerX,
@@ -150,8 +156,9 @@
     width,
     height
   ) {
+    const sun = LLW.time.getSunState();
     ctx.save();
-    ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+    ctx.fillStyle = `rgba(0, 0, 0, ${sun.contactAlpha.toFixed(3)})`;
     ctx.beginPath();
     ctx.ellipse(
       centerX,
@@ -164,6 +171,260 @@
     );
     ctx.fill();
     ctx.restore();
+  }
+
+  function shadowTint(alpha) {
+    return `rgba(68, 80, 88, ${Math.max(0, alpha)})`;
+  }
+
+  function drawSoftShadowEllipse(
+    centerX,
+    centerY,
+    radiusX,
+    radiusY,
+    rotation = 0,
+    alpha = 0.12
+  ) {
+    if (
+      alpha <= 0 ||
+      radiusX <= 0 ||
+      radiusY <= 0
+    ) {
+      return;
+    }
+
+    ctx.save();
+
+    const layers = [
+      {
+        scaleX: 1.72,
+        scaleY: 1.92,
+        alpha: alpha * 0.18
+      },
+      {
+        scaleX: 1.34,
+        scaleY: 1.46,
+        alpha: alpha * 0.36
+      },
+      {
+        scaleX: 1,
+        scaleY: 1,
+        alpha
+      }
+    ];
+
+    for (const layer of layers) {
+      ctx.fillStyle = shadowTint(layer.alpha);
+      ctx.beginPath();
+      ctx.ellipse(
+        centerX,
+        centerY,
+        radiusX * layer.scaleX,
+        radiusY * layer.scaleY,
+        rotation,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawProjectedShadowBlob(
+    sun,
+    centerX,
+    centerY,
+    radiusX,
+    radiusY,
+    baseDistance,
+    alphaScale = 1,
+    rotation = sun.angle,
+    stretch = 1
+  ) {
+    if (!sun.visible) {
+      return;
+    }
+
+    const shift =
+      baseDistance * sun.lengthFactor;
+
+    const shadowX =
+      centerX + sun.shadowX * shift;
+
+    const shadowY =
+      centerY + sun.shadowY * shift;
+
+    const rx =
+      radiusX *
+      (1.04 + sun.lengthFactor * 0.18 * stretch);
+
+    const ry =
+      radiusY *
+      (1.03 + sun.lengthFactor * 0.10 * stretch);
+
+    drawSoftShadowEllipse(
+      shadowX,
+      shadowY,
+      rx,
+      ry,
+      rotation,
+      sun.castAlpha * alphaScale
+    );
+  }
+
+  function pointShadowInfluence(
+    pointX,
+    pointY,
+    centerX,
+    centerY,
+    radiusX,
+    radiusY,
+    rotation = 0
+  ) {
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const dx = pointX - centerX;
+    const dy = pointY - centerY;
+    const localX = dx * cos + dy * sin;
+    const localY = -dx * sin + dy * cos;
+
+    const distance = Math.sqrt(
+      localX * localX /
+        Math.max(0.001, radiusX * radiusX) +
+      localY * localY /
+        Math.max(0.001, radiusY * radiusY)
+    );
+
+    if (distance >= 1) {
+      return 0;
+    }
+
+    const fade = 1 - distance;
+    return fade * fade;
+  }
+
+  function sampleProjectedShadeAt(
+    pointX,
+    pointY,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const sun = LLW.time.getSunState();
+
+    if (!sun.visible) {
+      return 0;
+    }
+
+    let shade = 0;
+
+    for (const tree of state.trees || []) {
+      const p = gridToPixel(
+        tree.x,
+        tree.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+      const scale = tree.scale || 1;
+      const centerX =
+        p.x +
+        tileSize *
+        (0.5 + (tree.offsetX || 0) + (tree.crownOffsetX || 0));
+      const centerY =
+        p.y +
+        tileSize *
+        (0.55 + (tree.offsetY || 0) + (tree.crownOffsetY || 0) * 0.4);
+      const spread = tileSize * 0.26 * scale;
+      const distance =
+        tileSize *
+        (0.30 + scale * 0.18) *
+        sun.lengthFactor;
+
+      shade = Math.max(
+        shade,
+        pointShadowInfluence(
+          pointX,
+          pointY,
+          centerX + sun.shadowX * distance,
+          centerY + sun.shadowY * distance,
+          spread * 1.75,
+          spread * 0.98,
+          sun.angle * 0.4
+        ) * 0.95
+      );
+    }
+
+    for (const bush of state.bushes || []) {
+      const p = gridToPixel(
+        bush.x,
+        bush.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+      const scale = bush.scale || 1;
+      const centerX =
+        p.x +
+        tileSize * (0.5 + (bush.offsetX || 0));
+      const centerY =
+        p.y +
+        tileSize *
+        (0.68 + (bush.offsetY || 0) * 0.4);
+      const distance =
+        tileSize * 0.22 * sun.lengthFactor;
+      shade = Math.max(
+        shade,
+        pointShadowInfluence(
+          pointX,
+          pointY,
+          centerX + sun.shadowX * distance,
+          centerY + sun.shadowY * distance,
+          tileSize * 0.29 * scale,
+          tileSize * 0.14 * scale,
+          sun.angle * 0.25
+        ) * 0.7
+      );
+    }
+
+    for (const boulder of state.boulders || []) {
+      const p = gridToPixel(
+        boulder.x,
+        boulder.y,
+        tileSize,
+        offsetX,
+        offsetY
+      );
+      const scale = boulder.scale || 1;
+      const centerX =
+        p.x +
+        tileSize * (0.5 + (boulder.offsetX || 0));
+      const centerY =
+        p.y +
+        tileSize *
+        (0.72 + (boulder.offsetY || 0));
+      const distance =
+        tileSize * 0.18 * sun.lengthFactor;
+      shade = Math.max(
+        shade,
+        pointShadowInfluence(
+          pointX,
+          pointY,
+          centerX + sun.shadowX * distance,
+          centerY + sun.shadowY * distance,
+          tileSize * 0.28 * scale,
+          tileSize * 0.12 * scale,
+          sun.angle * 0.28
+        ) * 0.52
+      );
+    }
+
+    return clampValue(
+      shade * sun.receiveAlpha,
+      0,
+      0.55
+    );
   }
 
   function roundedCapsule(
@@ -2322,6 +2583,14 @@
     const dryGround =
       groundCell?.dryGroundAmount || 0;
 
+    const projectedShade = sampleProjectedShadeAt(
+      centerX,
+      centerY - tileSize * 0.10,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.scale(patch.scale || 1, patch.scale || 1);
@@ -2352,11 +2621,14 @@
         hash01(seed, i, 35) * 10
       );
       const saturation = Math.round(
-        30 - dryGround * 6
+        30 - dryGround * 6 - projectedShade * 8
+      );
+      const shadedLight = Math.round(
+        light - projectedShade * 18
       );
 
       ctx.fillStyle =
-        `hsla(${hue}, ${saturation}%, ${light}%, 0.72)`;
+        `hsla(${hue}, ${saturation}%, ${shadedLight}%, 0.72)`;
 
       // Thick, blunt little blades: flat at the soil and rounded at the tip.
       // The overlap makes the patch read as one bubbly tuft instead of a row
@@ -2635,74 +2907,244 @@
     offsetX,
     offsetY
   ) {
+    const sun = LLW.time.getSunState();
+
     for (const tree of state.trees || []) {
       const p = gridToPixel(tree.x, tree.y, tileSize, offsetX, offsetY);
       const scale = tree.scale || 1;
+      const trunkX = p.x + tileSize * (0.5 + (tree.offsetX || 0));
+      const trunkY = p.y + tileSize * (0.89 + (tree.offsetY || 0));
       drawShadow(
-        p.x + tileSize * (0.5 + (tree.offsetX || 0)),
-        p.y + tileSize * (0.89 + (tree.offsetY || 0)),
+        trunkX,
+        trunkY,
         tileSize * 0.46 * scale,
         tileSize * 0.16 * scale
+      );
+
+      const crownX =
+        p.x +
+        tileSize *
+        (0.5 + (tree.offsetX || 0) + (tree.crownOffsetX || 0));
+      const crownY =
+        p.y +
+        tileSize *
+        (0.56 + (tree.offsetY || 0) + (tree.crownOffsetY || 0) * 0.45);
+      const crownSpread = tileSize * 0.26 * scale;
+      const crownDistance = tileSize * (0.28 + scale * 0.18);
+
+      drawProjectedShadowBlob(
+        sun,
+        crownX,
+        crownY,
+        crownSpread * 1.15,
+        crownSpread * 0.72,
+        crownDistance,
+        0.95,
+        sun.angle * 0.36,
+        1.25
+      );
+      drawProjectedShadowBlob(
+        sun,
+        crownX - tileSize * 0.16 * scale,
+        crownY + tileSize * 0.02 * scale,
+        crownSpread * 0.82,
+        crownSpread * 0.56,
+        crownDistance * 1.04,
+        0.72,
+        sun.angle * 0.32,
+        1.05
+      );
+      drawProjectedShadowBlob(
+        sun,
+        crownX + tileSize * 0.17 * scale,
+        crownY + tileSize * 0.03 * scale,
+        crownSpread * 0.78,
+        crownSpread * 0.54,
+        crownDistance * 0.96,
+        0.68,
+        sun.angle * 0.32,
+        1.00
       );
     }
 
     for (const bush of state.bushes || []) {
       const p = gridToPixel(bush.x, bush.y, tileSize, offsetX, offsetY);
+      const centerX = p.x + tileSize * (0.5 + (bush.offsetX || 0));
+      const centerY = p.y + tileSize * (0.84 + (bush.offsetY || 0) * 0.42);
+      const scale = bush.scale || 1;
+
       drawShadow(
-        p.x + tileSize * (0.5 + (bush.offsetX || 0)),
-        p.y + tileSize * (0.84 + (bush.offsetY || 0) * 0.42),
-        tileSize * 0.30 * (bush.scale || 1),
-        tileSize * 0.11 * (bush.scale || 1)
+        centerX,
+        centerY,
+        tileSize * 0.30 * scale,
+        tileSize * 0.11 * scale
+      );
+
+      drawProjectedShadowBlob(
+        sun,
+        centerX,
+        centerY - tileSize * 0.10,
+        tileSize * 0.26 * scale,
+        tileSize * 0.10 * scale,
+        tileSize * 0.16,
+        0.54,
+        sun.angle * 0.28,
+        0.85
       );
     }
 
     for (const stump of state.stumps || []) {
       const p = gridToPixel(stump.x, stump.y, tileSize, offsetX, offsetY);
+      const centerX = p.x + tileSize * (0.5 + (stump.offsetX || 0));
+      const centerY = p.y + tileSize * (0.85 + (stump.offsetY || 0));
+      const scale = stump.scale || 1;
       drawShadow(
-        p.x + tileSize * (0.5 + (stump.offsetX || 0)),
-        p.y + tileSize * (0.85 + (stump.offsetY || 0)),
-        tileSize * 0.23 * (stump.scale || 1),
-        tileSize * 0.085 * (stump.scale || 1)
+        centerX,
+        centerY,
+        tileSize * 0.23 * scale,
+        tileSize * 0.085 * scale
+      );
+
+      drawProjectedShadowBlob(
+        sun,
+        centerX,
+        centerY - tileSize * 0.10,
+        tileSize * 0.18 * scale,
+        tileSize * 0.07 * scale,
+        tileSize * 0.11,
+        0.36,
+        sun.angle * 0.18,
+        0.66
       );
     }
 
     for (const boulder of state.boulders || []) {
       const p = gridToPixel(boulder.x, boulder.y, tileSize, offsetX, offsetY);
+      const centerX = p.x + tileSize * (0.5 + (boulder.offsetX || 0));
+      const centerY = p.y + tileSize * (0.85 + (boulder.offsetY || 0));
+      const scale = boulder.scale || 1;
       drawShadow(
-        p.x + tileSize * (0.5 + (boulder.offsetX || 0)),
-        p.y + tileSize * (0.85 + (boulder.offsetY || 0)),
-        tileSize * 0.34 * (boulder.scale || 1),
-        tileSize * 0.12 * (boulder.scale || 1)
+        centerX,
+        centerY,
+        tileSize * 0.34 * scale,
+        tileSize * 0.12 * scale
+      );
+
+      drawProjectedShadowBlob(
+        sun,
+        centerX,
+        centerY - tileSize * 0.15,
+        tileSize * 0.26 * scale,
+        tileSize * 0.095 * scale,
+        tileSize * 0.15,
+        0.44,
+        sun.angle * 0.24,
+        0.80
       );
     }
 
     for (const log of state.fallenLogs || []) {
       const p = gridToPixel(log.x, log.y, tileSize, offsetX, offsetY);
+      const centerX = p.x + tileSize * (0.5 + (log.offsetX || 0));
+      const centerY = p.y + tileSize * (0.84 + (log.offsetY || 0));
+      const lengthScale = log.lengthScale || 1;
+      const thicknessScale = log.thicknessScale || 1;
       drawRotatedShadow(
-        p.x + tileSize * (0.5 + (log.offsetX || 0)),
-        p.y + tileSize * (0.84 + (log.offsetY || 0)),
-        tileSize * 0.36 * (log.lengthScale || 1),
-        tileSize * 0.095 * (log.thicknessScale || 1),
+        centerX,
+        centerY,
+        tileSize * 0.36 * lengthScale,
+        tileSize * 0.095 * thicknessScale,
         log.rotation || 0,
         0.17
       );
+
+      drawProjectedShadowBlob(
+        sun,
+        centerX,
+        centerY - tileSize * 0.08,
+        tileSize * 0.33 * lengthScale,
+        tileSize * 0.075 * thicknessScale,
+        tileSize * 0.13,
+        0.40,
+        (log.rotation || 0) * 0.78 + sun.angle * 0.18,
+        0.95
+      );
+    }
+
+    for (const patch of state.bramblePatches || []) {
+      for (const tile of patch.tiles || []) {
+        const p = gridToPixel(tile.x, tile.y, tileSize, offsetX, offsetY);
+        const centerX = p.x + tileSize * 0.5;
+        const centerY = p.y + tileSize * 0.78;
+        drawProjectedShadowBlob(
+          sun,
+          centerX,
+          centerY - tileSize * 0.05,
+          tileSize * 0.20,
+          tileSize * 0.06,
+          tileSize * 0.06,
+          0.24,
+          sun.angle * 0.24,
+          0.60
+        );
+      }
     }
 
     for (const crossing of state.landscape.crossings || []) {
-      if (crossing.kind !== "log_bridge") {
-        continue;
-      }
       const path = LLW.crossings.crossingPath(crossing);
       const a = worldPointToScreen(path[0].x, path[0].y, tileSize, offsetX, offsetY);
       const b = worldPointToScreen(path[path.length - 1].x, path[path.length - 1].y, tileSize, offsetX, offsetY);
-      drawRotatedShadow(
-        (a.x + b.x) / 2,
-        (a.y + b.y) / 2 + tileSize * 0.055,
-        Math.hypot(b.x - a.x, b.y - a.y) * 0.47,
-        tileSize * 0.085,
-        Math.atan2(b.y - a.y, b.x - a.x),
-        0.16
-      );
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+
+      if (crossing.kind === "log_bridge") {
+        drawRotatedShadow(
+          (a.x + b.x) / 2,
+          (a.y + b.y) / 2 + tileSize * 0.055,
+          length * 0.47,
+          tileSize * 0.085,
+          angle,
+          0.16
+        );
+        drawProjectedShadowBlob(
+          sun,
+          (a.x + b.x) / 2,
+          (a.y + b.y) / 2,
+          length * 0.43,
+          tileSize * 0.060,
+          tileSize * 0.13,
+          0.32,
+          angle * 0.82 + sun.angle * 0.12,
+          0.95
+        );
+        continue;
+      }
+
+      const count = crossing.stoneCount || 3;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const perpX = -dy / Math.max(0.001, length);
+      const perpY = dx / Math.max(0.001, length);
+
+      for (let i = 1; i <= count; i++) {
+        const t = i / (count + 1);
+        const jitter =
+          (hash01(i, crossing.variation || 0, 921) - 0.5) *
+          tileSize * 0.07;
+        const x = a.x + dx * t + perpX * jitter;
+        const y = a.y + dy * t + perpY * jitter;
+        drawProjectedShadowBlob(
+          sun,
+          x,
+          y,
+          tileSize * 0.11,
+          tileSize * 0.045,
+          tileSize * 0.05,
+          0.18,
+          angle * 0.30 + sun.angle * 0.22,
+          0.55
+        );
+      }
     }
 
     const itemGroups = new Map();
@@ -3597,6 +4039,14 @@
     const bodyY =
       p.y + bounce + mudSink;
 
+    const projectedShade = sampleProjectedShadeAt(
+      centerX,
+      groundY - tileSize * 0.18,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
     ctx.save();
 
     if (
@@ -3745,6 +4195,48 @@
       tileSize,
       performance.now()
     );
+
+    if (projectedShade > 0.02) {
+      ctx.fillStyle = shadowTint(projectedShade * 0.72);
+      roundedCapsule(
+        centerX - tileSize * 0.17,
+        bodyY + tileSize * 0.31,
+        tileSize * 0.34,
+        tileSize * 0.31,
+        tileSize * 0.12
+      );
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(
+        centerX - tileSize * 0.17,
+        bodyY + tileSize * 0.50
+      );
+      ctx.lineTo(
+        centerX - tileSize * 0.24,
+        bodyY + tileSize * 0.72
+      );
+      ctx.lineTo(
+        centerX + tileSize * 0.24,
+        bodyY + tileSize * 0.72
+      );
+      ctx.lineTo(
+        centerX + tileSize * 0.17,
+        bodyY + tileSize * 0.50
+      );
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(
+        centerX,
+        bodyY + tileSize * 0.22,
+        tileSize * 0.175,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
 
     ctx.restore();
   }
@@ -4369,13 +4861,6 @@
       offsetY
     );
 
-    drawMajorShadows(
-      now,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-
     drawCrossings(
       tileSize,
       offsetX,
@@ -4410,6 +4895,13 @@
     );
 
     drawWorldItems(
+      now,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawMajorShadows(
       now,
       tileSize,
       offsetX,

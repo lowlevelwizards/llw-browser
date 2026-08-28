@@ -4,6 +4,17 @@
 
   const newDayListeners = [];
 
+  function clamp(
+    value,
+    min = 0,
+    max = 1
+  ) {
+    return Math.max(
+      min,
+      Math.min(max, value)
+    );
+  }
+
   function turnsPerDay() {
     return LLW.CONFIG.turnsPerHour * LLW.CONFIG.hoursPerDay;
   }
@@ -136,6 +147,85 @@
         phase: "night",
         alpha: 0.38,
         color: "29, 42, 76"
+      };
+    },
+
+    getSunState(turn = state.game.turn) {
+      const { hourFloat } = this.getClock(turn);
+
+      const sunrise = 5.25;
+      const sunset = 19.75;
+      const daylightSpan = sunset - sunrise;
+      const daylightT = clamp(
+        (hourFloat - sunrise) /
+        Math.max(0.001, daylightSpan)
+      );
+
+      const altitude =
+        Math.sin(
+          daylightT * Math.PI
+        );
+
+      const visible = altitude > 0.001;
+
+      const rawShadowX =
+        -Math.cos(
+          daylightT * Math.PI
+        );
+
+      const rawShadowY =
+        0.22 +
+        (1 - altitude) * 0.30;
+
+      const magnitude = Math.max(
+        0.001,
+        Math.hypot(
+          rawShadowX,
+          rawShadowY
+        )
+      );
+
+      const shadowX =
+        rawShadowX / magnitude;
+      const shadowY =
+        rawShadowY / magnitude;
+
+      const horizonWeight = clamp(
+        (altitude + 0.12) / 1.12
+      );
+
+      const castAlpha =
+        visible
+          ? (
+              0.08 +
+              (1 - altitude) * 0.14
+            ) * horizonWeight
+          : 0;
+
+      const contactAlpha =
+        0.12 +
+        (1 - altitude) * 0.06;
+
+      const receiveAlpha =
+        visible
+          ? 0.16 +
+            (1 - altitude) * 0.24
+          : 0;
+
+      return {
+        visible,
+        hourFloat,
+        daylightT,
+        altitude,
+        shadowX,
+        shadowY,
+        angle: Math.atan2(shadowY, shadowX),
+        lengthFactor:
+          0.18 +
+          (1 - altitude) * 1.55,
+        castAlpha,
+        contactAlpha,
+        receiveAlpha
       };
     }
   };
