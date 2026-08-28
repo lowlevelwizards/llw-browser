@@ -151,14 +151,18 @@
       return false;
     }
 
-    const blockingFeature =
-      LLW.terrain.getBlockingFeatureAt(
+    const traversal =
+      LLW.traversal.evaluateMove(
+        player.x,
+        player.y,
         nextX,
         nextY
       );
 
-    if (blockingFeature) {
-      LLW.notify(blockingFeature.message);
+    if (!traversal.allowed) {
+      if (traversal.message) {
+        LLW.notify(traversal.message);
+      }
       return false;
     }
 
@@ -219,6 +223,14 @@
     player.targetY = nextY;
     player.moving = true;
     player.moveStartedAt = startedAt;
+    player.moveDuration =
+      traversal.duration ||
+      LLW.CONFIG.normalMoveDuration;
+    player.moveTurnCost =
+      traversal.turnCost ||
+      LLW.CONFIG.normalMoveTurns;
+    player.traversalMode =
+      traversal.mode || "normal";
 
     return true;
   };
@@ -236,6 +248,37 @@
     LLW.heldMovement.key = key;
 
     LLW.requestMove(dx, dy);
+  };
+
+  LLW.updateHeldMovementDirection = function (
+    dx,
+    dy,
+    source
+  ) {
+    const held = LLW.heldMovement;
+
+    if (
+      !held.active ||
+      held.source !== source
+    ) {
+      return false;
+    }
+
+    if (
+      held.dx === dx &&
+      held.dy === dy
+    ) {
+      return false;
+    }
+
+    held.dx = dx;
+    held.dy = dy;
+
+    if (!state.player.moving) {
+      LLW.requestMove(dx, dy);
+    }
+
+    return true;
   };
 
   LLW.stopHeldMovement = function (
@@ -295,11 +338,37 @@
       player.renderY = player.y;
       player.moving = false;
 
-      const turnResult = LLW.advanceTurn(1);
+      const moveTurnCost =
+        player.moveTurnCost ||
+        LLW.CONFIG.normalMoveTurns;
+
+      const turnResult =
+        LLW.advanceTurn(
+          moveTurnCost
+        );
+
+      const mudHere =
+        LLW.traversal.getMudModifier(
+          player.x,
+          player.y
+        );
+
+      if (
+        mudHere >=
+        LLW.CONFIG.mudMovementThreshold
+      ) {
+        player.mudExposure =
+          Math.min(
+            12,
+            (player.mudExposure || 0) + 1
+          );
+      }
 
       if (turnResult.fireWentOut) {
         LLW.notify("The fire burns out.");
       }
+
+      player.moveTurnCost = 1;
 
       if (LLW.heldMovement.active) {
         LLW.requestMove(

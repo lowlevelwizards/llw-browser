@@ -35,9 +35,20 @@
     visibleChannelMinStrength: 0.18,
     visibleChannelMinBranchEdges: 2,
     visibleChannelStrongStubStrength: 0.42,
-    visibleChannelWaterStubStrength: 0.28,
+    visibleChannelWaterStubStrength: 0.34,
+    visibleChannelSeepStrength: 0.38,
+    visibleChannelDitchStrength: 0.50,
     visibleWaterMinCells: 2,
     visibleWaterDeepSingleCell: 0.055,
+
+    // Soft wet terrain. Mud is friction, not damage: it spends time rather
+    // than Vitality, and gives weak/seasonal drainage somewhere truthful to
+    // visually resolve into.
+    mudMinPotential: 0.08,
+    mudMovementThreshold: 0.35,
+    mudPatchMinCells: 2,
+    mudPatchMaxCells: 9,
+    mudEndpointBoostRadius: 2.15,
 
     // Static prototype runoff. This is a relative volume per landscape cell,
     // not literal rainfall yet.
@@ -66,7 +77,18 @@
     treeFallbackMinSuitability: 0.18,
 
     // Established trees alter the cells around them.
-    treeCanopyRadius: 2.35,
+    treeCanopyRadius: 2.55,
+
+    // Traversal is footprint-aware. The player normally wants generous
+    // clearance, but can squeeze through a narrow truthful gap at a turn cost.
+    playerNormalRadius: 0.19,
+    playerSqueezeRadius: 0.105,
+    normalMoveTurns: 1,
+    slowMoveTurns: 2,
+    squeezeMoveTurns: 2,
+    normalMoveDuration: 190,
+    slowMoveDuration: 285,
+    squeezeMoveDuration: 245,
 
     // More trunks must not mean a carpet of free fuel, but woodland now
     // wants a little more obvious fallen wood on the floor.
@@ -234,6 +256,14 @@
         targetCount: 0,
         actualCount: 0
       },
+      mudStats: {
+        min: 0,
+        mean: 0,
+        max: 0,
+        muddyCells: 0
+      },
+      mudPatches: [],
+      waterTerminals: [],
       geometry: {
         seed: null,
         waterBodies: [],
@@ -261,7 +291,10 @@
       targetY: 16,
       moving: false,
       moveStartedAt: 0,
-      moveDuration: 190
+      moveDuration: 190,
+      moveTurnCost: 1,
+      traversalMode: "normal",
+      mudExposure: 0
     },
 
     firepit: {
@@ -465,20 +498,20 @@
       offsetY:
         (generationRandom() - 0.5) * 0.06,
       scale:
-        0.90 +
-        generationRandom() * 0.24,
+        0.98 +
+        generationRandom() * 0.28,
       trunkHeight:
-        0.90 +
-        generationRandom() * 0.26,
+        1.04 +
+        generationRandom() * 0.28,
       trunkWidth:
-        0.88 +
-        generationRandom() * 0.18,
+        0.94 +
+        generationRandom() * 0.20,
       crownScaleX:
-        0.88 +
-        generationRandom() * 0.24,
+        0.98 +
+        generationRandom() * 0.30,
       crownScaleY:
-        0.90 +
-        generationRandom() * 0.24,
+        1.04 +
+        generationRandom() * 0.30,
       crownOffsetX:
         (generationRandom() - 0.5) * 0.16,
       crownOffsetY:
@@ -625,8 +658,8 @@
       offsetY:
         (generationRandom() - 0.5) * 0.06,
       lengthScale:
-        0.98 +
-        generationRandom() * 0.86,
+        1.16 +
+        generationRandom() * 0.98,
       thicknessScale:
         0.88 +
         generationRandom() * 0.30,
@@ -668,8 +701,8 @@
       offsetY:
         (generationRandom() - 0.5) * 0.06,
       scale:
-        1.10 +
-        generationRandom() * 0.48,
+        1.02 +
+        generationRandom() * 0.42,
       widthScale:
         0.96 +
         generationRandom() * 0.30,
@@ -1154,6 +1187,12 @@
     // truth of a cell center.
     LLW.ecology.deriveWaterPlacementFields();
 
+    // Water now resolves into more than blue geometry: weak termini can become
+    // muddy seep/ditch ground and wet margins can become soft traversal terrain.
+    LLW.ecology.deriveMudFields(
+      resolvedSeed
+    );
+
     // Existing initial props also become repeatable for the same world,
     // without yet making their placement depend on elevation.
     generationRandom =
@@ -1196,6 +1235,9 @@
     player.targetX = player.x;
     player.targetY = player.y;
     player.moving = false;
+    player.moveTurnCost = 1;
+    player.traversalMode = "normal";
+    player.mudExposure = 0;
 
     LLW.state.firepit.sticks = 0;
     LLW.state.firepit.isLit = false;

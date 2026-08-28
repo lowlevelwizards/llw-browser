@@ -15,6 +15,11 @@
     return a + (b - a) * t;
   }
 
+  function smoothstep01(value) {
+    const t = clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
   function hash01(
     x,
     y,
@@ -1748,6 +1753,43 @@
       lastEntry.edge.displayStrength
     );
 
+    const startCellIndex =
+      first.edge.fromIndex;
+
+    const startCell =
+      cells[startCellIndex];
+
+    const endCell =
+      cells[endNodeIndex];
+
+    const startDangling =
+      (
+        (graph.incoming.get(startCellIndex) || []).length === 0
+      ) &&
+      !touchesVisibleWetCell(
+        startCellIndex,
+        cells,
+        visibleWetCellIndexes
+      ) &&
+      !isWorldEdgeCell(startCell) &&
+      strengths[0] <
+        LLW.CONFIG.visibleChannelDitchStrength;
+
+    const endDangling =
+      (
+        (graph.outgoing.get(endNodeIndex) || []).length === 0
+      ) &&
+      !touchesVisibleWetCell(
+        endNodeIndex,
+        cells,
+        visibleWetCellIndexes
+      ) &&
+      !isWorldEdgeCell(endCell) &&
+      strengths[
+        strengths.length - 1
+      ] <
+        LLW.CONFIG.visibleChannelDitchStrength;
+
     const samples = [];
 
     for (
@@ -1856,6 +1898,49 @@
               strength *
               0.22
             );
+        }
+
+        // Weak landlocked termini visually taper into the damp/muddy ground
+        // instead of ending as a blunt sad blue pipe. Strong streams, map-edge
+        // continuations and true pond mouths keep their full width.
+        const progress =
+          (
+            segment + t
+          ) /
+          Math.max(
+            1,
+            nodes.length - 1
+          );
+
+        if (
+          startDangling &&
+          progress < 0.30
+        ) {
+          const taper =
+            smoothstep01(
+              progress / 0.30
+            );
+
+          width *=
+            0.18 +
+            taper * 0.82;
+        }
+
+        if (
+          endDangling &&
+          progress > 0.70
+        ) {
+          const taper =
+            smoothstep01(
+              (
+                1 - progress
+              ) /
+              0.30
+            );
+
+          width *=
+            0.18 +
+            taper * 0.82;
         }
 
         samples.push({

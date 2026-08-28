@@ -1216,12 +1216,21 @@
           wiggle.scale
       );
 
+      const bushCell =
+        LLW.pcg.getCell(
+          bush.x,
+          bush.y
+        );
+
+      const bushShade =
+        bushCell?.shade || 0;
+
       ctx.fillStyle = foliageColor(
-        112,
+        108 + bushShade * 15,
         bush.colorShift || 0,
-        bush.lightShift || 0,
-        34,
-        47
+        (bush.lightShift || 0) - bushShade * 0.48,
+        34 + bushShade * 5,
+        48 - bushShade * 4
       );
 
       const lobes = [
@@ -1306,12 +1315,12 @@
     );
 
     const trunkHeight =
-      tileSize * 0.36 *
+      tileSize * 0.42 *
       scale *
       (tree.trunkHeight || 1);
 
     const trunkWidth =
-      tileSize * 0.20 *
+      tileSize * 0.22 *
       scale *
       (tree.trunkWidth || 1);
 
@@ -1368,20 +1377,29 @@
         wiggle.scale
     );
 
+    const treeCell =
+      LLW.pcg.getCell(
+        tree.x,
+        tree.y
+      );
+
+    const treeShade =
+      treeCell?.shade || 0;
+
     ctx.fillStyle = foliageColor(
-      115,
+      109 + treeShade * 18,
       tree.colorShift || 0,
-      tree.lightShift || 0,
-      35,
-      46
+      (tree.lightShift || 0) - treeShade * 0.58,
+      35 + treeShade * 6,
+      48 - treeShade * 6
     );
 
     const lobes = [
-      [-tileSize * 0.20, tileSize * 0.00, tileSize * 0.22],
-      [ tileSize * 0.18, tileSize * 0.01, tileSize * 0.21],
-      [ 0, -tileSize * 0.15, tileSize * 0.27],
-      [ 0, tileSize * 0.07, tileSize * 0.23],
-      [-tileSize * 0.02, tileSize * 0.16, tileSize * 0.16]
+      [-tileSize * 0.23, tileSize * 0.00, tileSize * 0.25],
+      [ tileSize * 0.21, tileSize * 0.01, tileSize * 0.24],
+      [ 0, -tileSize * 0.19, tileSize * 0.31],
+      [ 0, tileSize * 0.07, tileSize * 0.27],
+      [-tileSize * 0.03, tileSize * 0.20, tileSize * 0.19]
     ];
 
     for (const [x, y, r] of lobes) {
@@ -1467,6 +1485,12 @@
         light: 48
       };
 
+    const stoneShade =
+      LLW.pcg.getCell(
+        stone.x,
+        stone.y
+      )?.shade || 0;
+
     ctx.save();
     ctx.translate(centerX, baseY);
     ctx.rotate(stone.rotation || 0);
@@ -1491,7 +1515,9 @@
       const hue =
         Math.round(
           palette.hue +
-            (hash01(seed, i, 5) - 0.5) * 14
+            (hash01(seed, i, 5) - 0.5) * 14 +
+            stoneShade * 13 -
+            (1 - stoneShade) * 4
         );
       const sat =
         Math.round(
@@ -1501,7 +1527,8 @@
       const light =
         Math.round(
           palette.light +
-            (hash01(seed, i, 7) - 0.5) * 12
+            (hash01(seed, i, 7) - 0.5) * 12 -
+            stoneShade * 7
         );
 
       ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
@@ -1572,6 +1599,12 @@
         light: 47
       };
 
+    const boulderShade =
+      LLW.pcg.getCell(
+        boulder.x,
+        boulder.y
+      )?.shade || 0;
+
     ctx.save();
     ctx.translate(centerX, baseY);
     ctx.rotate(boulder.rotation || 0);
@@ -1580,9 +1613,22 @@
       (boulder.scale || 1) * (boulder.heightScale || 1)
     );
 
-    const hue = Math.round(palette.hue + (boulder.colorShift || 0) * 10);
-    const sat = Math.round(palette.sat + ((boulder.facetShift || 0) * 4));
-    const light = Math.round(palette.light + (boulder.lightShift || 0) * 10);
+    const hue = Math.round(
+      palette.hue +
+      (boulder.colorShift || 0) * 10 +
+      boulderShade * 14 -
+      (1 - boulderShade) * 4
+    );
+    const sat = Math.round(
+      palette.sat +
+      ((boulder.facetShift || 0) * 4) +
+      boulderShade * 2
+    );
+    const light = Math.round(
+      palette.light +
+      (boulder.lightShift || 0) * 10 -
+      boulderShade * 7
+    );
 
     ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
     ctx.beginPath();
@@ -1685,9 +1731,9 @@
       37
     );
     roundedCapsule(
-      -tileSize * 0.30,
-      -tileSize * 0.075,
-      tileSize * 0.60,
+      -tileSize * 0.34,
+      -tileSize * 0.078,
+      tileSize * 0.68,
       tileSize * 0.15,
       tileSize * 0.065
     );
@@ -2130,22 +2176,6 @@
       });
     }
 
-    for (const log of state.fallenLogs || []) {
-      props.push({
-        type: "fallen_log",
-        y: log.y + (log.offsetY || 0),
-        data: log
-      });
-    }
-
-    for (const boulder of state.boulders || []) {
-      props.push({
-        type: "boulder",
-        y: boulder.y + (boulder.offsetY || 0),
-        data: boulder
-      });
-    }
-
     for (const stump of state.stumps || []) {
       props.push({
         type: "stump",
@@ -2161,24 +2191,6 @@
     for (const prop of props) {
       if (prop.type === "stone") {
         drawStoneProp(
-          prop.data,
-          tileSize,
-          offsetX,
-          offsetY
-        );
-      }
-
-      if (prop.type === "fallen_log") {
-        drawFallenLogProp(
-          prop.data,
-          tileSize,
-          offsetX,
-          offsetY
-        );
-      }
-
-      if (prop.type === "boulder") {
-        drawBoulderProp(
           prop.data,
           tileSize,
           offsetX,
@@ -2865,10 +2877,20 @@
 
     const moving = walkT > 0;
 
+    const traversalMode =
+      player.traversalMode || "normal";
+
+    const bounceStrength =
+      traversalMode === "slow"
+        ? 0.045
+        : traversalMode === "squeeze"
+          ? 0.032
+          : 0.09;
+
     const bounce = moving
       ? -Math.sin(walkT * Math.PI) *
         tileSize *
-        0.09
+        bounceStrength
       : 0;
 
     const step = moving
@@ -2878,6 +2900,24 @@
     const bodyY = p.y + bounce;
 
     ctx.save();
+
+    if (
+      moving &&
+      traversalMode === "squeeze"
+    ) {
+      const squeezeCenterY =
+        bodyY + tileSize * 0.52;
+
+      ctx.translate(
+        centerX,
+        squeezeCenterY
+      );
+      ctx.scale(0.82, 1.05);
+      ctx.translate(
+        -centerX,
+        -squeezeCenterY
+      );
+    }
 
     ctx.strokeStyle = "#5d4331";
     ctx.lineWidth =
@@ -3003,6 +3043,240 @@
     );
 
     ctx.restore();
+  }
+
+  function visualSortYForTree(tree) {
+    return (
+      tree.y +
+      0.89 +
+      (tree.offsetY || 0)
+    );
+  }
+
+  function visualSortYForPlayer() {
+    return (
+      state.player.renderY +
+      0.86
+    );
+  }
+
+  function playerLikelyOccludedByTree(tree) {
+    const player = state.player;
+
+    if (
+      visualSortYForTree(tree) <=
+      visualSortYForPlayer()
+    ) {
+      return false;
+    }
+
+    const dx =
+      player.renderX + 0.5 -
+      (
+        tree.x +
+        0.5 +
+        (tree.offsetX || 0) +
+        (tree.crownOffsetX || 0)
+      );
+
+    const dy =
+      player.renderY + 0.48 -
+      (
+        tree.y +
+        0.42 +
+        (tree.offsetY || 0) +
+        (tree.crownOffsetY || 0)
+      );
+
+    const rx =
+      0.62 *
+      (tree.scale || 1) *
+      (tree.crownScaleX || 1);
+
+    const ry =
+      0.72 *
+      (tree.scale || 1) *
+      (tree.crownScaleY || 1);
+
+    return (
+      dx * dx /
+        Math.max(
+          0.001,
+          rx * rx
+        ) +
+      dy * dy /
+        Math.max(
+          0.001,
+          ry * ry
+        ) <
+      1
+    );
+  }
+
+  function drawPlayerOcclusionMarker(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const player = state.player;
+    const p = gridToPixel(
+      player.renderX,
+      player.renderY,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX =
+      p.x + tileSize * 0.5;
+
+    ctx.save();
+
+    ctx.strokeStyle =
+      "rgba(244, 237, 208, 0.78)";
+    ctx.lineWidth =
+      Math.max(
+        1.5,
+        tileSize * 0.035
+      );
+
+    ctx.beginPath();
+    ctx.ellipse(
+      centerX,
+      p.y + tileSize * 0.45,
+      tileSize * 0.25,
+      tileSize * 0.37,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
+
+    ctx.fillStyle =
+      "rgba(244, 237, 208, 0.54)";
+    ctx.beginPath();
+    ctx.ellipse(
+      centerX,
+      p.y + tileSize * 0.87,
+      tileSize * 0.12,
+      tileSize * 0.045,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawOcclusionQueue(
+    now,
+    walkT,
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const queue = [];
+
+    for (const tree of state.trees) {
+      queue.push({
+        kind: "tree",
+        sortY:
+          visualSortYForTree(tree),
+        entity: tree
+      });
+    }
+
+    for (
+      const boulder of
+      state.boulders || []
+    ) {
+      queue.push({
+        kind: "boulder",
+        sortY:
+          boulder.y +
+          0.79 +
+          (boulder.offsetY || 0),
+        entity: boulder
+      });
+    }
+
+    for (
+      const log of
+      state.fallenLogs || []
+    ) {
+      queue.push({
+        kind: "fallen_log",
+        sortY:
+          log.y +
+          0.77 +
+          (log.offsetY || 0),
+        entity: log
+      });
+    }
+
+    queue.push({
+      kind: "player",
+      sortY:
+        visualSortYForPlayer(),
+      entity: state.player
+    });
+
+    queue.sort(
+      (a, b) =>
+        a.sortY - b.sortY
+    );
+
+    for (const entry of queue) {
+      if (entry.kind === "tree") {
+        drawTree(
+          entry.entity,
+          now,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      } else if (
+        entry.kind === "boulder"
+      ) {
+        drawBoulderProp(
+          entry.entity,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      } else if (
+        entry.kind === "fallen_log"
+      ) {
+        drawFallenLogProp(
+          entry.entity,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      } else if (
+        entry.kind === "player"
+      ) {
+        drawPlayer(
+          walkT,
+          tileSize,
+          offsetX,
+          offsetY
+        );
+      }
+    }
+
+    if (
+      state.trees.some(
+        playerLikelyOccludedByTree
+      )
+    ) {
+      drawPlayerOcclusionMarker(
+        tileSize,
+        offsetX,
+        offsetY
+      );
+    }
   }
 
   function resolveFlightAnchor(
@@ -3359,13 +3633,6 @@
       offsetY
     );
 
-    drawTrees(
-      now,
-      tileSize,
-      offsetX,
-      offsetY
-    );
-
     drawWorldItems(
       now,
       tileSize,
@@ -3373,7 +3640,8 @@
       offsetY
     );
 
-    drawPlayer(
+    drawOcclusionQueue(
+      now,
       walkT,
       tileSize,
       offsetX,

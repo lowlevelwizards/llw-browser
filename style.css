@@ -322,7 +322,8 @@ button {
   backdrop-filter: blur(3px);
 }
 
-.move-button:active {
+.move-button:active,
+.move-button.held {
   transform: translateY(1px);
   box-shadow: 0 1px 0 rgba(77, 64, 43, 0.18);
   background: rgba(221, 210, 181, 0.98);

@@ -55,6 +55,9 @@
   const understoryToggleButton =
     document.getElementById("understoryToggleButton");
 
+  const dpad =
+    document.querySelector(".dpad");
+
   const pocketButtons = [
     ...document.querySelectorAll(
       ".pocket-slot"
@@ -547,106 +550,189 @@
     );
   }
 
-  document
-    .querySelectorAll(".move-button")
-    .forEach((button) => {
-      const start = () => {
-        const dx =
-          Number(button.dataset.dx);
+  const moveButtons = [
+    ...document.querySelectorAll(
+      ".move-button"
+    )
+  ];
 
-        const dy =
-          Number(button.dataset.dy);
+  let activeMovePointerId = null;
+  let activeMoveButton = null;
 
-        LLW.startHeldMovement(
-          dx,
-          dy,
+  function movementForButton(button) {
+    if (!button) {
+      return null;
+    }
+
+    return {
+      dx:
+        Number(button.dataset.dx),
+      dy:
+        Number(button.dataset.dy)
+    };
+  }
+
+  function buttonUnderPointer(event) {
+    const element =
+      document.elementFromPoint(
+        event.clientX,
+        event.clientY
+      );
+
+    return (
+      element?.closest?.(
+        ".move-button"
+      ) || null
+    );
+  }
+
+  function beginPointerMovement(
+    event,
+    button
+  ) {
+    if (
+      activeMovePointerId !== null
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    activeMovePointerId =
+      event.pointerId;
+    activeMoveButton = button;
+    activeMoveButton.classList.add("held");
+
+    dpad?.setPointerCapture?.(
+      event.pointerId
+    );
+
+    const move =
+      movementForButton(button);
+
+    LLW.startHeldMovement(
+      move.dx,
+      move.dy,
+      "dpad-pointer"
+    );
+  }
+
+  function updatePointerMovement(event) {
+    if (
+      event.pointerId !==
+        activeMovePointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const button =
+      buttonUnderPointer(event);
+
+    // Sliding through the empty middle of the D-pad does not cancel held
+    // movement. Entering another arrow changes direction immediately.
+    if (
+      !button ||
+      button === activeMoveButton
+    ) {
+      return;
+    }
+
+    activeMoveButton?.classList.remove("held");
+    activeMoveButton = button;
+    activeMoveButton.classList.add("held");
+
+    const move =
+      movementForButton(button);
+
+    LLW.updateHeldMovementDirection(
+      move.dx,
+      move.dy,
+      "dpad-pointer"
+    );
+  }
+
+  function endPointerMovement(event) {
+    if (
+      event.pointerId !==
+        activeMovePointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault?.();
+
+    LLW.stopHeldMovement(
+      "dpad-pointer"
+    );
+
+    activeMoveButton?.classList.remove("held");
+
+    try {
+      dpad?.releasePointerCapture?.(
+        event.pointerId
+      );
+    } catch (_) {
+      // Capture may already have been lost; movement still needs to stop.
+    }
+
+    activeMovePointerId = null;
+    activeMoveButton = null;
+  }
+
+  for (const button of moveButtons) {
+    button.addEventListener(
+      "pointerdown",
+      (event) =>
+        beginPointerMovement(
+          event,
           button
+        )
+    );
+
+    button.addEventListener(
+      "dblclick",
+      (event) => {
+        event.preventDefault();
+      }
+    );
+  }
+
+  document.addEventListener(
+    "pointermove",
+    updatePointerMovement,
+    { passive: false }
+  );
+
+  document.addEventListener(
+    "pointerup",
+    endPointerMovement,
+    { passive: false }
+  );
+
+  document.addEventListener(
+    "pointercancel",
+    endPointerMovement,
+    { passive: false }
+  );
+
+  dpad?.addEventListener(
+    "lostpointercapture",
+    (event) => {
+      if (
+        event.pointerId ===
+        activeMovePointerId
+      ) {
+        LLW.stopHeldMovement(
+          "dpad-pointer"
         );
-      };
-
-      const stop = () => {
-        LLW.stopHeldMovement(button);
-      };
-
-      button.addEventListener(
-        "touchstart",
-        (event) => {
-          event.preventDefault();
-          start();
-        },
-        { passive: false }
-      );
-
-      button.addEventListener(
-        "touchend",
-        (event) => {
-          event.preventDefault();
-          stop();
-        },
-        { passive: false }
-      );
-
-      button.addEventListener(
-        "touchcancel",
-        (event) => {
-          event.preventDefault();
-          stop();
-        },
-        { passive: false }
-      );
-
-      button.addEventListener(
-        "pointerdown",
-        (event) => {
-          if (
-            event.pointerType ===
-            "touch"
-          ) {
-            return;
-          }
-
-          event.preventDefault();
-
-          button.setPointerCapture?.(
-            event.pointerId
-          );
-
-          start();
-        }
-      );
-
-      button.addEventListener(
-        "pointerup",
-        (event) => {
-          if (
-            event.pointerType ===
-            "touch"
-          ) {
-            return;
-          }
-
-          event.preventDefault();
-          stop();
-        }
-      );
-
-      button.addEventListener(
-        "pointercancel",
-        stop
-      );
-
-      button.addEventListener(
-        "lostpointercapture",
-        stop
-      );
-
-      button.addEventListener(
-        "dblclick",
-        (event) => {
-          event.preventDefault();
-        }
-      );
-    });
+        activeMoveButton?.classList.remove("held");
+        activeMovePointerId = null;
+        activeMoveButton = null;
+      }
+    }
+  );
 
   bindPress(
     pickupButton,

@@ -448,6 +448,11 @@
 
       LLW.vitality.restoreNormalToFull();
 
+      // Mud exposure is tracked as a future equipment hook. Rest currently
+      // represents the chance to clean up without yet adding a maintenance
+      // punishment loop.
+      state.player.mudExposure = 0;
+
       const result =
         LLW.advanceTurn(
           LLW.CONFIG.restTurnCost

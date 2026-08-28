@@ -15,6 +15,10 @@
     );
   }
 
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
   function smoothstep01(value) {
     const t =
       clamp(value);
@@ -1121,6 +1125,424 @@
     }
   }
 
+  function isStandingWaterAtPoint(point) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return false;
+    }
+
+    for (
+      const body of
+      geometry.waterBodies || []
+    ) {
+      if (
+        pointInPolygon(
+          point,
+          body.outer
+        )
+      ) {
+        const inHole =
+          (body.holes || []).some(
+            (hole) =>
+              pointInPolygon(
+                point,
+                hole
+              )
+          );
+
+        if (!inHole) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function deriveWaterTerminals() {
+    const geometry =
+      state.landscape.geometry;
+
+    const terminals = [];
+
+    if (!geometry) {
+      state.landscape.waterTerminals = terminals;
+      return terminals;
+    }
+
+    function classify(
+      point,
+      neighbor,
+      side,
+      channel
+    ) {
+      const onEdge =
+        point.x < 0.65 ||
+        point.y < 0.65 ||
+        point.x >
+          LLW.CONFIG.worldCols - 0.65 ||
+        point.y >
+          LLW.CONFIG.worldRows - 0.65;
+
+      const inStandingWater =
+        isStandingWaterAtPoint(point);
+
+      let kind = "continuing";
+
+      if (inStandingWater) {
+        kind = "pond_connection";
+      } else if (onEdge) {
+        kind = "open_outlet";
+      } else if (
+        point.strength <
+        LLW.CONFIG.visibleChannelSeepStrength
+      ) {
+        kind = "seep";
+      } else if (
+        point.strength <
+        LLW.CONFIG.visibleChannelDitchStrength
+      ) {
+        kind = "ditch";
+      }
+
+      return {
+        id:
+          `${channel.id}_${side}`,
+        channelId: channel.id,
+        side,
+        kind,
+        x: point.x,
+        y: point.y,
+        strength: point.strength,
+        width: point.width,
+        directionX:
+          point.x - neighbor.x,
+        directionY:
+          point.y - neighbor.y
+      };
+    }
+
+    for (
+      const channel of
+      geometry.channels || []
+    ) {
+      if (!channel.centerline.length) {
+        continue;
+      }
+
+      terminals.push(
+        classify(
+          channel.centerline[0],
+          channel.centerline[
+            Math.min(
+              1,
+              channel.centerline.length - 1
+            )
+          ],
+          "start",
+          channel
+        )
+      );
+
+      terminals.push(
+        classify(
+          channel.centerline[
+            channel.centerline.length - 1
+          ],
+          channel.centerline[
+            Math.max(
+              0,
+              channel.centerline.length - 2
+            )
+          ],
+          "end",
+          channel
+        )
+      );
+    }
+
+    state.landscape.waterTerminals = terminals;
+    return terminals;
+  }
+
+  function deriveMudFields(
+    seed,
+    cells =
+      state.landscape.cells
+  ) {
+    if (!cells.length) {
+      return;
+    }
+
+    const terminals =
+      deriveWaterTerminals();
+
+    const muddyTerminals =
+      terminals.filter(
+        (terminal) =>
+          terminal.kind === "seep" ||
+          terminal.kind === "ditch"
+      );
+
+    const cols =
+      LLW.CONFIG.worldCols;
+
+    const rng =
+      LLW.pcg.createRng(
+        seed,
+        "mud-fields"
+      );
+
+    let min = Infinity;
+    let max = -Infinity;
+    let total = 0;
+
+    for (const cell of cells) {
+      const moisture =
+        cell.moisture || 0;
+
+      const wetness =
+        smoothstep01(
+          (
+            moisture - 0.42
+          ) /
+          0.46
+        );
+
+      const flatness =
+        1 -
+        smoothstep01(
+          (
+            (cell.terrainSteepness || 0) -
+            0.018
+          ) /
+          0.105
+        );
+
+      const riparian =
+        cell.riparian || 0;
+
+      const clearing =
+        cell.woodlandClearingInfluence || 0;
+
+      const woodland =
+        cell.woodlandDensity || 0;
+
+      const openBias =
+        clamp(
+          0.52 +
+          clearing * 0.28 +
+          (1 - woodland) * 0.16
+        );
+
+      let endpointBoost = 0;
+
+      for (
+        const terminal of
+        muddyTerminals
+      ) {
+        const d =
+          Math.hypot(
+            cell.x + 0.5 - terminal.x,
+            cell.y + 0.5 - terminal.y
+          );
+
+        if (
+          d >
+          LLW.CONFIG.mudEndpointBoostRadius
+        ) {
+          continue;
+        }
+
+        endpointBoost =
+          Math.max(
+            endpointBoost,
+            1 -
+            smoothstep01(
+              d /
+              LLW.CONFIG.mudEndpointBoostRadius
+            )
+          );
+      }
+
+      let potential =
+        (
+          wetness * 0.52 +
+          riparian * 0.34 +
+          endpointBoost * 0.58
+        ) *
+        (
+          0.38 +
+          flatness * 0.62
+        ) *
+        openBias;
+
+      potential *=
+        0.91 +
+        rng() * 0.18;
+
+      const campDistance =
+        Math.hypot(
+          cell.x - state.firepit.x,
+          cell.y - state.firepit.y
+        );
+
+      if (
+        cell.surfaceWaterDepth > EPSILON ||
+        (cell.visibleWaterFooting || 0) >= 0.18 ||
+        campDistance <= 1.35
+      ) {
+        potential = 0;
+      }
+
+      cell.mudPotential =
+        clamp(potential);
+
+      min = Math.min(
+        min,
+        cell.mudPotential
+      );
+      max = Math.max(
+        max,
+        cell.mudPotential
+      );
+      total += cell.mudPotential;
+    }
+
+    // A tiny neighborhood pass turns moisture into patches rather than a
+    // peppering of isolated brown cells.
+    const smoothed =
+      cells.map(
+        (cell) => {
+          let sum =
+            cell.mudPotential * 2.1;
+          let weight = 2.1;
+
+          for (
+            const neighborIndex of
+            cell.neighborIndexes
+          ) {
+            sum +=
+              cells[
+                neighborIndex
+              ].mudPotential;
+            weight += 1;
+          }
+
+          return sum / weight;
+        }
+      );
+
+    for (
+      let i = 0;
+      i < cells.length;
+      i++
+    ) {
+      const cell = cells[i];
+
+      cell.mudAmount =
+        smoothstep01(
+          (
+            smoothed[i] -
+            LLW.CONFIG.mudMinPotential
+          ) /
+          Math.max(
+            0.0001,
+            0.40 -
+            LLW.CONFIG.mudMinPotential
+          )
+        );
+    }
+
+    // Connected patch bookkeeping is useful to gameplay/debugging even
+    // though presentation remains a soft scalar field.
+    const candidate =
+      new Set(
+        cells
+          .filter(
+            (cell) =>
+              cell.mudAmount >= 0.22
+          )
+          .map(
+            (cell) => cell.index
+          )
+      );
+
+    const visited = new Set();
+    const patches = [];
+
+    for (
+      const startIndex of
+      candidate
+    ) {
+      if (visited.has(startIndex)) {
+        continue;
+      }
+
+      const queue = [startIndex];
+      const indexes = [];
+      visited.add(startIndex);
+
+      while (queue.length) {
+        const index = queue.shift();
+        const cell = cells[index];
+        indexes.push(index);
+
+        for (
+          const neighborIndex of
+          cell.neighborIndexes
+        ) {
+          if (
+            candidate.has(neighborIndex) &&
+            !visited.has(neighborIndex)
+          ) {
+            visited.add(neighborIndex);
+            queue.push(neighborIndex);
+          }
+        }
+      }
+
+      if (
+        indexes.length >=
+        LLW.CONFIG.mudPatchMinCells
+      ) {
+        patches.push({
+          id:
+            `mud_patch_${patches.length + 1}`,
+          cellIndexes: indexes,
+          cellCount: indexes.length
+        });
+      } else {
+        // Lonely damp specks remain visual dampness but do not count as a
+        // meaningful muddy traversal patch.
+        for (
+          const index of indexes
+        ) {
+          cells[index].mudAmount *= 0.38;
+        }
+      }
+    }
+
+    const muddyCells =
+      cells.filter(
+        (cell) =>
+          cell.mudAmount >=
+          LLW.CONFIG.mudMovementThreshold
+      ).length;
+
+    state.landscape.mudPatches = patches;
+    state.landscape.mudStats = {
+      min,
+      mean:
+        total /
+        cells.length,
+      max,
+      muddyCells
+    };
+  }
+
   function isCellBlocked(
     cell,
     occupied
@@ -2110,11 +2532,18 @@
   }
 
   function canopyContribution(
-    distanceFromTree
+    distanceFromTree,
+    treeScale = 1
   ) {
     const radius =
       LLW.CONFIG
-        .treeCanopyRadius;
+        .treeCanopyRadius *
+      clamp(
+        0.88 +
+        (treeScale - 0.9) * 0.42,
+        0.90,
+        1.20
+      );
 
     if (
       distanceFromTree >
@@ -2171,7 +2600,13 @@
             distance(
               cell,
               tree
-            )
+            ),
+            (tree.scale || 1) *
+              (
+                (tree.crownScaleX || 1) +
+                (tree.crownScaleY || 1)
+              ) *
+              0.5
           );
 
         if (
@@ -3846,6 +4281,42 @@
     const fireRing =
       fireRingSet();
 
+    function clusterHash(x, y, salt) {
+      const value =
+        Math.sin(
+          x * 12.9898 +
+          y * 78.233 +
+          salt * 37.719
+        ) *
+        43758.5453;
+
+      return value - Math.floor(value);
+    }
+
+    function clusterField(
+      cell,
+      salt,
+      scale = 3.4
+    ) {
+      const gx = cell.x / scale;
+      const gy = cell.y / scale;
+      const x0 = Math.floor(gx);
+      const y0 = Math.floor(gy);
+      const tx = smoothstep01(gx - x0);
+      const ty = smoothstep01(gy - y0);
+
+      const a = clusterHash(x0, y0, salt);
+      const b = clusterHash(x0 + 1, y0, salt);
+      const c = clusterHash(x0, y0 + 1, salt);
+      const d = clusterHash(x0 + 1, y0 + 1, salt);
+
+      return lerp(
+        lerp(a, b, tx),
+        lerp(c, d, tx),
+        ty
+      );
+    }
+
     function dryCell(cell) {
       return (
         cell.surfaceWaterDepth <= EPSILON &&
@@ -3882,6 +4353,8 @@
         cell.woodlandEdge || 0;
       const riparian =
         cell.riparian || 0;
+      const mud =
+        cell.mudAmount || 0;
       const steepness =
         smoothstep01(
           (
@@ -3890,6 +4363,25 @@
           ) /
           0.090
         );
+
+      const leafCluster =
+        0.58 +
+        clusterField(cell, 201, 3.8) * 0.82;
+      const mossCluster =
+        0.52 +
+        clusterField(cell, 211, 3.2) * 0.96;
+      const cloverCluster =
+        0.48 +
+        clusterField(cell, 223, 3.5) * 1.02;
+      const grassCluster =
+        0.60 +
+        clusterField(cell, 227, 4.2) * 0.72;
+      const flowerCluster =
+        0.34 +
+        clusterField(cell, 233, 3.9) * 1.08;
+      const pebbleCluster =
+        0.48 +
+        clusterField(cell, 239, 3.4) * 0.94;
 
       const leafLitterChance =
         LLW.CONFIG
@@ -3900,7 +4392,8 @@
           woodland * 0.36 +
           openGround * 0.18 +
           riparian * 0.08
-        );
+        ) *
+        leafCluster;
 
       if (rng() < leafLitterChance) {
         spawnLeafLitterPatch(
@@ -3923,7 +4416,8 @@
           ) *
             0.34 +
           riparian * 0.24
-        );
+        ) *
+        mossCluster;
 
       if (rng() < mossChance) {
         spawnMossPatch(
@@ -3947,7 +4441,8 @@
             0.26 +
           openGround * 0.30 +
           (1 - shade) * 0.12
-        );
+        ) *
+        cloverCluster;
 
       if (rng() < cloverChance) {
         spawnCloverPatch(
@@ -3965,7 +4460,9 @@
           edge * 0.26 +
           woodland * 0.14 +
           (1 - riparian) * 0.04
-        );
+        ) *
+        (1 - mud * 0.58) *
+        grassCluster;
 
       if (rng() < grassChance) {
         spawnGrassTuft(
@@ -3989,7 +4486,9 @@
             0.22
           ) *
             0.14
-        );
+        ) *
+        (1 - mud * 0.72) *
+        flowerCluster;
 
       if (rng() < flowerChance) {
         spawnWildflowerPatch(
@@ -4007,7 +4506,8 @@
           steepness * 0.28 +
           edge * 0.14 +
           riparian * 0.18
-        );
+        ) *
+        pebbleCluster;
 
       if (rng() < pebbleChance) {
         spawnPebblePatch(
@@ -4022,6 +4522,7 @@
     deriveWoodlandMatrix,
     deriveTreeSuitability,
     deriveWaterPlacementFields,
+    deriveMudFields,
     generateTrees,
     deriveCanopyFields,
     deriveUnderstorySuitability,

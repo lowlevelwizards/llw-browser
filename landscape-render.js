@@ -38,6 +38,12 @@
     pixelsPerTile: 7
   };
 
+  let mudCache = {
+    key: null,
+    canvas: null,
+    pixelsPerTile: 7
+  };
+
   let waterLayers = {
     width: 0,
     height: 0,
@@ -402,6 +408,246 @@
     );
   }
 
+  function ensureMudCache() {
+    if (
+      typeof document === "undefined" ||
+      !state.landscape.cells.length
+    ) {
+      return null;
+    }
+
+    const scale =
+      mudCache.pixelsPerTile;
+
+    const key = [
+      state.landscape.seed,
+      LLW.CONFIG.worldCols,
+      LLW.CONFIG.worldRows,
+      state.landscape.mudStats?.muddyCells || 0,
+      scale
+    ].join(":");
+
+    if (
+      mudCache.key === key &&
+      mudCache.canvas
+    ) {
+      return mudCache.canvas;
+    }
+
+    const canvas =
+      document.createElement("canvas");
+
+    canvas.width =
+      (LLW.CONFIG.worldCols + 1) * scale;
+    canvas.height =
+      (LLW.CONFIG.worldRows + 1) * scale;
+
+    const context =
+      canvas.getContext("2d");
+
+    const image =
+      context.createImageData(
+        canvas.width,
+        canvas.height
+      );
+
+    for (
+      let py = 0;
+      py < canvas.height;
+      py++
+    ) {
+      const worldY =
+        py / scale - 0.5;
+
+      for (
+        let px = 0;
+        px < canvas.width;
+        px++
+      ) {
+        const worldX =
+          px / scale - 0.5;
+
+        const mud =
+          sampleScalarField(
+            worldX,
+            worldY,
+            "mudAmount"
+          );
+
+        const moisture =
+          sampleScalarField(
+            worldX,
+            worldY,
+            "moisture"
+          );
+
+        const shade =
+          sampleScalarField(
+            worldX,
+            worldY,
+            "shade"
+          );
+
+        const alpha =
+          smoothstep(
+            (mud - 0.08) / 0.82
+          );
+
+        const warmth =
+          1 - shade;
+
+        const r = Math.round(
+          lerp(
+            102,
+            122,
+            warmth * 0.55
+          )
+        );
+
+        const g = Math.round(
+          lerp(
+            105,
+            116,
+            moisture * 0.55
+          )
+        );
+
+        const b = Math.round(
+          lerp(
+            73,
+            80,
+            1 - warmth
+          )
+        );
+
+        const index =
+          (py * canvas.width + px) * 4;
+
+        image.data[index] = r;
+        image.data[index + 1] = g;
+        image.data[index + 2] = b;
+        image.data[index + 3] =
+          Math.round(alpha * 215);
+      }
+    }
+
+    context.putImageData(
+      image,
+      0,
+      0
+    );
+
+    mudCache = {
+      ...mudCache,
+      key,
+      canvas
+    };
+
+    return canvas;
+  }
+
+  function drawMudOverlay(
+    ctx,
+    view
+  ) {
+    const cache =
+      ensureMudCache();
+
+    if (!cache) {
+      return;
+    }
+
+    const scale =
+      mudCache.pixelsPerTile;
+
+    const overview =
+      LLW.camera.isOverview();
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.globalAlpha = overview ? 0.48 : 0.66;
+
+    if (overview) {
+      ctx.drawImage(
+        cache,
+        0.5 * scale,
+        0.5 * scale,
+        LLW.CONFIG.worldCols * scale,
+        LLW.CONFIG.worldRows * scale,
+        view.offsetX,
+        view.offsetY,
+        view.mapWidth,
+        view.mapHeight
+      );
+      ctx.restore();
+      return;
+    }
+
+    const visibleLeft =
+      state.camera.x -
+      view.offsetX / view.tileSize;
+
+    const visibleTop =
+      state.camera.y -
+      view.offsetY / view.tileSize;
+
+    const visibleRight =
+      visibleLeft +
+      view.width / view.tileSize;
+
+    const visibleBottom =
+      visibleTop +
+      view.height / view.tileSize;
+
+    const clippedLeft =
+      clamp(
+        visibleLeft,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedTop =
+      clamp(
+        visibleTop,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    const clippedRight =
+      clamp(
+        visibleRight,
+        0,
+        LLW.CONFIG.worldCols
+      );
+
+    const clippedBottom =
+      clamp(
+        visibleBottom,
+        0,
+        LLW.CONFIG.worldRows
+      );
+
+    if (
+      clippedRight > clippedLeft &&
+      clippedBottom > clippedTop
+    ) {
+      ctx.drawImage(
+        cache,
+        (clippedLeft + 0.5) * scale,
+        (clippedTop + 0.5) * scale,
+        (clippedRight - clippedLeft) * scale,
+        (clippedBottom - clippedTop) * scale,
+        (clippedLeft - visibleLeft) * view.tileSize,
+        (clippedTop - visibleTop) * view.tileSize,
+        (clippedRight - clippedLeft) * view.tileSize,
+        (clippedBottom - clippedTop) * view.tileSize
+      );
+    }
+
+    ctx.restore();
+  }
+
   function elevationColor(
     elevation,
     woodland = 0,
@@ -507,7 +753,7 @@
         ) /
         0.76
       ) *
-      0.48;
+      0.56;
 
     const deepShadeMix =
       smoothstep(
@@ -517,7 +763,7 @@
         ) /
         0.40
       ) *
-      0.30;
+      0.36;
 
     const moistureMix =
       smoothstep(
@@ -805,8 +1051,8 @@
 
     ctx.globalAlpha =
       overview
-        ? 0.66
-        : 0.48;
+        ? 0.74
+        : 0.62;
 
     ctx.imageSmoothingEnabled =
       true;
@@ -834,6 +1080,11 @@
       );
 
       ctx.restore();
+
+      drawMudOverlay(
+        ctx,
+        view
+      );
 
       drawMoistureDebug(
         ctx,
@@ -984,6 +1235,11 @@
     }
 
     ctx.restore();
+
+    drawMudOverlay(
+      ctx,
+      view
+    );
 
     drawMoistureDebug(
       ctx,
@@ -3630,6 +3886,133 @@
     water.restore();
   }
 
+  function drawMudTerminalDitches(
+    ctx,
+    view
+  ) {
+    const terminals =
+      state.landscape.waterTerminals || [];
+
+    if (!terminals.length) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (const terminal of terminals) {
+      if (
+        terminal.kind !== "seep" &&
+        terminal.kind !== "ditch"
+      ) {
+        continue;
+      }
+
+      const length =
+        terminal.kind === "ditch"
+          ? 0.62
+          : 0.38;
+
+      const vectorLength =
+        Math.max(
+          0.0001,
+          Math.hypot(
+            terminal.directionX || 0,
+            terminal.directionY || 0
+          )
+        );
+
+      const dx =
+        (terminal.directionX || 0) /
+        vectorLength;
+
+      const dy =
+        (terminal.directionY || 0) /
+        vectorLength;
+
+      const start =
+        worldPointToPixel(
+          {
+            x: terminal.x,
+            y: terminal.y
+          },
+          view
+        );
+
+      const end =
+        worldPointToPixel(
+          {
+            x:
+              terminal.x +
+              dx * length,
+            y:
+              terminal.y +
+              dy * length
+          },
+          view
+        );
+
+      ctx.strokeStyle =
+        terminal.kind === "ditch"
+          ? "rgba(99, 104, 67, 0.50)"
+          : "rgba(105, 113, 76, 0.42)";
+
+      ctx.lineWidth =
+        view.tileSize *
+        (
+          terminal.kind === "ditch"
+            ? 0.18
+            : 0.13
+        );
+
+      ctx.beginPath();
+      ctx.moveTo(
+        start.x,
+        start.y
+      );
+      ctx.quadraticCurveTo(
+        lerp(
+          start.x,
+          end.x,
+          0.55
+        ) +
+          dy *
+          view.tileSize *
+          0.05,
+        lerp(
+          start.y,
+          end.y,
+          0.55
+        ) -
+          dx *
+          view.tileSize *
+          0.05,
+        end.x,
+        end.y
+      );
+      ctx.stroke();
+
+      if (terminal.kind === "seep") {
+        ctx.fillStyle =
+          "rgba(91, 112, 73, 0.24)";
+        ctx.beginPath();
+        ctx.ellipse(
+          end.x,
+          end.y,
+          view.tileSize * 0.22,
+          view.tileSize * 0.12,
+          Math.atan2(dy, dx),
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
   function drawWater(
     ctx,
     view
@@ -3657,6 +4040,11 @@
     ) {
       return;
     }
+
+    drawMudTerminalDitches(
+      ctx,
+      view
+    );
 
     paintGeometryToLayers(
       view
