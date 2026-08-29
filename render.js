@@ -4844,17 +4844,17 @@
     const lighting = LLW.time.getLighting();
     const worldWidth = LLW.CONFIG.worldCols;
     const worldHeight = LLW.CONFIG.worldRows;
-    const driftTime = now * 0.000012;
+    const driftTime = now * 0.000010;
     const phaseFactor =
       lighting.phase === "day"
         ? 1
         : lighting.phase === "sunrise" || lighting.phase === "sunset"
-          ? 0.78
-          : 0.58;
+          ? 0.84
+          : 0.64;
     const baseAlpha =
-      (0.040 + sun.altitude * 0.022) * phaseFactor;
+      (0.082 + sun.altitude * 0.030) * phaseFactor;
 
-    if (baseAlpha <= 0.003) {
+    if (baseAlpha <= 0.006) {
       return;
     }
 
@@ -4866,15 +4866,15 @@
     for (let i = 0; i < 4; i++) {
       const seedA = 6401 + i * 19;
       const seedB = 6473 + i * 23;
-      const bandY = 0.16 + i * 0.20 + (hash01(seedA, seedB, 1) - 0.5) * 0.05;
-      const driftX = (((driftTime * (0.55 + i * 0.14)) + hash01(seedA, seedB, 2) * 1.7) % (worldWidth + 10)) - 5;
-      const wobbleY = Math.sin(driftTime * (0.8 + i * 0.18) + hash01(seedB, seedA, 3) * Math.PI * 2) * 0.75;
+      const bandY = 0.16 + i * 0.20 + (hash01(seedA, seedB, 1) - 0.5) * 0.06;
+      const driftX = (((driftTime * (0.42 + i * 0.10)) + hash01(seedA, seedB, 2) * 1.9) % (worldWidth + 12)) - 6;
+      const wobbleY = Math.sin(driftTime * (0.64 + i * 0.14) + hash01(seedB, seedA, 3) * Math.PI * 2) * 0.85;
       const baseWorldX = driftX;
       const baseWorldY = worldHeight * bandY + wobbleY;
       const screen = worldPointToScreen(baseWorldX, baseWorldY, tileSize, offsetX, offsetY);
-      const majorRadiusX = tileSize * (1.8 + hash01(seedA, seedB, 4) * 1.2);
-      const majorRadiusY = tileSize * (0.70 + hash01(seedB, seedA, 5) * 0.46);
-      const rotation = -0.12 + hash01(seedA, seedB, 6) * 0.24;
+      const majorRadiusX = tileSize * (2.7 + hash01(seedA, seedB, 4) * 1.8);
+      const majorRadiusY = tileSize * (0.95 + hash01(seedB, seedA, 5) * 0.62);
+      const rotation = -0.15 + hash01(seedA, seedB, 6) * 0.30;
 
       drawSoftShadowEllipse(
         screen.x,
@@ -4882,20 +4882,20 @@
         majorRadiusX,
         majorRadiusY,
         rotation,
-        baseAlpha * (0.95 + i * 0.04)
+        baseAlpha * (1.02 + i * 0.06)
       );
 
-      for (let j = 0; j < 2; j++) {
-        const lobeOffsetX = tileSize * (0.95 + j * 0.95);
-        const lobeOffsetY = tileSize * (j === 0 ? -0.22 : 0.18);
-        const sign = j === 0 ? -1 : 1;
+      for (let j = 0; j < 3; j++) {
+        const sign = j === 1 ? 1 : -1;
+        const lobeOffsetX = tileSize * (1.2 + j * 0.92);
+        const lobeOffsetY = tileSize * (-0.10 + j * 0.18);
         drawSoftShadowEllipse(
           screen.x + sign * lobeOffsetX,
           screen.y + lobeOffsetY,
-          majorRadiusX * (0.56 - j * 0.05),
-          majorRadiusY * (0.82 - j * 0.10),
-          rotation + sign * 0.10,
-          baseAlpha * 0.72
+          majorRadiusX * (0.66 - j * 0.08),
+          majorRadiusY * (0.90 - j * 0.10),
+          rotation + sign * 0.08,
+          baseAlpha * (0.84 - j * 0.07)
         );
       }
     }

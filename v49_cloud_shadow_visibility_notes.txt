@@ -1,0 +1,13 @@
+Low Level Wizards — v49 cloud shadow visibility retune
+
+Implemented:
+- Increased first-pass cloud shadow strength so the effect is easier to actually see.
+- Enlarged the shadow fields and broadened their lobe structure.
+- Slowed the drift slightly so the passing shade feels more atmospheric.
+- Updated index cache-busting to v49.
+
+Files changed:
+- README.md
+- index.html
+- render.js
+- v49_cloud_shadow_visibility_notes.txt
