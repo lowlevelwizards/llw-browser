@@ -4308,6 +4308,70 @@
     context.stroke();
   }
 
+  function waterSeed(entity) {
+    return Number(
+      String(entity?.id || "1")
+        .replace(/\D/g, "")
+    ) || 1;
+  }
+
+  function strokePolygonRuns(
+    context,
+    points,
+    view,
+    predicate
+  ) {
+    if (!points || points.length < 2) {
+      return;
+    }
+
+    let drawing = false;
+
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i];
+      const b =
+        points[(i + 1) % points.length];
+      const keep = predicate(
+        a,
+        b,
+        i
+      );
+      const start =
+        worldPointToPixel(
+          a,
+          view
+        );
+      const end =
+        worldPointToPixel(
+          b,
+          view
+        );
+
+      if (keep) {
+        if (!drawing) {
+          context.beginPath();
+          context.moveTo(
+            start.x,
+            start.y
+          );
+          drawing = true;
+        }
+
+        context.lineTo(
+          end.x,
+          end.y
+        );
+      } else if (drawing) {
+        context.stroke();
+        drawing = false;
+      }
+    }
+
+    if (drawing) {
+      context.stroke();
+    }
+  }
+
   function fillChannelCap(
     context,
     sample,
@@ -4474,9 +4538,9 @@
       return;
     }
 
-    // One solid union owns the actual blue water. A broader second union sits
-    // beneath it as damp earth. Keeping those two truths separate prevents
-    // stream/pond overlaps from becoming translucent construction seams.
+    // Water and damp earth stay as separate unions so junctions remain clean,
+    // but the actual color treatment now happens per body/stream rather than as
+    // one giant screen-space fill.
     bank.save();
     bank.fillStyle = "#ffffff";
     bank.strokeStyle = "#ffffff";
@@ -4485,7 +4549,7 @@
     bank.lineWidth =
       Math.max(
         2,
-        view.tileSize * 0.32
+        view.tileSize * 0.28
       );
 
     water.save();
@@ -4540,13 +4604,13 @@
         bank,
         firstSample,
         view,
-        view.tileSize * 0.16
+        view.tileSize * 0.14
       );
       fillChannelCap(
         bank,
         lastSample,
         view,
-        view.tileSize * 0.16
+        view.tileSize * 0.14
       );
       fillChannelCap(
         water,
@@ -4595,15 +4659,15 @@
       );
     bankGradient.addColorStop(
       0,
-      "#aa9c70"
+      "#b2a273"
     );
     bankGradient.addColorStop(
-      0.52,
-      "#8e8966"
+      0.50,
+      "#918869"
     );
     bankGradient.addColorStop(
       1,
-      "#687860"
+      "#6f7b63"
     );
     bank.fillStyle = bankGradient;
     bank.fillRect(
@@ -4614,53 +4678,267 @@
     );
     bank.restore();
 
-    // Base water is intentionally close to a flat painted paper color. Local
-    // depth/shelf/flow layers below provide the form; the base itself no longer
-    // carries a giant screen-space gradient that makes unrelated ponds match.
     water.save();
     water.globalCompositeOperation =
       "source-in";
-    water.fillStyle = "#4b97a7";
-    water.fillRect(
-      0,
-      0,
-      view.width,
-      view.height
-    );
+
+    for (const body of geometry.waterBodies) {
+      const seed =
+        waterSeed(body);
+      const topLeft =
+        worldPointToPixel(
+          {
+            x: body.bounds.minX,
+            y: body.bounds.minY
+          },
+          view
+        );
+      const bottomRight =
+        worldPointToPixel(
+          {
+            x: body.bounds.maxX,
+            y: body.bounds.maxY
+          },
+          view
+        );
+      const width =
+        Math.abs(
+          bottomRight.x - topLeft.x
+        );
+      const height =
+        Math.abs(
+          bottomRight.y - topLeft.y
+        );
+
+      const startX =
+        lerp(
+          topLeft.x,
+          bottomRight.x,
+          0.18 +
+            hash01(seed, 1, 601) * 0.32
+        );
+      const startY =
+        lerp(
+          topLeft.y,
+          bottomRight.y,
+          0.12 +
+            hash01(seed, 2, 602) * 0.30
+        );
+      const endX =
+        lerp(
+          topLeft.x,
+          bottomRight.x,
+          0.82 -
+            hash01(seed, 3, 603) * 0.28
+        );
+      const endY =
+        lerp(
+          topLeft.y,
+          bottomRight.y,
+          0.88 -
+            hash01(seed, 4, 604) * 0.24
+        );
+
+      water.save();
+      clipToBody(
+        water,
+        body,
+        view
+      );
+
+      const wash =
+        water.createLinearGradient(
+          startX,
+          startY,
+          endX,
+          endY
+        );
+      const hueShift =
+        Math.round(
+          hash01(seed, 5, 605) * 10 - 5
+        );
+      wash.addColorStop(
+        0,
+        `hsl(${190 + hueShift}, 42%, 60%)`
+      );
+      wash.addColorStop(
+        0.58,
+        `hsl(${194 + hueShift}, 43%, 54%)`
+      );
+      wash.addColorStop(
+        1,
+        `hsl(${198 + hueShift}, 39%, 46%)`
+      );
+      water.fillStyle = wash;
+      water.fillRect(
+        Math.min(
+          topLeft.x,
+          bottomRight.x
+        ) - view.tileSize,
+        Math.min(
+          topLeft.y,
+          bottomRight.y
+        ) - view.tileSize,
+        width + view.tileSize * 2,
+        height + view.tileSize * 2
+      );
+
+      water.fillStyle =
+        `rgba(154, 202, 191, ${(0.08 + hash01(seed, 6, 606) * 0.05).toFixed(3)})`;
+      water.beginPath();
+      water.ellipse(
+        lerp(startX, endX, 0.34),
+        lerp(startY, endY, 0.36),
+        Math.max(
+          view.tileSize * 0.34,
+          width * (0.18 + hash01(seed, 7, 607) * 0.10)
+        ),
+        Math.max(
+          view.tileSize * 0.18,
+          height * (0.12 + hash01(seed, 8, 608) * 0.08)
+        ),
+        (hash01(seed, 9, 609) - 0.5) * 0.7,
+        0,
+        Math.PI * 2
+      );
+      water.fill();
+      water.restore();
+    }
+
+    for (const channel of geometry.channels) {
+      const points =
+        channel.centerline || [];
+
+      if (!points.length) {
+        continue;
+      }
+
+      const start =
+        worldPointToPixel(
+          points[0],
+          view
+        );
+      const end =
+        worldPointToPixel(
+          points[
+            points.length - 1
+          ],
+          view
+        );
+
+      water.save();
+      water.beginPath();
+      appendPolygon(
+        water,
+        channel.polygon,
+        view
+      );
+      water.clip();
+
+      const channelGradient =
+        water.createLinearGradient(
+          start.x,
+          start.y,
+          end.x,
+          end.y
+        );
+      channelGradient.addColorStop(
+        0,
+        "hsl(191, 42%, 58%)"
+      );
+      channelGradient.addColorStop(
+        0.55,
+        "hsl(195, 44%, 51%)"
+      );
+      channelGradient.addColorStop(
+        1,
+        "hsl(198, 41%, 47%)"
+      );
+      water.fillStyle = channelGradient;
+      water.fillRect(
+        0,
+        0,
+        view.width,
+        view.height
+      );
+      water.restore();
+    }
+
     water.restore();
 
-    // Only standing-water shorelines receive the generic shallow shelf.
-    // Channels deliberately do NOT trace their polygon edges anymore: that was
-    // the source of the pale rectangular ghosts at pond/stream connections.
+    // Selected shoreline shelves: partial inner edge hints rather than a full
+    // sticker outline around every pond.
     shallow.save();
     shallow.strokeStyle = "#ffffff";
     shallow.fillStyle = "#ffffff";
     shallow.lineJoin = "round";
     shallow.lineCap = "round";
-    shallow.lineWidth =
-      Math.max(
-        2,
-        view.tileSize * 0.18
-      );
 
     for (const body of geometry.waterBodies) {
-      strokePolygon(
+      const seed =
+        waterSeed(body);
+      const widthWorld =
+        body.bounds.maxX - body.bounds.minX;
+      const heightWorld =
+        body.bounds.maxY - body.bounds.minY;
+      const area =
+        widthWorld * heightWorld;
+      const shelfWidth =
+        Math.max(
+          2,
+          view.tileSize *
+            (0.12 +
+              Math.min(0.11, area * 0.008) +
+              hash01(seed, 10, 610) * 0.04)
+        );
+
+      shallow.lineWidth =
+        shelfWidth;
+      strokePolygonRuns(
         shallow,
         body.outer,
-        view
+        view,
+        (a, b, index) => {
+          const midX =
+            (a.x + b.x) * 0.5;
+          const midY =
+            (a.y + b.y) * 0.5;
+          const keep = hash01(
+            midX * 1.12 + seed,
+            midY * 0.91,
+            611 + index
+          );
+          return keep >
+            (area > 7 ? 0.20 : 0.30);
+        }
       );
-      for (const hole of body.holes || []) {
-        strokePolygon(
+
+      if (area > 3.8) {
+        shallow.lineWidth =
+          Math.max(
+            1,
+            shelfWidth * 0.52
+          );
+        strokePolygonRuns(
           shallow,
-          hole,
-          view
+          body.outer,
+          view,
+          (a, b, index) => {
+            const midX =
+              (a.x + b.x) * 0.5;
+            const midY =
+              (a.y + b.y) * 0.5;
+            const keep = hash01(
+              midX * 0.96 + seed,
+              midY * 1.07,
+              619 + index
+            );
+            return keep > 0.54;
+          }
         );
       }
     }
 
-    // A usable stepping-stone crossing implies a shallow shelf. Give that
-    // inference a quiet visual cue instead of leaving the stones unrelated to
-    // the water beneath them.
     for (
       const crossing of
       state.landscape.crossings || []
@@ -4722,7 +5000,7 @@
     shallow.save();
     shallow.globalCompositeOperation =
       "source-in";
-    shallow.fillStyle = "#83b8aa";
+    shallow.fillStyle = "#84b9ab";
     shallow.fillRect(
       0,
       0,
@@ -4890,6 +5168,8 @@
     }
 
     for (const body of geometry.waterBodies) {
+      const seed =
+        waterSeed(body);
       const topLeft =
         worldPointToPixel(
           {
@@ -4906,6 +5186,14 @@
           },
           view
         );
+      const width =
+        Math.abs(
+          bottomRight.x - topLeft.x
+        );
+      const height =
+        Math.abs(
+          bottomRight.y - topLeft.y
+        );
 
       ctx.save();
       clipToBody(
@@ -4916,22 +5204,42 @@
 
       const wash =
         ctx.createLinearGradient(
-          topLeft.x,
-          topLeft.y,
-          bottomRight.x,
-          bottomRight.y
+          lerp(
+            topLeft.x,
+            bottomRight.x,
+            0.12 +
+              hash01(seed, 1, 701) * 0.18
+          ),
+          lerp(
+            topLeft.y,
+            bottomRight.y,
+            0.18 +
+              hash01(seed, 2, 702) * 0.16
+          ),
+          lerp(
+            topLeft.x,
+            bottomRight.x,
+            0.88 -
+              hash01(seed, 3, 703) * 0.14
+          ),
+          lerp(
+            topLeft.y,
+            bottomRight.y,
+            0.82 -
+              hash01(seed, 4, 704) * 0.16
+          )
         );
       wash.addColorStop(
         0,
-        "rgba(144, 197, 184, 0.16)"
+        "rgba(166, 208, 194, 0.13)"
       );
       wash.addColorStop(
-        0.46,
-        "rgba(92, 162, 165, 0.035)"
+        0.52,
+        "rgba(92, 162, 165, 0.028)"
       );
       wash.addColorStop(
         1,
-        "rgba(29, 72, 96, 0.13)"
+        "rgba(30, 76, 96, 0.10)"
       );
       ctx.fillStyle = wash;
       ctx.fillRect(
@@ -4943,15 +5251,29 @@
           topLeft.y,
           bottomRight.y
         ) - view.tileSize,
-        Math.abs(
-          bottomRight.x -
-          topLeft.x
-        ) + view.tileSize * 2,
-        Math.abs(
-          bottomRight.y -
-          topLeft.y
-        ) + view.tileSize * 2
+        width + view.tileSize * 2,
+        height + view.tileSize * 2
       );
+
+      ctx.fillStyle =
+        `rgba(158, 205, 189, ${(0.050 + hash01(seed, 5, 705) * 0.030).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.ellipse(
+        lerp(topLeft.x, bottomRight.x, 0.28),
+        lerp(topLeft.y, bottomRight.y, 0.30),
+        Math.max(
+          view.tileSize * 0.28,
+          width * 0.16
+        ),
+        Math.max(
+          view.tileSize * 0.14,
+          height * 0.11
+        ),
+        (hash01(seed, 6, 706) - 0.5) * 0.8,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -4979,8 +5301,6 @@
         continue;
       }
 
-      // Split the centerline wherever it enters standing water. Streams get a
-      // pale moving/shallow center; ponds get their own shelf language.
       const runs = [];
       let run = [];
 
@@ -5001,13 +5321,13 @@
 
       const broadWidth =
         Math.max(
-          view.tileSize * 0.055,
+          view.tileSize * 0.070,
           Math.min(
             channel.maxWidth || 0.4,
-            0.95
+            0.96
           ) *
             view.tileSize *
-            0.30
+            0.34
         );
 
       ctx.save();
@@ -5027,7 +5347,7 @@
           );
 
         ctx.strokeStyle =
-          "rgba(125, 190, 181, 0.14)";
+          "rgba(123, 185, 173, 0.18)";
         ctx.lineWidth = broadWidth;
         ctx.beginPath();
         ctx.moveTo(
@@ -5051,14 +5371,10 @@
         }
         ctx.stroke();
 
-        if (broadWidth < view.tileSize * 0.11) {
-          continue;
-        }
-
         ctx.strokeStyle =
-          "rgba(205, 226, 207, 0.075)";
+          "rgba(214, 231, 216, 0.11)";
         ctx.lineWidth =
-          broadWidth * 0.34;
+          broadWidth * 0.30;
         ctx.stroke();
       }
 
@@ -5139,29 +5455,29 @@
         };
         const widthWorld =
           Math.max(
-            0.22,
+            0.24,
             Math.min(
-              0.66,
+              0.72,
               Math.max(
                 previous.width || 0,
                 current.width || 0,
                 channel.maxWidth || 0.3
-              ) * 0.90
+              ) * 0.96
             )
           );
         const depthWorld =
-          0.42 +
-          widthWorld * 0.42;
+          0.46 +
+          widthWorld * 0.52;
 
         const left =
           worldPointToPixel(
             {
               x:
                 boundary.x +
-                nx * widthWorld * 0.52,
+                nx * widthWorld * 0.56,
               y:
                 boundary.y +
-                ny * widthWorld * 0.52
+                ny * widthWorld * 0.56
             },
             view
           );
@@ -5170,10 +5486,10 @@
             {
               x:
                 boundary.x -
-                nx * widthWorld * 0.52,
+                nx * widthWorld * 0.56,
               y:
                 boundary.y -
-                ny * widthWorld * 0.52
+                ny * widthWorld * 0.56
             },
             view
           );
@@ -5202,7 +5518,7 @@
           view
         );
         ctx.fillStyle =
-          "rgba(137, 194, 181, 0.19)";
+          "rgba(137, 194, 181, 0.24)";
         ctx.beginPath();
         ctx.moveTo(
           left.x,
@@ -5211,51 +5527,55 @@
         ctx.quadraticCurveTo(
           middle.x +
             (tip.x - middle.x) *
-              0.48 +
+              0.44 +
             (left.x - right.x) *
-              0.10,
+              0.12,
           middle.y +
             (tip.y - middle.y) *
-              0.48 +
+              0.44 +
             (left.y - right.y) *
-              0.10,
+              0.12,
           tip.x,
           tip.y
         );
         ctx.quadraticCurveTo(
           middle.x +
             (tip.x - middle.x) *
-              0.48 -
+              0.44 -
             (left.x - right.x) *
-              0.10,
+              0.12,
           middle.y +
             (tip.y - middle.y) *
-              0.48 -
+              0.44 -
             (left.y - right.y) *
-              0.10,
+              0.12,
           right.x,
           right.y
         );
         ctx.closePath();
         ctx.fill();
 
-        ctx.fillStyle =
-          "rgba(205, 226, 207, 0.075)";
+        ctx.strokeStyle =
+          "rgba(214, 229, 214, 0.10)";
+        ctx.lineWidth =
+          Math.max(
+            1,
+            view.tileSize * 0.03
+          );
         ctx.beginPath();
-        ctx.ellipse(
-          middle.x +
-            (tip.x - middle.x) * 0.34,
-          middle.y +
-            (tip.y - middle.y) * 0.34,
-          view.tileSize *
-            widthWorld * 0.22,
-          view.tileSize *
-            widthWorld * 0.11,
-          Math.atan2(uy, ux),
-          0,
-          Math.PI * 2
+        ctx.moveTo(
+          middle.x,
+          middle.y
         );
-        ctx.fill();
+        ctx.quadraticCurveTo(
+          middle.x +
+            (tip.x - middle.x) * 0.52,
+          middle.y +
+            (tip.y - middle.y) * 0.52,
+          tip.x,
+          tip.y
+        );
+        ctx.stroke();
         ctx.restore();
       }
     }
@@ -5284,68 +5604,195 @@
         continue;
       }
 
+      const seed =
+        waterSeed(body);
+      const centerWorld = {
+        x:
+          lerp(
+            body.bounds.minX + width * 0.28,
+            body.bounds.maxX - width * 0.22,
+            hash01(seed, 1, 801)
+          ),
+        y:
+          lerp(
+            body.bounds.minY + height * 0.28,
+            body.bounds.maxY - height * 0.22,
+            hash01(seed, 2, 802)
+          )
+      };
       const center =
         worldPointToPixel(
-          {
-            x:
-              (body.bounds.minX + body.bounds.maxX) * 0.5,
-            y:
-              (body.bounds.minY + body.bounds.maxY) * 0.5
-          },
+          centerWorld,
           view
         );
-
-      const radius =
-        Math.max(width, height) *
-        view.tileSize *
-        0.60;
+      const angle =
+        (hash01(seed, 3, 803) - 0.5) * 1.0;
+      const radiusX =
+        Math.max(
+          view.tileSize * 0.34,
+          width * view.tileSize *
+            (0.18 + hash01(seed, 4, 804) * 0.10)
+        );
+      const radiusY =
+        Math.max(
+          view.tileSize * 0.20,
+          height * view.tileSize *
+            (0.14 + hash01(seed, 5, 805) * 0.08)
+        );
 
       ctx.save();
+      clipToBody(
+        ctx,
+        body,
+        view
+      );
+
+      const layers = [
+        {
+          x: center.x,
+          y: center.y,
+          rx: radiusX,
+          ry: radiusY,
+          alpha: 0.12
+        },
+        {
+          x:
+            center.x +
+            Math.cos(angle) * radiusX * 0.24,
+          y:
+            center.y +
+            Math.sin(angle) * radiusX * 0.14,
+          rx: radiusX * 0.64,
+          ry: radiusY * 0.78,
+          alpha: 0.09
+        }
+      ];
+
+      if (width * height > 5.8) {
+        layers.push({
+          x:
+            center.x -
+            Math.cos(angle) * radiusX * 0.32,
+          y:
+            center.y +
+            Math.sin(angle + Math.PI / 2) * radiusY * 0.20,
+          rx: radiusX * 0.48,
+          ry: radiusY * 0.58,
+          alpha: 0.06
+        });
+      }
+
+      for (const layer of layers) {
+        ctx.fillStyle =
+          `rgba(33, 79, 96, ${layer.alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.ellipse(
+          layer.x,
+          layer.y,
+          layer.rx,
+          layer.ry,
+          angle,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  function drawWaterEdgeEarth(
+    ctx,
+    view
+  ) {
+    const geometry =
+      state.landscape.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (const body of geometry.waterBodies) {
+      const seed =
+        waterSeed(body);
+      const area =
+        (body.bounds.maxX - body.bounds.minX) *
+        (body.bounds.maxY - body.bounds.minY);
+
+      ctx.strokeStyle =
+        "rgba(141, 126, 84, 0.16)";
+      ctx.lineWidth =
+        Math.max(
+          2,
+          view.tileSize *
+            (0.11 + Math.min(0.07, area * 0.006))
+        );
+      strokePolygonRuns(
+        ctx,
+        body.outer,
+        view,
+        (a, b, index) => {
+          const midX =
+            (a.x + b.x) * 0.5;
+          const midY =
+            (a.y + b.y) * 0.5;
+          return hash01(
+            midX * 1.14 + seed,
+            midY * 0.88,
+            821 + index
+          ) > 0.34;
+        }
+      );
+
+      ctx.strokeStyle =
+        "rgba(96, 112, 84, 0.10)";
+      ctx.lineWidth =
+        Math.max(
+          1,
+          view.tileSize *
+            (0.052 + Math.min(0.030, area * 0.002))
+        );
+      strokePolygonRuns(
+        ctx,
+        body.outer,
+        view,
+        (a, b, index) => {
+          const midX =
+            (a.x + b.x) * 0.5;
+          const midY =
+            (a.y + b.y) * 0.5;
+          return hash01(
+            midX * 0.92 + seed,
+            midY * 1.06,
+            829 + index
+          ) > 0.50;
+        }
+      );
+    }
+
+    for (const channel of geometry.channels) {
+      ctx.strokeStyle =
+        "rgba(130, 120, 84, 0.12)";
+      ctx.lineWidth =
+        Math.max(
+          1,
+          view.tileSize * 0.070
+        );
       ctx.beginPath();
       appendPolygon(
         ctx,
-        body.outer,
+        channel.polygon,
         view
       );
-      for (const hole of body.holes || []) {
-        appendPolygon(
-          ctx,
-          hole,
-          view
-        );
-      }
-      ctx.clip("evenodd");
-
-      const depth =
-        ctx.createRadialGradient(
-          center.x + view.tileSize * 0.08,
-          center.y + view.tileSize * 0.10,
-          0,
-          center.x,
-          center.y,
-          radius
-        );
-      depth.addColorStop(
-        0,
-        "rgba(37, 83, 103, 0.16)"
-      );
-      depth.addColorStop(
-        0.52,
-        "rgba(38, 88, 106, 0.08)"
-      );
-      depth.addColorStop(
-        1,
-        "rgba(38, 88, 106, 0)"
-      );
-      ctx.fillStyle = depth;
-      ctx.fillRect(
-        center.x - radius,
-        center.y - radius,
-        radius * 2,
-        radius * 2
-      );
-      ctx.restore();
+      ctx.stroke();
     }
+
+    ctx.restore();
   }
 
   function drawWater(
@@ -5395,6 +5842,11 @@
     );
     ctx.restore();
 
+    drawWaterEdgeEarth(
+      ctx,
+      view
+    );
+
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.drawImage(
@@ -5413,7 +5865,7 @@
     );
 
     ctx.save();
-    ctx.globalAlpha = 0.26;
+    ctx.globalAlpha = 0.28;
     ctx.drawImage(
       waterLayers.shallowCanvas,
       0,
@@ -5455,9 +5907,8 @@
       return;
     }
 
-    // Pooled water gets only one or two loose painted glints. They are
-    // deliberately off-axis and gently bowed so the marks feel brushed onto a
-    // surface rather than stamped as the conventional "three water lines" icon.
+    // Large pools only get a couple of hand-painted glints, not repetitive
+    // diagrammatic ripple marks.
     for (const body of geometry.waterBodies) {
       const width =
         body.bounds.maxX -
@@ -5466,7 +5917,7 @@
         body.bounds.maxY -
         body.bounds.minY;
 
-      if (width < 0.90 || height < 0.66) {
+      if (width < 0.96 || height < 0.70) {
         continue;
       }
 
@@ -5479,13 +5930,10 @@
           body.bounds.maxY) *
         0.5;
       const rippleSeed =
-        Number(
-          String(body.id || "1")
-            .replace(/\D/g, "")
-        ) || 1;
+        waterSeed(body);
       const area = width * height;
       const count =
-        area > 8.5
+        area > 10.5
           ? 2
           : 1;
 
@@ -5500,7 +5948,7 @@
 
       for (let i = 0; i < count; i++) {
         const phase =
-          now * 0.00016 +
+          now * 0.00012 +
           rippleSeed * 0.41 +
           i * 2.37;
         const breath =
@@ -5513,8 +5961,8 @@
             761
           ) - 0.5) *
             Math.min(
-              width * 0.44,
-              1.10
+              width * 0.40,
+              0.96
             );
         const y =
           centerY +
@@ -5524,10 +5972,10 @@
             762
           ) - 0.5) *
             Math.min(
-              height * 0.40,
-              0.82
+              height * 0.34,
+              0.72
             ) +
-          breath * 0.010;
+          breath * 0.008;
         const center =
           worldPointToPixel(
             { x, y },
@@ -5536,13 +5984,13 @@
         const length =
           view.tileSize *
           Math.min(
-            0.88,
-            0.42 +
+            0.72,
+            0.34 +
               hash01(
                 rippleSeed,
                 i,
                 763
-              ) * 0.36
+              ) * 0.22
           );
         const angle =
           (hash01(
@@ -5550,7 +5998,7 @@
             i,
             764
           ) - 0.5) *
-          0.34;
+          0.26;
         const ux = Math.cos(angle);
         const uy = Math.sin(angle);
         const nx = -uy;
@@ -5558,14 +6006,12 @@
         const half = length * 0.5;
         const bow =
           view.tileSize *
-          (
-            0.026 +
+          (0.020 +
             hash01(
               rippleSeed,
               i,
               765
-            ) * 0.026
-          );
+            ) * 0.016);
 
         const leftX =
           center.x - ux * half;
@@ -5577,27 +6023,25 @@
           center.y + uy * half;
 
         ctx.strokeStyle =
-          `rgba(218, 233, 216, ${(
-            0.115 +
+          `rgba(220, 235, 220, ${(
+            0.090 +
             hash01(
               rippleSeed,
               i,
               766
-            ) * 0.055 +
-            breath * 0.012
+            ) * 0.040 +
+            breath * 0.008
           ).toFixed(3)})`;
         ctx.lineWidth =
           Math.max(
             1,
             view.tileSize *
-              (
-                0.012 +
+              (0.010 +
                 hash01(
                   rippleSeed,
                   i,
                   767
-                ) * 0.005
-              )
+                ) * 0.004)
           );
         ctx.beginPath();
         ctx.moveTo(
@@ -5606,17 +6050,17 @@
         );
         ctx.bezierCurveTo(
           center.x -
-            ux * half * 0.30 +
+            ux * half * 0.28 +
             nx * bow,
           center.y -
-            uy * half * 0.30 +
+            uy * half * 0.28 +
             ny * bow,
           center.x +
-            ux * half * 0.24 +
-            nx * bow * 0.34,
+            ux * half * 0.22 +
+            nx * bow * 0.26,
           center.y +
-            uy * half * 0.24 +
-            ny * bow * 0.34,
+            uy * half * 0.22 +
+            ny * bow * 0.26,
           rightX,
           rightY
         );
@@ -5626,43 +6070,46 @@
       ctx.restore();
     }
 
-    // Creeks get only occasional small glints, aligned with their flow. Wide
-    // repeated stripes made narrow channels look diagrammatic in v40.
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle =
-      "rgba(220, 236, 224, 0.15)";
+      "rgba(220, 236, 224, 0.11)";
     ctx.lineWidth =
-      Math.max(1, view.tileSize * 0.014);
+      Math.max(1, view.tileSize * 0.012);
 
     for (const channel of geometry.channels) {
       const points = channel.centerline;
 
       if (
-        points.length < 16 ||
-        channel.maxWidth < 0.44
+        points.length < 18 ||
+        channel.maxWidth < 0.48
       ) {
         continue;
       }
 
       const first =
-        9 +
+        10 +
         Math.floor(
-          hash01(points.length, Math.round(channel.maxWidth * 100), 741) *
-          7
+          hash01(
+            points.length,
+            Math.round(channel.maxWidth * 100),
+            741
+          ) * 9
         );
 
       for (
         let i = first;
         i < points.length - 4;
-        i += 30
+        i += 36
       ) {
         const a =
           worldPointToPixel(points[i], view);
         const b =
           worldPointToPixel(
-            points[Math.min(points.length - 1, i + 3)],
+            points[
+              Math.min(points.length - 1, i + 3)
+            ],
             view
           );
         const dx = b.x - a.x;
@@ -5670,7 +6117,7 @@
         const len = Math.max(0.001, Math.hypot(dx, dy));
         const nx = -dy / len;
         const ny = dx / len;
-        const bend = view.tileSize * 0.025;
+        const bend = view.tileSize * 0.022;
 
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);

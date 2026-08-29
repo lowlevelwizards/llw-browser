@@ -2757,6 +2757,7 @@
     const centerY = p.y + tileSize * (0.82 + (patch.offsetY || 0));
     const seed = itemSeed(patch);
     const count = patch.count || 4;
+    const spread = patch.scatter || 0.16;
     const groundCell = LLW.pcg.getCell(
       patch.x,
       patch.y
@@ -2774,77 +2775,163 @@
       offsetY
     );
 
+    const shadeMix = clampValue(
+      ecologicalShade * 0.44 +
+      projectedShade * 0.96,
+      0,
+      1
+    );
+    const baseHue = Math.round(
+      103 -
+      dryGround * 24 +
+      (patch.colorShift || 0) * 10
+    );
+    const baseSaturation = Math.round(
+      31 -
+      dryGround * 5 -
+      shadeMix * 8
+    );
+    const baseLight = Math.round(
+      39 +
+      dryGround * 7 +
+      (patch.lightShift || 0) * 5 -
+      shadeMix * 14
+    );
+
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.scale(patch.scale || 1, patch.scale || 1);
 
+    const clumpWidth =
+      tileSize *
+      (0.18 + count * 0.014 + spread * 0.34);
+    const clumpHeight =
+      tileSize *
+      (0.026 + count * 0.004);
+
+    // A small base mass helps the tuft read like one painted clump rooted in
+    // the soil rather than a barcode of isolated blades.
+    ctx.fillStyle =
+      `hsla(${baseHue - 2}, ${Math.max(14, baseSaturation - 6)}%, ${Math.max(16, baseLight - 13)}%, 0.30)`;
+    ctx.beginPath();
+    ctx.ellipse(
+      0,
+      -tileSize * 0.006,
+      clumpWidth * 0.56,
+      clumpHeight * 0.78,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.fillStyle =
+      `hsla(${baseHue + 1}, ${Math.max(16, baseSaturation - 4)}%, ${Math.max(18, baseLight - 8)}%, 0.36)`;
+    ctx.beginPath();
+    ctx.ellipse(
+      -clumpWidth * 0.12,
+      -tileSize * 0.012,
+      clumpWidth * 0.34,
+      clumpHeight * 0.54,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.ellipse(
+      clumpWidth * 0.15,
+      -tileSize * 0.010,
+      clumpWidth * 0.30,
+      clumpHeight * 0.50,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    const blades = [];
     for (let i = 0; i < count; i++) {
-      const offset =
-        (i - (count - 1) / 2) *
-        tileSize * 0.060;
-      const height =
-        tileSize *
-        (0.090 + hash01(seed, i, 31) * 0.075);
-      const width =
-        tileSize *
-        (0.045 + hash01(seed, i, 32) * 0.026);
-      const bend =
-        (hash01(seed, i, 33) - 0.5) *
-        tileSize * 0.040;
+      blades.push({
+        i,
+        offset:
+          (hash01(seed, i, 31) - 0.5) *
+          tileSize * (0.18 + spread * 0.46),
+        height:
+          tileSize *
+          (0.110 + hash01(seed, i, 32) * 0.075),
+        width:
+          tileSize *
+          (0.060 + hash01(seed, i, 33) * 0.034),
+        bend:
+          (hash01(seed, i, 34) - 0.5) *
+          tileSize * 0.060,
+        lift:
+          hash01(seed, i, 35) * tileSize * 0.014
+      });
+    }
+
+    blades.sort((a, b) => a.height - b.height);
+
+    for (const blade of blades) {
+      const i = blade.i;
       const hue = Math.round(
-        105 -
-        dryGround * 26 +
-        (patch.colorShift || 0) * 12 +
-        hash01(seed, i, 34) * 10
-      );
-      const light = Math.round(
-        40 +
-        dryGround * 9 +
-        (patch.lightShift || 0) * 6 +
-        hash01(seed, i, 35) * 10
+        baseHue +
+        (hash01(seed, i, 36) - 0.5) * 9
       );
       const saturation = Math.round(
-        30 -
-        dryGround * 6 -
-        ecologicalShade * 4 -
-        projectedShade * 10
+        baseSaturation +
+        4 +
+        hash01(seed, i, 37) * 6 -
+        shadeMix * 5
       );
-      const shadedLight = Math.round(
-        light -
-        ecologicalShade * 8 -
-        projectedShade * 22
+      const tipLight = Math.round(
+        baseLight +
+        3 +
+        hash01(seed, i, 38) * 9
       );
+      const lowerLight = Math.round(
+        tipLight -
+        9 -
+        shadeMix * 7
+      );
+      const bottomY = -blade.lift;
+      const topY = -blade.height;
 
       ctx.fillStyle =
-        `hsla(${hue}, ${saturation}%, ${shadedLight}%, 0.72)`;
+        `hsla(${hue - 1}, ${Math.max(18, saturation - 5)}%, ${Math.max(16, lowerLight)}%, 0.68)`;
+      ctx.beginPath();
+      ctx.ellipse(
+        blade.offset,
+        bottomY - tileSize * 0.008,
+        blade.width * 0.66,
+        tileSize * 0.020,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
 
-      // Thick, blunt little blades: flat at the soil and rounded at the tip.
-      // The overlap makes the patch read as one bubbly tuft instead of a row
-      // of tapered needles.
+      ctx.fillStyle =
+        `hsla(${hue}, ${Math.max(20, saturation)}%, ${Math.max(20, tipLight)}%, 0.80)`;
       ctx.beginPath();
       ctx.moveTo(
-        offset - width * 0.5,
-        0
+        blade.offset - blade.width * 0.55,
+        bottomY
       );
-      ctx.lineTo(
-        offset + bend - width * 0.5,
-        -height + width * 0.52
+      ctx.bezierCurveTo(
+        blade.offset - blade.width * 0.42,
+        topY * 0.34,
+        blade.offset + blade.bend - blade.width * 0.38,
+        topY + blade.width * 0.70,
+        blade.offset + blade.bend,
+        topY
       );
-      ctx.quadraticCurveTo(
-        offset + bend - width * 0.5,
-        -height,
-        offset + bend,
-        -height
-      );
-      ctx.quadraticCurveTo(
-        offset + bend + width * 0.5,
-        -height,
-        offset + bend + width * 0.5,
-        -height + width * 0.52
-      );
-      ctx.lineTo(
-        offset + width * 0.5,
-        0
+      ctx.bezierCurveTo(
+        blade.offset + blade.bend + blade.width * 0.38,
+        topY + blade.width * 0.44,
+        blade.offset + blade.width * 0.48,
+        topY * 0.34,
+        blade.offset + blade.width * 0.55,
+        bottomY
       );
       ctx.closePath();
       ctx.fill();

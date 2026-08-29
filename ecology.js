@@ -4993,28 +4993,52 @@
         );
       }
 
+      const meadowCluster =
+        clusterField(cell, 257, 5.4);
+      const grassFocus = Math.max(
+        waterEdge * 1.02,
+        pathBoundary,
+        mudBoundary * 0.94,
+        clearingRing * 0.88,
+        propShelter * 0.92
+      );
+      const grassPatchiness =
+        clamp(
+          0.16 +
+          meadowCluster * 0.86 +
+          grassFocus * 0.78
+        );
+      const ambientPenalty =
+        grassFocus < 0.14 &&
+        meadowCluster < 0.50
+          ? 0.68
+          : 1;
+
       const grassChance =
         LLW.CONFIG
           .groundGrassTuftDensity *
         clamp(
-          0.10 +
-          openGround * 0.34 +
-          edge * 0.20 +
-          woodland * 0.10 +
-          waterEdge * 0.30 +
-          pathBoundary * 0.46 +
-          mudBoundary * 0.36 +
-          clearingRing * 0.30 +
-          propShelter * 0.20
+          0.05 +
+          openGround * 0.24 +
+          edge * 0.14 +
+          woodland * 0.08 +
+          waterEdge * 0.34 +
+          pathBoundary * 0.52 +
+          mudBoundary * 0.42 +
+          clearingRing * 0.32 +
+          propShelter * 0.24 +
+          meadowCluster * 0.22
         ) *
+        (0.34 + grassPatchiness * 0.90) *
+        ambientPenalty *
         (1 - mud * 0.52) *
         (1 - bareMud * 0.88) *
-        (1 - trail * 0.62) *
+        (1 - trail * 0.66) *
         (1 - dryBare * 0.58) *
-        (profile === "open_grass" ? 1.18 : 1) *
-        (profile === "pebbly_bank" ? 1.16 : 1) *
-        (profile === "dry_sparse" ? 0.64 : 1) *
-        (profile === "disturbed_trail" ? 0.90 : 1) *
+        (profile === "open_grass" ? 1.16 : 1) *
+        (profile === "pebbly_bank" ? 1.18 : 1) *
+        (profile === "dry_sparse" ? 0.62 : 1) *
+        (profile === "disturbed_trail" ? 0.88 : 1) *
         grassCluster;
 
       if (rng() < grassChance) {
@@ -5022,6 +5046,50 @@
           cell.x,
           cell.y
         );
+
+        const companionChance =
+          clamp(
+            grassFocus * 0.34 +
+            Math.max(
+              0,
+              meadowCluster - 0.54
+            ) * 0.58 +
+            (profile === "open_grass"
+              ? 0.08
+              : 0)
+          );
+
+        if (rng() < companionChance) {
+          spawnGrassTuft(
+            cell.x,
+            cell.y,
+            {
+              exact: true,
+              offsetX:
+                (rng() - 0.5) * 0.24,
+              offsetY:
+                (rng() - 0.5) * 0.10,
+              scale:
+                0.88 +
+                rng() * 0.30,
+              count:
+                3 +
+                Math.floor(rng() * 4),
+              scatter:
+                0.15 +
+                rng() * 0.12,
+              colorShift:
+                rng() - 0.5,
+              lightShift:
+                rng() - 0.5,
+              foreground: false,
+              source:
+                grassFocus > 0.22
+                  ? "clustered_edge"
+                  : "clustered_meadow"
+            }
+          );
+        }
       }
 
       const flowerChance =
