@@ -128,6 +128,25 @@
         hidden
       ></div>
 
+      <aside
+        id="guildSlip"
+        class="guild-slip"
+        aria-live="polite"
+        hidden
+      >
+        <div class="guild-slip-topline">
+          <span>Guild Slip</span>
+          <span id="guildSlipRequester">Marn</span>
+        </div>
+        <strong id="guildSlipTitle" class="guild-slip-title"></strong>
+        <p id="guildSlipQuote" class="guild-slip-quote"></p>
+        <p id="guildSlipHint" class="guild-slip-hint"></p>
+        <div class="guild-slip-footer">
+          <span id="guildSlipProgress"></span>
+          <span id="guildSlipStamp" class="guild-slip-stamp"></span>
+        </div>
+      </aside>
+
       <div class="dpad" aria-label="Movement controls">
         <button class="move-button up" data-dx="0" data-dy="-1" aria-label="Move up">▲</button>
         <button class="move-button left" data-dx="-1" data-dy="0" aria-label="Move left">◀︎</button>
@@ -203,6 +222,7 @@
   <script src="crossings.js"></script>
   <script src="traversal.js"></script>
   <script src="trails.js"></script>
+  <script src="guild.js"></script>
   <script src="systems.js"></script>
   <script src="fire.js"></script>
   <script src="foraging.js"></script>
