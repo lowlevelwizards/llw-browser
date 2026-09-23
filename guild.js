@@ -207,6 +207,103 @@
     };
   }
 
+  function chooseRequesterTile() {
+    const fire = state.firepit;
+    const candidates = [
+      [ 1,  0],
+      [-1,  0],
+      [ 1, -1],
+      [-1, -1],
+      [ 1,  1],
+      [-1,  1],
+      [ 0,  1],
+      [ 2,  0],
+      [-2,  0]
+    ];
+
+    function occupiedBySolid(x, y) {
+      const solidCollections = [
+        state.trees,
+        state.boulders,
+        state.fallenLogs,
+        state.stumps
+      ];
+
+      return solidCollections.some(
+        (collection) =>
+          (collection || []).some(
+            (entity) =>
+              entity.x === x &&
+              entity.y === y
+          )
+      );
+    }
+
+    function brambleAt(x, y) {
+      return (state.bramblePatches || []).some(
+        (patch) =>
+          patch.tiles.some(
+            (tile) =>
+              tile.x === x &&
+              tile.y === y
+          )
+      );
+    }
+
+    function worldItemAt(x, y) {
+      return state.items.some(
+        (item) =>
+          item.location.kind === "world" &&
+          item.location.x === x &&
+          item.location.y === y
+      );
+    }
+
+    for (const [dx, dy] of candidates) {
+      const x = fire.x + dx;
+      const y = fire.y + dy;
+
+      if (
+        x < 0 ||
+        y < 0 ||
+        x >= LLW.CONFIG.worldCols ||
+        y >= LLW.CONFIG.worldRows
+      ) {
+        continue;
+      }
+
+      if (
+        (x === state.player.x &&
+          y === state.player.y) ||
+        occupiedBySolid(x, y) ||
+        brambleAt(x, y) ||
+        worldItemAt(x, y)
+      ) {
+        continue;
+      }
+
+      const cell = LLW.pcg.getCell(x, y);
+
+      if (
+        !cell ||
+        cell.surfaceWaterDepth > 0.00001 ||
+        (cell.visibleWaterFooting || 0) >= 0.18
+      ) {
+        continue;
+      }
+
+      return { x, y };
+    }
+
+    return {
+      x: Math.min(
+        LLW.CONFIG.worldCols - 1,
+        fire.x + 1
+      ),
+      y: fire.y
+    };
+  }
+
   function requesterAdjacent() {
     const requester = state.guild.requester;
 
@@ -318,17 +415,17 @@
         }
       };
 
+      const tile =
+        chooseRequesterTile();
+
       state.guild.requester = {
         id: REQUESTER_ID,
         name: "Marn",
         role: "herbalist",
         quirk: "keeps every useful scrap of paper",
         motive: "keep the camp cupboard medicinally respectable",
-        x: Math.min(
-          LLW.CONFIG.worldCols - 1,
-          state.firepit.x + 1
-        ),
-        y: state.firepit.y
+        x: tile.x,
+        y: tile.y
       };
     },
 
