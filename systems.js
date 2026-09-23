@@ -175,6 +175,16 @@
       return false;
     }
 
+    if (
+      LLW.guild?.isRequesterTile?.(
+        nextX,
+        nextY
+      )
+    ) {
+      LLW.notify("Marn is standing there.");
+      return false;
+    }
+
     const currentBramble = LLW.getBramblePatchAt(
       player.x,
       player.y
@@ -642,10 +652,26 @@
       return null;
     }
 
+    const guildAction =
+      LLW.guild?.getAction?.() || null;
+
+    // Delivery must beat "eat" when the held mushroom is the thing being
+    // handed over. Ordinary held-item actions still beat casual conversation.
+    if (
+      guildAction?.type ===
+      "guild_settle"
+    ) {
+      return guildAction;
+    }
+
     const heldAction = getHeldUseAction();
 
     if (heldAction) {
       return heldAction;
+    }
+
+    if (guildAction) {
+      return guildAction;
     }
 
     return LLW.foraging?.getAction() || null;
@@ -674,6 +700,10 @@
     const action = LLW.getUseAction();
 
     if (!action) {
+      return;
+    }
+
+    if (LLW.guild?.perform?.(action)) {
       return;
     }
 
