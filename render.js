@@ -4185,6 +4185,161 @@
     }
   }
 
+  function drawMarn(
+    tileSize,
+    offsetX,
+    offsetY
+  ) {
+    const marn =
+      LLW.guild?.getRequester?.();
+
+    if (!marn) {
+      return;
+    }
+
+    const p = gridToPixel(
+      marn.x,
+      marn.y,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    const centerX =
+      p.x + tileSize * 0.5;
+    const groundY =
+      p.y + tileSize * 0.86;
+
+    drawShadow(
+      centerX,
+      groundY,
+      tileSize * 0.28,
+      tileSize * 0.10
+    );
+
+    ctx.save();
+
+    // Boots.
+    ctx.strokeStyle = "#594635";
+    ctx.lineWidth = Math.max(
+      2,
+      tileSize * 0.065
+    );
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(
+      centerX - tileSize * 0.07,
+      groundY - tileSize * 0.22
+    );
+    ctx.lineTo(
+      centerX - tileSize * 0.08,
+      groundY
+    );
+    ctx.moveTo(
+      centerX + tileSize * 0.07,
+      groundY - tileSize * 0.22
+    );
+    ctx.lineTo(
+      centerX + tileSize * 0.09,
+      groundY
+    );
+    ctx.stroke();
+
+    // Mismatched herbalist coat.
+    ctx.fillStyle = "#7e8750";
+    roundedCapsule(
+      centerX - tileSize * 0.18,
+      groundY - tileSize * 0.55,
+      tileSize * 0.36,
+      tileSize * 0.35,
+      tileSize * 0.12
+    );
+    ctx.fill();
+
+    ctx.fillStyle = "#9a6848";
+    ctx.beginPath();
+    ctx.moveTo(
+      centerX - tileSize * 0.17,
+      groundY - tileSize * 0.34
+    );
+    ctx.lineTo(
+      centerX - tileSize * 0.23,
+      groundY - tileSize * 0.12
+    );
+    ctx.lineTo(
+      centerX + tileSize * 0.21,
+      groundY - tileSize * 0.12
+    );
+    ctx.lineTo(
+      centerX + tileSize * 0.17,
+      groundY - tileSize * 0.34
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    // Face and crooked little cap.
+    ctx.fillStyle = "#c99572";
+    ctx.beginPath();
+    ctx.arc(
+      centerX,
+      groundY - tileSize * 0.66,
+      tileSize * 0.17,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.fillStyle = "#566343";
+    ctx.beginPath();
+    ctx.moveTo(
+      centerX - tileSize * 0.19,
+      groundY - tileSize * 0.75
+    );
+    ctx.quadraticCurveTo(
+      centerX,
+      groundY - tileSize * 0.93,
+      centerX + tileSize * 0.18,
+      groundY - tileSize * 0.74
+    );
+    ctx.quadraticCurveTo(
+      centerX + tileSize * 0.05,
+      groundY - tileSize * 0.69,
+      centerX - tileSize * 0.19,
+      groundY - tileSize * 0.75
+    );
+    ctx.fill();
+
+    // Folded Guild slip tucked in hand.
+    ctx.save();
+    ctx.translate(
+      centerX + tileSize * 0.24,
+      groundY - tileSize * 0.36
+    );
+    ctx.rotate(-0.13);
+    ctx.fillStyle = "#e6d29c";
+    ctx.fillRect(
+      -tileSize * 0.07,
+      -tileSize * 0.05,
+      tileSize * 0.14,
+      tileSize * 0.10
+    );
+    ctx.strokeStyle =
+      "rgba(91, 66, 40, 0.55)";
+    ctx.lineWidth = Math.max(
+      1,
+      tileSize * 0.012
+    );
+    ctx.strokeRect(
+      -tileSize * 0.07,
+      -tileSize * 0.05,
+      tileSize * 0.14,
+      tileSize * 0.10
+    );
+    ctx.restore();
+
+    ctx.restore();
+  }
+
   function drawPlayer(
     walkT,
     tileSize,
@@ -5189,6 +5344,12 @@
 
     drawFirepit(
       now,
+      tileSize,
+      offsetX,
+      offsetY
+    );
+
+    drawMarn(
       tileSize,
       offsetX,
       offsetY

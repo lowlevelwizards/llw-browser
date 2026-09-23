@@ -372,6 +372,13 @@
       emberTurnsRemaining: 0
     },
 
+    guild: {
+      currentSlip: null,
+      archive: [],
+      relationships: {},
+      requester: null
+    },
+
     bramblePatches: [],
 
     trees: [],
@@ -1434,6 +1441,12 @@
 
     generateMushrooms(
       occupied,
+      resolvedSeed
+    );
+
+    // Guild purpose is derived only after the physical world and its ordinary
+    // forageables exist. A slip may point at them; it never creates them.
+    LLW.guild?.resetForWorld?.(
       resolvedSeed
     );
   };

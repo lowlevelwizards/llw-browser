@@ -655,3 +655,131 @@ button {
   font-size: 0.72rem;
   white-space: nowrap;
 }
+
+
+/* ---------- first Guild slip ---------- */
+
+.guild-slip {
+  position: absolute;
+  top: 56px;
+  left: 10px;
+  z-index: 11;
+  width: min(54vw, 226px);
+  padding: 10px 11px 9px;
+  border: 1.5px solid rgba(111, 88, 55, 0.72);
+  border-radius: 3px 8px 5px 7px;
+  background:
+    linear-gradient(
+      168deg,
+      rgba(239, 222, 174, 0.97),
+      rgba(220, 197, 142, 0.96)
+    );
+  color: #40341f;
+  box-shadow:
+    0 4px 0 rgba(72, 56, 34, 0.16),
+    inset 0 0 18px rgba(126, 88, 45, 0.09);
+  transform: rotate(-0.6deg);
+  font-family: Georgia, "Times New Roman", serif;
+  pointer-events: none;
+}
+
+.guild-slip[hidden] {
+  display: none;
+}
+
+.guild-slip::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  bottom: -3px;
+  width: 22px;
+  height: 7px;
+  border-bottom: 1px solid rgba(101, 75, 43, 0.30);
+  transform: rotate(-4deg);
+}
+
+.guild-slip-topline,
+.guild-slip-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.guild-slip-topline {
+  margin-bottom: 5px;
+  color: rgba(64, 52, 31, 0.72);
+  font-family: Arial, sans-serif;
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.guild-slip-title {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.guild-slip p {
+  margin: 5px 0 0;
+}
+
+.guild-slip-quote {
+  font-size: 0.66rem;
+  font-style: italic;
+  line-height: 1.18;
+}
+
+.guild-slip-hint {
+  color: rgba(64, 52, 31, 0.82);
+  font-family: Arial, sans-serif;
+  font-size: 0.60rem;
+  font-weight: 700;
+  line-height: 1.18;
+}
+
+.guild-slip-footer {
+  margin-top: 7px;
+  padding-top: 5px;
+  border-top: 1px dashed rgba(86, 64, 38, 0.34);
+  font-family: Arial, sans-serif;
+  font-size: 0.57rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.guild-slip-stamp {
+  color: #7f4937;
+  text-align: right;
+}
+
+.guild-slip.resolved {
+  opacity: 0.88;
+  transform: rotate(0.35deg);
+}
+
+.guild-slip.resolved .guild-slip-stamp {
+  border: 1px solid rgba(127, 73, 55, 0.62);
+  padding: 2px 3px;
+  transform: rotate(-2deg);
+}
+
+@media (max-width: 390px) {
+  .guild-slip {
+    top: 52px;
+    width: min(52vw, 190px);
+    padding: 8px 9px;
+  }
+
+  .guild-slip-quote {
+    font-size: 0.61rem;
+  }
+
+  .guild-slip-hint,
+  .guild-slip-footer {
+    font-size: 0.55rem;
+  }
+}

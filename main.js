@@ -73,6 +73,27 @@
   const momentStatus =
     document.getElementById("momentStatus");
 
+  const guildSlip =
+    document.getElementById("guildSlip");
+
+  const guildSlipRequester =
+    document.getElementById("guildSlipRequester");
+
+  const guildSlipTitle =
+    document.getElementById("guildSlipTitle");
+
+  const guildSlipQuote =
+    document.getElementById("guildSlipQuote");
+
+  const guildSlipHint =
+    document.getElementById("guildSlipHint");
+
+  const guildSlipProgress =
+    document.getElementById("guildSlipProgress");
+
+  const guildSlipStamp =
+    document.getElementById("guildSlipStamp");
+
   let momentStatusTimer = null;
   const lastPocketItemIds = new Array(LLW.CONFIG.pocketCount).fill(null);
 
@@ -256,9 +277,56 @@
     updatePocketButtons();
   }
 
+  function updateGuildSlip() {
+    const view =
+      LLW.guild?.getView?.() || null;
+
+    guildSlip.hidden = !view;
+
+    if (!view) {
+      guildSlip.classList.remove("resolved");
+      return;
+    }
+
+    guildSlipRequester.textContent =
+      view.requester;
+    guildSlipTitle.textContent =
+      view.title;
+    guildSlipQuote.textContent =
+      `“${view.quote}”`;
+
+    const resolved =
+      view.status === "resolved";
+
+    guildSlip.classList.toggle(
+      "resolved",
+      resolved
+    );
+
+    if (!resolved) {
+      guildSlipHint.textContent =
+        `Marn's direction: ${view.hint}.`;
+      guildSlipProgress.textContent =
+        `Mushrooms ${view.carried} / ${view.required}`;
+      guildSlipStamp.textContent = "";
+      return;
+    }
+
+    guildSlipHint.textContent =
+      view.relationship === "knows_your_name"
+        ? "Filed. Marn knows your name now."
+        : "Filed. Marn knows your face now.";
+
+    guildSlipProgress.textContent =
+      `Delivered ${view.carried} / ${view.required}`;
+    guildSlipStamp.textContent =
+      view.stamp;
+  }
+
   function refreshUI() {
     updateStatusUI();
     updateContextActions();
+    updateGuildSlip();
   }
 
   function syncSeedUI() {
