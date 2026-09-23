@@ -1,0 +1,61 @@
+Low Level Wizards browser — v51 First Expedition / Guild Slip v0
+
+Purpose
+-------
+Cross the project from "world worth wandering" into "world gives me a reason to wander."
+
+This pass deliberately does not add a generic quest framework, rewards economy,
+waypoints, quest-item tags, combat, or procedural dialogue.
+
+What changed
+------------
+- Added Marn, one physical requester beside the camp fire.
+- Marn chooses an actually clear nearby camp tile from generated world truth.
+- Marn blocks movement like a person rather than behaving as decoration.
+- Added one Guild Slip: Fungal Procurement.
+- Interact with Marn using the existing Use/F action to take the slip.
+- The destination hint is derived from ordinary mushroom locations and their
+  existing moisture/shade ecology.
+- No waypoint is shown. The slip gives rough distance, direction, and habitat.
+- The objective asks for 3 ordinary mushrooms. They are not tagged or spawned
+  specially for the task.
+- Returning to Marn offers delivery through the existing Use/F action.
+- Delivery consumes the real mushroom instances in hand/pockets.
+- Full and partial settlement are supported.
+- Settlement records an archived slip outcome.
+- Returning at night records AFTER DARK.
+- A full delivery changes Marn from stranger -> knows_your_name.
+- A partial delivery changes Marn from stranger -> knows_your_face.
+- Added a small paper Guild Slip HUD rather than a conventional quest tracker.
+
+Architecture
+------------
+Content defines the slip and requester.
+State records current/archived Guild truth.
+guild.js owns acceptance, ecology-derived guidance, settlement, and relationship.
+systems.js only routes movement/Use into that truth.
+main.js only presents the current slip.
+render.js only presents Marn.
+
+World truth remains separate from player knowledge:
+the destination stores a real world anchor, while the player only sees a rough
+direction/habitat description.
+
+Validation
+----------
+- All changed JavaScript parses successfully.
+- Mock expedition verified:
+  take slip -> derived mushroom cluster -> carry 3 ordinary mushrooms ->
+  return -> physical mushrooms removed -> outcome archived ->
+  AFTER DARK recorded -> Marn knows your name.
+- Marn placement test verified that a blocked preferred camp tile causes Marn
+  to choose another clear nearby tile.
+
+Acceptance test
+---------------
+A run should now be able to become:
+"Marn sent me out for mushrooms. I followed their rough directions into damp
+shade, got held up by the landscape, and came back with what I could carry."
+
+That sentence should be produced by existing ecology, traversal, inventory,
+time, and fire systems rather than scripted quest staging.
