@@ -1,0 +1,62 @@
+Low Level Wizards browser — v52 Return / Preparation Loop v0
+
+Purpose
+-------
+Turn the first expedition from a one-off quest slice into the beginning of a repeatable lived rhythm:
+
+need -> knowledge -> preparation -> travel -> risk -> decision -> consequence -> return
+                                                ^                         |
+                                                |---- next preparation ---|
+
+The key design test is simple: something brought home yesterday should be physically available to matter tomorrow.
+
+What changed
+------------
+- Added one physical Provision Basket near the camp fire.
+- Basket placement chooses a clear generated camp tile and avoids Marn, water, world items, brambles, bushes, and solid props.
+- The basket is a real blocking world object rather than HUD-only storage.
+- Capacity is deliberately small: 6 individual item instances.
+- Stored items keep their ordinary item identity and move to a camp_storage location with a real slot index.
+- Standing beside the basket with a held item offers Store.
+- Standing beside a non-empty basket with an empty hand offers Take <item>.
+- Stored mushrooms, cooked mushrooms, berries, and sticks visibly peek out of the basket.
+- Storage interaction beats casual eating/foraging so food can actually be saved for later, but Guild handoffs and fire actions retain priority.
+- Completed Guild slips remain stamped/readable briefly, then file away automatically instead of permanently covering the screen.
+- The existing Guild archive remains the durable record of settlement.
+- After the first Fungal Procurement slip is filed, Marn can issue one follow-up slip: Cooked Provisions.
+- Cooked Provisions asks for 2 ordinary cooked_mushroom item instances. It does not create quest items or special resources.
+- The second request deliberately points back through existing systems: gather mushrooms -> bring/store them -> light/use the fire -> cook -> deliver.
+- After the second slip is filed, Marn returns to ordinary Talk rather than generating endless duplicate work.
+
+Architecture
+------------
+This pass is intentionally additive.
+
+return-loop.js wraps the already-working public seams instead of rewriting the large world files:
+- createWorld: initialize/place camp storage after ordinary world + Guild truth exist
+- requestMove: basket collision
+- getUseAction / performUseAction: deposit/withdraw routing with existing action precedence
+- drawScene: small diegetic basket + visible stored item peeks
+- guild public methods: one follow-up slip + delayed filing of resolved slips
+
+No generic storage manager, quest generator, crafting framework, economy, or persistence system was introduced.
+
+Validation
+----------
+- return-loop.js passes Node syntax checking.
+- A focused harness verifies:
+  * world reset places the basket
+  * held berries -> Store -> physical item location becomes camp_storage
+  * empty hand -> Take Berries -> same item instance returns to held
+  * first slip resolves -> archives -> files away
+  * second slip becomes Cooked Provisions
+  * second slip resolves -> archives -> files away
+  * no third duplicate slip is offered
+
+Acceptance test
+---------------
+A run should now be able to become:
+
+"Marn sent me for mushrooms. I came home with something extra, left it in the basket by the fire, finished the job, then later took something I'd saved while preparing for what came next."
+
+The important proof is not the basket itself. The proof is that returning home now creates material state that can shape a later decision.
