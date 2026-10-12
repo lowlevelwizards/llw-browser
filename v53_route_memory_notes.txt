@@ -1,0 +1,74 @@
+LOW LEVEL WIZARDS BROWSER — v53 ROUTE MEMORY / PLAYER-MADE TRAILS v0
+
+PURPOSE
+
+Prove that repeated travel can become familiarity without adding a navigation stat, waypoint system, or explicit road-building mode.
+
+The generated world already contains desire lines as evidence of prior use. v53 lets the player's own repeated movement enter that same physical grammar. The seed makes the woods; repeated trips begin to make this particular version of the woods yours.
+
+SCOPE
+
+- Record each completed player movement on the destination landscape cell.
+- Keep player history separately readable as playerTrailUse/playerTrailAmount.
+- Also feed that use into existing trailUse, trailAmount, and disturbance fields.
+- Begin showing faint scuffs after 2 crossings.
+- Build a clearer desire line around 4 crossings.
+- Read as an established footpath around 7 crossings.
+- Draw player routes immediately after terrain and before groundcover, so leaves/grass/props remain layered over the path.
+- Repeated travel through ordinary bushes physically pushes them lower/wider after 4 crossings.
+- A worn ordinary bush route becomes normal-speed traversal.
+- Mud remains mud.
+- Brambles remain brambles and retain their Vitality consequence.
+- Water, crossings, squeezing, rocks, trees, logs, and hard collision remain unchanged.
+
+WORLD TRUTH
+
+Player route memory is not an unlock flag. Cells remember use:
+
+  cell.playerTrailUse
+  cell.playerTrailAmount
+  cell.trailUse
+  cell.trailAmount
+  cell.disturbance
+
+Generated historical paths and player-made paths can therefore share presentation/world consequences while remaining distinguishable to later systems.
+
+TUNING DIALS
+
+VISIBLE_USE_THRESHOLD = 2
+DESIRE_LINE_THRESHOLD = 4
+FOOTPATH_THRESHOLD = 7
+BUSH_WORN_THRESHOLD = 4
+MAX_PLAYER_TRAIL_USE = 16
+
+These are intentionally fast for prototype testing. The point is to feel a route emerge over a handful of expeditions, not to grind a road into existence.
+
+ACCEPTANCE TEST
+
+1. Start a fresh world.
+2. Choose a short route away from camp and walk it out-and-back several times.
+3. After the second pass, look for faint ground scuffs.
+4. Continue reusing the same cells and verify the line becomes progressively clearer.
+5. Include an ordinary bush on the route.
+6. Cross that bush four times.
+7. Verify the bush visibly squashes/spreads and subsequent crossings use normal movement timing.
+8. Step into nearby mud and verify it is still slow.
+9. Enter brambles and verify their existing slow/Vitality behavior is unchanged.
+10. Regenerate the world and verify the player's route history resets with the new world.
+
+SUCCESS SENTENCE
+
+"I kept taking the same way into the woods. After a few trips I could see where I'd been walking, and the little bush near camp had finally been pushed into a gap I could move through easily."
+
+OUT OF SCOPE
+
+- no navigation skill
+- no minimap or waypoint trail
+- no road-building tool
+- no shovel
+- no NPC pathfinding response
+- no trail decay yet
+- no named routes
+- no automatic bramble clearing
+- no mud improvement
+- no persistent save format yet
