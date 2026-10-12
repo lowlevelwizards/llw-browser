@@ -18,7 +18,8 @@
         stepsRecorded: 0,
         visibleCells: 0,
         establishedCells: 0,
-        wornBushes: 0
+        wornBushes: 0,
+        edges: {}
       };
     }
 
@@ -89,7 +90,39 @@
     return true;
   }
 
-  function recordStep(x, y) {
+  function edgeKey(ax, ay, bx, by) {
+    const a = `${ax},${ay}`;
+    const b = `${bx},${by}`;
+    return a < b ? `${a}|${b}` : `${b}|${a}`;
+  }
+
+  function recordEdge(fromX, fromY, toX, toY) {
+    if (
+      fromX == null ||
+      fromY == null ||
+      (fromX === toX && fromY === toY)
+    ) {
+      return;
+    }
+
+    const memory = ensureState();
+    memory.edges = memory.edges || {};
+    const key = edgeKey(fromX, fromY, toX, toY);
+    const existing = memory.edges[key];
+
+    memory.edges[key] = {
+      fromX,
+      fromY,
+      toX,
+      toY,
+      uses: Math.min(
+        MAX_PLAYER_TRAIL_USE,
+        (existing?.uses || 0) + 1
+      )
+    };
+  }
+
+  function recordStep(x, y, fromX = null, fromY = null) {
     const cell = cellAt(x, y);
 
     if (!cell) {
@@ -97,6 +130,7 @@
     }
 
     const memory = ensureState();
+    recordEdge(fromX, fromY, x, y);
     const wasVisible =
       (cell.playerTrailUse || 0) >= VISIBLE_USE_THRESHOLD;
     const wasEstablished =
@@ -155,7 +189,9 @@
       ) {
         recordStep(
           state.player.x,
-          state.player.y
+          state.player.y,
+          beforeX,
+          beforeY
         );
       }
 
@@ -313,12 +349,13 @@
     ctx.restore();
   }
 
-  function drawConnection(ctx, a, b, view) {
+  function drawConnection(ctx, a, b, edge, view) {
     const start = centerForCell(a, view);
     const end = centerForCell(b, view);
     const strength = Math.min(
       routeStrength(a),
-      routeStrength(b)
+      routeStrength(b),
+      clamp((edge?.uses || 0) / FOOTPATH_THRESHOLD, 0.08, 1)
     );
     const size = view.tileSize;
     const dx = end.x - start.x;
@@ -382,29 +419,28 @@
         (cell) => [LLW.gridKey(cell.x, cell.y), cell]
       )
     );
+    const edges = Object.values(ensureState().edges || {});
 
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
 
     for (const cell of cells) {
       drawScuff(ctx, cell, view);
+    }
 
-      for (const [dx, dy] of [
-        [1, 0],
-        [0, 1],
-        [1, 1],
-        [-1, 1]
-      ]) {
-        const neighbor = byKey.get(
-          LLW.gridKey(cell.x + dx, cell.y + dy)
-        );
-
-        if (!neighbor) {
-          continue;
-        }
-
-        drawConnection(ctx, cell, neighbor, view);
+    for (const edge of edges) {
+      if ((edge.uses || 0) < VISIBLE_USE_THRESHOLD) {
+        continue;
       }
+
+      const a = byKey.get(LLW.gridKey(edge.fromX, edge.fromY));
+      const b = byKey.get(LLW.gridKey(edge.toX, edge.toY));
+
+      if (!a || !b) {
+        continue;
+      }
+
+      drawConnection(ctx, a, b, edge, view);
     }
 
     ctx.restore();
@@ -436,7 +472,8 @@
         stepsRecorded: 0,
         visibleCells: 0,
         establishedCells: 0,
-        wornBushes: 0
+        wornBushes: 0,
+        edges: {}
       };
 
       return result;
