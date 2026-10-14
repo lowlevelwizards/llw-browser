@@ -39,17 +39,12 @@
 
   function firstOpenSlot() {
     const used = new Set(
-      storedItems().map(
-        (item) => item.location.slotIndex
-      )
+      storedItems().map((item) => item.location.slotIndex)
     );
 
     for (let i = 0; i < STORAGE_CAPACITY; i++) {
-      if (!used.has(i)) {
-        return i;
-      }
+      if (!used.has(i)) return i;
     }
-
     return -1;
   }
 
@@ -62,30 +57,20 @@
     ];
 
     if (
-      collections.some(
-        (collection) =>
-          collection.some(
-            (entity) => entity.x === x && entity.y === y
-          )
+      collections.some((collection) =>
+        collection.some((entity) => entity.x === x && entity.y === y)
       )
     ) {
       return true;
     }
 
-    if (
-      (state.bushes || []).some(
-        (bush) => bush.x === x && bush.y === y
-      )
-    ) {
+    if ((state.bushes || []).some((bush) => bush.x === x && bush.y === y)) {
       return true;
     }
 
     if (
-      (state.bramblePatches || []).some(
-        (patch) =>
-          patch.tiles.some(
-            (tile) => tile.x === x && tile.y === y
-          )
+      (state.bramblePatches || []).some((patch) =>
+        patch.tiles.some((tile) => tile.x === x && tile.y === y)
       )
     ) {
       return true;
@@ -113,12 +98,7 @@
     }
 
     const requester = state.guild?.requester;
-
-    if (
-      requester &&
-      requester.x === x &&
-      requester.y === y
-    ) {
+    if (requester && requester.x === x && requester.y === y) {
       return false;
     }
 
@@ -134,13 +114,10 @@
     }
 
     const cell = LLW.pcg?.getCell?.(x, y);
-
     if (
       cell &&
-      (
-        cell.surfaceWaterDepth > 0.00001 ||
-        (cell.visibleWaterFooting || 0) >= 0.18
-      )
+      ((cell.surfaceWaterDepth || 0) > 0.00001 ||
+        (cell.visibleWaterFooting || 0) >= 0.18)
     ) {
       return false;
     }
@@ -152,30 +129,15 @@
     const storage = ensureStorageState();
     const fire = state.firepit;
     const candidates = [
-      [-2, 0],
-      [2, 0],
-      [-2, -1],
-      [2, -1],
-      [-2, 1],
-      [2, 1],
-      [0, -2],
-      [0, 2],
-      [-1, -2],
-      [1, -2],
-      [-1, 2],
-      [1, 2],
-      [-3, 0],
-      [3, 0]
+      [-2, 0], [2, 0], [-2, -1], [2, -1], [-2, 1], [2, 1],
+      [0, -2], [0, 2], [-1, -2], [1, -2], [-1, 2], [1, 2],
+      [-3, 0], [3, 0]
     ];
 
     for (const [dx, dy] of candidates) {
       const x = fire.x + dx;
       const y = fire.y + dy;
-
-      if (!tileIsClear(x, y)) {
-        continue;
-      }
-
+      if (!tileIsClear(x, y)) continue;
       storage.x = x;
       storage.y = y;
       storage.placed = true;
@@ -189,20 +151,14 @@
 
   function isPlayerAdjacent() {
     const storage = ensureStorageState();
-
-    if (!storage.placed) {
-      return false;
-    }
-
+    if (!storage.placed) return false;
     const dx = Math.abs(state.player.x - storage.x);
     const dy = Math.abs(state.player.y - storage.y);
-
     return Math.max(dx, dy) === 1;
   }
 
   function isStorageTile(x, y) {
     const storage = ensureStorageState();
-
     return Boolean(
       storage.placed &&
       storage.x === x &&
@@ -211,36 +167,21 @@
   }
 
   function getStorageAction() {
-    if (
-      state.player.moving ||
-      !isPlayerAdjacent()
-    ) {
-      return null;
-    }
+    if (state.player.moving || !isPlayerAdjacent()) return null;
 
     const held = LLW.getHeldItem?.() || null;
     const items = storedItems();
 
     if (held) {
       if (items.length >= STORAGE_CAPACITY) {
-        return {
-          type: "storage_full",
-          label: "Basket Full"
-        };
+        return { type: "storage_full", label: "Basket Full" };
       }
-
-      return {
-        type: "storage_store",
-        label: "Store",
-        item: held
-      };
+      return { type: "storage_store", label: "Store", item: held };
     }
 
     if (items.length > 0) {
       const item = items[0];
-      const name =
-        LLW.ITEM_DEFS[item.kind]?.name || "Item";
-
+      const name = LLW.ITEM_DEFS[item.kind]?.name || "Item";
       return {
         type: "storage_take",
         label: `Take ${name}`,
@@ -248,34 +189,26 @@
       };
     }
 
-    return {
-      type: "storage_empty",
-      label: "Empty Basket"
-    };
+    return { type: "storage_empty", label: "Empty Basket" };
   }
 
   function performStorageAction(action) {
-    if (!action) {
-      return false;
-    }
+    if (!action) return false;
 
     if (action.type === "storage_store") {
       const slotIndex = firstOpenSlot();
-
       if (slotIndex < 0) {
         LLW.notify("The provision basket is full.");
         return true;
       }
 
-      const name =
-        LLW.ITEM_DEFS[action.item.kind]?.name || "item";
-
+      const name = LLW.ITEM_DEFS[action.item.kind]?.name || "item";
       action.item.location = {
         kind: "camp_storage",
         storageId: STORAGE_ID,
         slotIndex
       };
-
+      LLW.persistence?.markDirty?.();
       LLW.notify(
         `Stored ${name.toLowerCase()}. ${storedItems().length}/${STORAGE_CAPACITY} spaces used.`
       );
@@ -283,14 +216,10 @@
     }
 
     if (action.type === "storage_take") {
-      if (LLW.getHeldItem?.()) {
-        return true;
-      }
-
-      const name =
-        LLW.ITEM_DEFS[action.item.kind]?.name || "item";
-
+      if (LLW.getHeldItem?.()) return true;
+      const name = LLW.ITEM_DEFS[action.item.kind]?.name || "item";
       action.item.location = LLW.heldLocation();
+      LLW.persistence?.markDirty?.();
       LLW.juice?.pulseHeld?.();
       LLW.notify(`Took ${name.toLowerCase()} from the basket.`);
       return true;
@@ -331,10 +260,7 @@
   }
 
   function scheduleResolvedSlipFiling(slip) {
-    if (!slip || slip.status !== "resolved") {
-      return;
-    }
-
+    if (!slip || slip.status !== "resolved") return;
     const slipId = slip.id;
 
     window.setTimeout(() => {
@@ -348,37 +274,25 @@
   }
 
   function installGuildCycle() {
-    if (!LLW.guild) {
-      return;
-    }
+    if (!LLW.guild) return;
 
-    const originalGetAction =
-      LLW.guild.getAction.bind(LLW.guild);
-    const originalPerform =
-      LLW.guild.perform.bind(LLW.guild);
-    const originalGetView =
-      LLW.guild.getView.bind(LLW.guild);
+    const originalGetAction = LLW.guild.getAction.bind(LLW.guild);
+    const originalPerform = LLW.guild.perform.bind(LLW.guild);
+    const originalGetView = LLW.guild.getView.bind(LLW.guild);
 
     LLW.guild.getAction = function () {
       const action = originalGetAction();
-
       if (
         action?.type === "guild_accept" &&
         state.guild.archive.length >= 2
       ) {
-        return {
-          type: "guild_after",
-          label: "Talk"
-        };
+        return { type: "guild_after", label: "Talk" };
       }
-
       return action;
     };
 
     LLW.guild.perform = function (action) {
-      if (!action) {
-        return false;
-      }
+      if (!action) return false;
 
       if (
         action.type === "guild_accept" &&
@@ -386,6 +300,7 @@
         state.guild.archive.length === 1
       ) {
         state.guild.currentSlip = makeSecondSlip();
+        LLW.persistence?.markDirty?.();
         LLW.notify(
           "Marn hands you another slip. “Two mushrooms this time. Cooked.”"
         );
@@ -393,14 +308,13 @@
       }
 
       const handled = originalPerform(action);
+      if (handled) LLW.persistence?.markDirty?.();
 
       if (
         handled &&
         state.guild.currentSlip?.status === "resolved"
       ) {
-        scheduleResolvedSlipFiling(
-          state.guild.currentSlip
-        );
+        scheduleResolvedSlipFiling(state.guild.currentSlip);
       }
 
       return handled;
@@ -409,10 +323,7 @@
     LLW.guild.getView = function () {
       const view = originalGetView();
       const slip = state.guild.currentSlip;
-
-      if (!view || !slip) {
-        return view;
-      }
+      if (!view || !slip) return view;
 
       if (slip.id === SECOND_SLIP_ID) {
         return {
@@ -428,10 +339,8 @@
 
   function installWorldReset() {
     const originalCreateWorld = LLW.createWorld;
-
     LLW.createWorld = function (...args) {
       const result = originalCreateWorld.apply(this, args);
-
       state.campStorage = {
         id: STORAGE_ID,
         name: "Provision Basket",
@@ -440,41 +349,8 @@
         y: state.firepit.y,
         placed: false
       };
-
       placeStorage();
       return result;
-    };
-  }
-
-  function installMovementBlock() {
-    const originalRequestMove = LLW.requestMove;
-
-    LLW.requestMove = function (
-      dx,
-      dy,
-      startedAt = performance.now()
-    ) {
-      const requestedX = LLW.clamp(
-        state.player.x + dx,
-        0,
-        LLW.CONFIG.worldCols - 1
-      );
-      const requestedY = LLW.clamp(
-        state.player.y + dy,
-        0,
-        LLW.CONFIG.worldRows - 1
-      );
-
-      if (isStorageTile(requestedX, requestedY)) {
-        LLW.notify("The provision basket is there.");
-        return false;
-      }
-
-      return originalRequestMove(
-        dx,
-        dy,
-        startedAt
-      );
     };
   }
 
@@ -485,15 +361,8 @@
     LLW.getUseAction = function () {
       const original = originalGetUseAction();
       const storageAction = getStorageAction();
+      if (!storageAction) return original;
 
-      if (!storageAction) {
-        return original;
-      }
-
-      // Keep deliberate hand-offs and fire work ahead of the nearby basket.
-      // Storage should, however, beat casual eating/foraging while the player
-      // is standing beside it; otherwise low Vitality makes food impossible
-      // to put away for tomorrow.
       if (
         original?.type?.startsWith?.("guild_") ||
         original?.type === "add_stick" ||
@@ -507,16 +376,11 @@
 
     LLW.performUseAction = function () {
       const action = LLW.getUseAction();
-
-      if (!action) {
-        return;
-      }
-
+      if (!action) return;
       if (action.type.startsWith("storage_")) {
         performStorageAction(action);
         return;
       }
-
       originalPerformUseAction();
     };
   }
@@ -530,81 +394,15 @@
       [0.13, 0.03],
       [0.00, 0.08]
     ];
-
     return positions.slice(0, count);
-  }
-
-  function drawStoredItemPeek(ctx, kind, x, y, s) {
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    if (kind === "stick") {
-      ctx.strokeStyle = "#6f4a2f";
-      ctx.lineWidth = Math.max(1.5, s * 0.08);
-      ctx.beginPath();
-      ctx.moveTo(x - s * 0.18, y + s * 0.08);
-      ctx.lineTo(x + s * 0.17, y - s * 0.12);
-      ctx.stroke();
-      ctx.restore();
-      return;
-    }
-
-    if (kind === "berries") {
-      ctx.fillStyle = "#7b355d";
-      for (const [dx, dy] of [[-0.08, 0], [0.06, -0.04], [0.08, 0.08]]) {
-        ctx.beginPath();
-        ctx.arc(
-          x + dx * s,
-          y + dy * s,
-          s * 0.08,
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-      }
-      ctx.restore();
-      return;
-    }
-
-    ctx.fillStyle =
-      kind === "cooked_mushroom"
-        ? "#9b5b3f"
-        : "#c86c63";
-    ctx.beginPath();
-    ctx.ellipse(
-      x,
-      y,
-      s * 0.18,
-      s * 0.10,
-      0,
-      Math.PI,
-      Math.PI * 2
-    );
-    ctx.fill();
-
-    ctx.fillStyle = "#e7d3aa";
-    ctx.fillRect(
-      x - s * 0.035,
-      y - s * 0.01,
-      s * 0.07,
-      s * 0.17
-    );
-    ctx.restore();
   }
 
   function drawStorage() {
     const storage = ensureStorageState();
-
-    if (!storage.placed) {
-      return;
-    }
+    if (!storage.placed) return;
 
     const canvas = document.getElementById("gameCanvas");
-
-    if (!canvas) {
-      return;
-    }
+    if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     const width = canvas.clientWidth;
@@ -613,18 +411,13 @@
     const rows = LLW.camera.getRows();
     const tileSize = Math.max(
       1,
-      Math.floor(
-        Math.min(width / columns, height / rows)
-      )
+      Math.floor(Math.min(width / columns, height / rows))
     );
     const mapWidth = tileSize * columns;
     const mapHeight = tileSize * rows;
     const offsetX = Math.floor((width - mapWidth) / 2);
     const offsetY = Math.floor((height - mapHeight) / 2);
-    const view = LLW.camera.worldToView(
-      storage.x,
-      storage.y
-    );
+    const view = LLW.camera.worldToView(storage.x, storage.y);
 
     if (
       view.x < -1 ||
@@ -635,17 +428,10 @@
       return;
     }
 
-    const x =
-      offsetX +
-      view.x * tileSize +
-      tileSize * 0.5;
-    const y =
-      offsetY +
-      view.y * tileSize +
-      tileSize * 0.70;
+    const x = offsetX + view.x * tileSize + tileSize * 0.5;
+    const y = offsetY + view.y * tileSize + tileSize * 0.70;
 
     ctx.save();
-
     ctx.fillStyle = "rgba(54, 63, 48, 0.22)";
     ctx.beginPath();
     ctx.ellipse(
@@ -687,7 +473,6 @@
 
     ctx.strokeStyle = "rgba(101, 65, 34, 0.66)";
     ctx.lineWidth = Math.max(1, tileSize * 0.025);
-
     for (let i = -2; i <= 2; i++) {
       const yy = y + tileSize * (0.03 + i * 0.045);
       ctx.beginPath();
@@ -698,12 +483,11 @@
 
     const items = storedItems();
     const positions = itemPeekPositions(items.length);
-
     for (let i = 0; i < items.length; i++) {
       const [dx, dy] = positions[i];
-      drawStoredItemPeek(
+      LLW.itemViews?.drawPeek?.(
         ctx,
-        items[i].kind,
+        items[i],
         x + dx * tileSize,
         y + dy * tileSize,
         tileSize
@@ -715,7 +499,6 @@
 
   function installRendererHook() {
     const originalDrawScene = LLW.drawScene;
-
     LLW.drawScene = function (...args) {
       const result = originalDrawScene.apply(this, args);
       drawStorage();
@@ -734,7 +517,6 @@
 
   installGuildCycle();
   installWorldReset();
-  installMovementBlock();
   installUseAction();
   installRendererHook();
 })();
