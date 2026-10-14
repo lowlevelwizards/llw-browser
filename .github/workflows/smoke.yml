@@ -1,0 +1,28 @@
+name: Smoke checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax-check browser scripts
+        run: |
+          find . -maxdepth 1 -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Run runtime smoke test
+        run: node tests/v58_health_smoke.js
+
+      - name: Run persistence smoke test
+        run: node tests/v58_persistence_smoke.js

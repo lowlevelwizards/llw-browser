@@ -1,0 +1,65 @@
+Low Level Wizards Browser — v58.1 Clean Seams Pass
+
+Purpose
+-------
+Cash in the safest code-health improvements made possible by v58 before adding darkness and carried light. This is a behavior-preserving maintenance pass, not a gameplay build.
+
+Implemented
+-----------
+1. Automatic smoke CI
+   - GitHub Actions runs top-level JavaScript syntax checks.
+   - Runs the runtime/spatial smoke harness.
+   - Runs the persistence v2/migration smoke harness.
+
+2. Signature-driven HUD refresh
+   - Canvas rendering remains requestAnimationFrame-driven.
+   - HUD polling is throttled to 100 ms and each region skips DOM writes when its state signature is unchanged.
+   - Direct button/keyboard interactions force an immediate refresh so controls still feel responsive.
+   - Vitality DOM is no longer recreated every display frame.
+   - Pocket item classes are tracked generically through item presentation metadata.
+
+3. Runtime ownership cleanup
+   - The unified physical movement solver now lives in traversal.js.
+   - Direct route-memory snapshot restoration now lives in route-memory.js.
+   - perf instrumentation now lives in perf.js.
+   - render culling/water-cache runtime behavior now lives in render-runtime.js.
+   - health.js is no longer loaded and is removed.
+   - runtime-finalize.js is a small temporary compatibility seam that reasserts the owned traversal solver after older feature decorators have loaded.
+
+4. Read-only render culling
+   - v58 temporarily replaced state.trees/state.bushes/etc. with culled arrays during a frame.
+   - v58.1 keeps the authoritative arrays in backing storage and exposes culled views through getters only while drawing.
+   - Renderer code sees the same short lists, but the simulation arrays are not overwritten or spliced by rendering.
+
+5. Item presentation registry
+   - item-views.js owns presentation recipes for container peeks, pocket classes, and custom world/held visuals.
+   - Cloth rendering and pocket styling moved out of containers.js.
+   - Camp and ruin baskets both ask the registry to draw their contents.
+   - Adding a future torch no longer requires another basket-specific item renderer.
+
+6. Physical blocker cleanup
+   - World baskets no longer inject temporary fake boulders to participate in movement.
+   - Camp storage no longer intercepts requestMove to hard-block its tile.
+   - Both rely on the spatial footprint layer introduced in v58.
+
+Deliberately deferred
+---------------------
+- Use-action provider/priority registry.
+- Removal of legacy weather/container side-save compatibility keys.
+- Deleting old dormant ruin traversal helper code from landmarks.js.
+- Full static/dynamic water split.
+- Cached projected-sun shade field.
+- Large file splitting.
+
+These remain useful follow-ups, but combining them with this seam migration would expand the regression surface without materially improving the darkness/torch foundation.
+
+Acceptance criteria
+-------------------
+- Existing v58 saves still load.
+- Trees, rocks, logs, ruins, world baskets, and camp storage still obey the same physical movement/squeeze grammar.
+- Route wear restores directly after reload.
+- Cloth can move between ruin basket, player, ground, and camp storage without render-time state mutation.
+- HUD updates immediately after actions but does not rewrite unchanged DOM at display refresh rate.
+- Local rendering still culls distant world props while authoritative world collections remain intact.
+- PR smoke checks are green.
+- No intentional gameplay rebalance or visual redesign.

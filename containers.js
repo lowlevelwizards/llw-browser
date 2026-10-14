@@ -116,9 +116,7 @@
     ];
 
     return neighbors.some(([dx, dy]) => {
-      const x = anchor.x + dx;
-      const y = anchor.y + dy;
-      const nearby = LLW.pcg?.getCell?.(x, y);
+      const nearby = LLW.pcg?.getCell?.(anchor.x + dx, anchor.y + dy);
       return Boolean(
         nearby &&
         (nearby.surfaceWaterDepth || 0) <= 0.00001 &&
@@ -312,15 +310,10 @@
         LLW.notify?.("No room on you for what is in the basket.");
         return true;
       }
-      const from = {
-        kind: "world",
-        x: action.container.x,
-        y: action.container.y
-      };
       action.item.location = destination;
       LLW.juice?.flyItem?.(
         action.item,
-        from,
+        { kind: "world", x: action.container.x, y: action.container.y },
         { kind: "player" },
         { bounce: 0.32 }
       );
@@ -334,6 +327,7 @@
           ? "Found a cloth scrap."
           : `Took ${name.toLowerCase()} from the old basket.`
       );
+      LLW.persistence?.markDirty?.();
       LLW.persistence?.saveNow?.(true);
       return true;
     }
@@ -354,6 +348,7 @@
       );
       spendInteractionTurn();
       LLW.notify?.(`Left ${name.toLowerCase()} in the old basket.`);
+      LLW.persistence?.markDirty?.();
       LLW.persistence?.saveNow?.(true);
       return true;
     }
@@ -397,43 +392,6 @@
     };
   }
 
-  function blockerObjects() {
-    return getAll().map((container) => ({
-      id: `__world_container_blocker_${container.id}`,
-      x: container.x,
-      y: container.y,
-      offsetX: container.worldX - (container.x + 0.5),
-      offsetY: container.worldY - (container.y + 0.72),
-      scale: BASKET_RADIUS / 0.22,
-      widthScale: 1,
-      heightScale: 1,
-      __worldContainerBlocker: true
-    }));
-  }
-
-  function withNativeTraversalBlockers(callback) {
-    const blockers = blockerObjects();
-    state.boulders.push(...blockers);
-    try {
-      return callback();
-    } finally {
-      state.boulders = state.boulders.filter(
-        (boulder) => !boulder.__worldContainerBlocker
-      );
-    }
-  }
-
-  function installTraversal() {
-    if (!LLW.traversal) return;
-    const move = LLW.traversal.evaluateMove.bind(LLW.traversal);
-    const intent = LLW.traversal.evaluateIntentMove.bind(LLW.traversal);
-
-    LLW.traversal.evaluateMove = (...args) =>
-      withNativeTraversalBlockers(() => move(...args));
-    LLW.traversal.evaluateIntentMove = (...args) =>
-      withNativeTraversalBlockers(() => intent(...args));
-  }
-
   function layout() {
     const canvas = document.getElementById("gameCanvas");
     if (!canvas) return null;
@@ -441,7 +399,10 @@
     const height = canvas.clientHeight;
     const columns = LLW.camera.getColumns();
     const rows = LLW.camera.getRows();
-    const tileSize = Math.max(1, Math.floor(Math.min(width / columns, height / rows)));
+    const tileSize = Math.max(
+      1,
+      Math.floor(Math.min(width / columns, height / rows))
+    );
     return {
       canvas,
       ctx: canvas.getContext("2d"),
@@ -457,77 +418,6 @@
       x: view.offsetX + p.x * view.tileSize,
       y: view.offsetY + p.y * view.tileSize
     };
-  }
-
-  function drawCloth(ctx, x, y, s, rotation = -0.12, alpha = 1) {
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    ctx.translate(x, y);
-    ctx.rotate(rotation);
-    ctx.fillStyle = "#9b6758";
-    ctx.strokeStyle = "rgba(84, 57, 51, 0.58)";
-    ctx.lineWidth = Math.max(1, s * 0.035);
-    ctx.beginPath();
-    ctx.moveTo(-s * 0.23, -s * 0.14);
-    ctx.lineTo(s * 0.18, -s * 0.18);
-    ctx.lineTo(s * 0.25, s * 0.12);
-    ctx.lineTo(s * 0.04, s * 0.20);
-    ctx.lineTo(-s * 0.22, s * 0.12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(223, 188, 151, 0.34)";
-    ctx.lineWidth = Math.max(1, s * 0.018);
-    ctx.beginPath();
-    ctx.moveTo(-s * 0.13, -s * 0.05);
-    ctx.lineTo(s * 0.13, s * 0.03);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(75, 51, 45, 0.45)";
-    for (const dy of [-0.10, -0.02, 0.07]) {
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.21, s * dy);
-      ctx.lineTo(-s * 0.27, s * (dy + 0.03));
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawItemPeek(ctx, item, x, y, s) {
-    if (item.kind === "cloth_scrap") {
-      drawCloth(ctx, x, y, s * 0.72, (item.id.length % 7 - 3) * 0.055);
-      return;
-    }
-    if (item.kind === "stick") {
-      ctx.save();
-      ctx.strokeStyle = "#6f4a2f";
-      ctx.lineCap = "round";
-      ctx.lineWidth = Math.max(1.5, s * 0.07);
-      ctx.beginPath();
-      ctx.moveTo(x - s * 0.16, y + s * 0.07);
-      ctx.lineTo(x + s * 0.16, y - s * 0.09);
-      ctx.stroke();
-      ctx.restore();
-      return;
-    }
-    if (item.kind === "berries") {
-      ctx.save();
-      ctx.fillStyle = "#79395f";
-      for (const [dx, dy] of [[-0.06, 0], [0.05, -0.04], [0.07, 0.06]]) {
-        ctx.beginPath();
-        ctx.arc(x + dx * s, y + dy * s, s * 0.055, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-      return;
-    }
-    ctx.save();
-    ctx.fillStyle = item.kind === "cooked_mushroom" ? "#9b5b3f" : "#c86c63";
-    ctx.beginPath();
-    ctx.ellipse(x, y, s * 0.13, s * 0.07, 0, Math.PI, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#e7d3aa";
-    ctx.fillRect(x - s * 0.025, y - s * 0.005, s * 0.05, s * 0.11);
-    ctx.restore();
   }
 
   function drawBasket(ctx, container, view) {
@@ -547,7 +437,12 @@
     ctx.arc(p.x, p.y - s * 0.07, s * 0.21, Math.PI * 1.05, Math.PI * 1.95);
     ctx.stroke();
 
-    const wicker = ctx.createLinearGradient(p.x, p.y - s * 0.10, p.x, p.y + s * 0.18);
+    const wicker = ctx.createLinearGradient(
+      p.x,
+      p.y - s * 0.10,
+      p.x,
+      p.y + s * 0.18
+    );
     wicker.addColorStop(0, "#b58b53");
     wicker.addColorStop(1, "#765238");
     ctx.fillStyle = wicker;
@@ -574,7 +469,7 @@
 
     const positions = [[-0.10, -0.06], [0.10, -0.075]];
     items.slice(0, 2).forEach((item, index) => {
-      drawItemPeek(
+      LLW.itemViews?.drawPeek?.(
         ctx,
         item,
         p.x + positions[index][0] * s,
@@ -584,25 +479,6 @@
     });
 
     ctx.restore();
-  }
-
-  function drawWorldCloth(ctx, view) {
-    const s = view.tileSize;
-    for (const item of state.items || []) {
-      if (item.kind !== "cloth_scrap" || item.location?.kind !== "world") continue;
-      const point = {
-        x: item.location.x + 0.5,
-        y: item.location.y + 0.78
-      };
-      const p = worldToScreen(point.x, point.y, view);
-      ctx.save();
-      ctx.fillStyle = "rgba(57, 72, 59, 0.12)";
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y + s * 0.09, s * 0.22, s * 0.07, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      drawCloth(ctx, p.x, p.y, s * 0.70, (item.id.length % 5 - 2) * 0.08);
-    }
   }
 
   function drawFrontBasketWithLighting(ctx, container, view) {
@@ -619,24 +495,12 @@
     ctx.restore();
   }
 
-  function drawHeldCloth(ctx, view) {
-    const held = LLW.getHeldItem?.();
-    if (held?.kind !== "cloth_scrap") return;
-    const player = worldToScreen(
-      state.player.renderX + 0.5,
-      state.player.renderY + 0.78,
-      view
-    );
-    drawCloth(ctx, player.x + view.tileSize * 0.28, player.y - view.tileSize * 0.18, view.tileSize * 0.50, -0.22);
-  }
-
   function installRendering() {
     const renderer = LLW.landscapeRenderer;
     if (renderer?.drawTerrain) {
       const terrain = renderer.drawTerrain.bind(renderer);
       renderer.drawTerrain = function (ctx, view) {
         terrain(ctx, view);
-        drawWorldCloth(ctx, view);
         const playerSortY = state.player.renderY + 0.86;
         for (const container of getAll()) {
           if (container.worldY <= playerSortY) {
@@ -649,85 +513,18 @@
     if (LLW.drawScene) {
       const scene = LLW.drawScene;
       LLW.drawScene = function (now) {
-        const hiddenCampCloth = (state.items || []).filter(
-          (item) => item.kind === "cloth_scrap" && item.location?.kind === "camp_storage"
-        );
-        if (hiddenCampCloth.length) {
-          const hidden = new Set(hiddenCampCloth.map((item) => item.id));
-          state.items = state.items.filter((item) => !hidden.has(item.id));
-        }
-        try {
-          scene(now);
-        } finally {
-          if (hiddenCampCloth.length) {
-            state.items.push(...hiddenCampCloth);
-          }
-        }
-
+        const result = scene(now);
         const view = layout();
-        if (!view?.ctx) return;
+        if (!view?.ctx) return result;
         const playerSortY = state.player.renderY + 0.86;
         for (const container of getAll()) {
           if (container.worldY > playerSortY) {
             drawFrontBasketWithLighting(view.ctx, container, view);
           }
         }
-        drawHeldCloth(view.ctx, view);
-
-        if (hiddenCampCloth.length && state.campStorage?.placed) {
-          const p = worldToScreen(
-            state.campStorage.x + 0.5,
-            state.campStorage.y + 0.67,
-            view
-          );
-          hiddenCampCloth.slice(0, 3).forEach((item, index) => {
-            drawCloth(
-              view.ctx,
-              p.x + (index - 1) * view.tileSize * 0.10,
-              p.y - view.tileSize * (0.10 + index * 0.015),
-              view.tileSize * 0.45,
-              (index - 1) * 0.12
-            );
-          });
-        }
+        return result;
       };
     }
-  }
-
-  function installPocketStyle() {
-    if (!document?.head) return;
-    const style = document.createElement("style");
-    style.textContent = `
-      .pocket-slot.item-cloth_scrap[aria-label*="Cloth Scrap"] {
-        position: relative;
-      }
-      .pocket-slot.item-cloth_scrap[aria-label*="Cloth Scrap"]::after {
-        content: "";
-        position: absolute;
-        left: 28%;
-        top: 31%;
-        width: 44%;
-        height: 34%;
-        background: #9b6758;
-        border: 1px solid rgba(84,57,51,.65);
-        border-radius: 18% 30% 16% 28%;
-        transform: rotate(-8deg);
-        box-shadow: inset 0 1px 0 rgba(235,201,166,.28);
-        pointer-events: none;
-      }
-      .pocket-slot.item-cloth_scrap[aria-label*="Cloth Scrap"]::before {
-        content: "";
-        position: absolute;
-        left: 37%;
-        top: 44%;
-        width: 27%;
-        border-top: 1px solid rgba(225,190,154,.42);
-        transform: rotate(6deg);
-        z-index: 2;
-        pointer-events: none;
-      }
-    `;
-    document.head.appendChild(style);
   }
 
   function installWorldLifecycle() {
@@ -763,6 +560,7 @@
       }
 
       startupCreateComplete = true;
+      LLW.persistence?.markDirty?.();
       LLW.persistence?.saveNow?.(true);
       return result;
     };
@@ -787,9 +585,7 @@
   };
 
   state.worldContainers = state.worldContainers || [];
-  installTraversal();
   installUseActions();
-  installPocketStyle();
   installRendering();
   installWorldLifecycle();
 })();

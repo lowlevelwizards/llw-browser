@@ -17,10 +17,15 @@ global.LLW = {
     squeezeMoveTurns: 2,
     squeezeMoveDuration: 220,
     normalMoveTurns: 1,
-    normalMoveDuration: 120
+    normalMoveDuration: 120,
+    slowMoveTurns: 2,
+    slowMoveDuration: 180,
+    crossingMoveTurns: 2,
+    mudMovementThreshold: 0.5
   },
   state: {
-    landscape: { seed: "v58-smoke", cells: [] },
+    game: { turn: 0 },
+    landscape: { seed: "v58.1-smoke", cells: [], geometry: null },
     trees: [
       { id: "near", x: 2, y: 1, scale: 1, trunkWidth: 1 },
       { id: "far", x: 20, y: 20, scale: 1, trunkWidth: 1 }
@@ -61,27 +66,38 @@ global.LLW = {
         kind: "world_container",
         type: "circle",
         x: 7.5,
-        y: 7.72,
+        y: 7.78,
         radius: 0.12,
         entity: { id: "basket" }
       }];
     }
   },
-  crossings: { isCrossingCell() { return false; } },
+  crossings: {
+    isCrossingCell() { return false; },
+    pointAllowed() { return false; }
+  },
   pcg: {
     getCell(x, y) {
+      if (x < 0 || y < 0 || x >= 24 || y >= 32) return null;
       return LLW.state.landscape.cells[y * 24 + x] || null;
     }
   },
-  terrain: { getBushAt() { return null; } },
-  traversal: {
-    pointInWater() { return false; },
-    canSqueeze() { return true; },
-    getTerrainMoveProfile() {
-      return { turnCost: 1, duration: 120, reason: null };
-    }
+  terrain: {
+    getBushAt(x, y) {
+      return LLW.state.bushes.find((bush) => bush.x === x && bush.y === y) || null;
+    },
+    getBramblePatchAt() { return null; }
   },
-  routeMemory: {},
+  time: {
+    getDayNumber() { return 1; },
+    onNewDay() {}
+  },
+  landscapeRenderer: { drawTerrain() {} },
+  updatePlayer() {
+    LLW.__seenSimulationTrees = LLW.state.trees.map((tree) => tree.id);
+    return 0;
+  },
+  gridKey(x, y) { return `${x},${y}`; },
   camera: {
     isOverview() { return false; },
     getVisibleWorldBounds(padding = 1) {
@@ -94,6 +110,7 @@ global.LLW = {
     }
   },
   drawScene() {
+    LLW.updatePlayer(1000);
     LLW.__seenTrees = LLW.state.trees.map((tree) => tree.id);
   },
   createWorld() { return true; }
@@ -104,6 +121,9 @@ for (let y = 0; y < 32; y++) {
     LLW.state.landscape.cells.push({
       x,
       y,
+      surfaceWaterDepth: 0,
+      visibleWaterFooting: 0,
+      mudAmount: 0,
       trailAmount: 0,
       trailUse: 0,
       disturbance: 0
@@ -111,8 +131,12 @@ for (let y = 0; y < 32; y++) {
   }
 }
 
+require(path.join(__dirname, "..", "perf.js"));
 require(path.join(__dirname, "..", "spatial.js"));
-require(path.join(__dirname, "..", "health.js"));
+require(path.join(__dirname, "..", "traversal.js"));
+require(path.join(__dirname, "..", "route-memory.js"));
+require(path.join(__dirname, "..", "runtime-finalize.js"));
+require(path.join(__dirname, "..", "render-runtime.js"));
 
 const footprints = LLW.spatial.getBlockingFootprints();
 assert(footprints.some((footprint) => footprint.kind === "tree"));
@@ -120,10 +144,14 @@ assert(footprints.some((footprint) => footprint.kind === "ruin_wall"));
 assert(footprints.some((footprint) => footprint.kind === "world_container"));
 
 const basketHit = LLW.spatial.collidesAlongPath(
-  [{ x: 7.0, y: 7.72 }, { x: 8.0, y: 7.72 }],
+  [{ x: 7.0, y: 7.78 }, { x: 8.0, y: 7.78 }],
   0.18
 );
 assert.equal(basketHit.kind, "world_container");
+
+const blockedMove = LLW.traversal.evaluateMove(6, 7, 7, 7);
+assert.equal(blockedMove.allowed, false);
+assert.equal(blockedMove.reason, "world_container");
 
 LLW.routeMemory.restoreSnapshot({
   stepsRecorded: 17,
@@ -137,8 +165,10 @@ assert(restored.playerTrailAmount > 0);
 assert.equal(LLW.state.routeMemory.stepsRecorded, 17);
 
 LLW.drawScene(1000);
+assert.deepEqual(LLW.__seenSimulationTrees, ["near", "far"]);
 assert.deepEqual(LLW.__seenTrees, ["near"]);
 assert.equal(LLW.state.trees.length, 2);
+assert.equal(LLW.renderScope.active, false);
 assert(LLW.perf.snapshot().frame.samples >= 1);
 
-console.log("v58 health smoke: ok");
+console.log("v58.1 clean seams smoke: ok");
