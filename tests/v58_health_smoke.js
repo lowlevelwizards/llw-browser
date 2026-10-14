@@ -93,7 +93,10 @@ global.LLW = {
     onNewDay() {}
   },
   landscapeRenderer: { drawTerrain() {} },
-  updatePlayer() {},
+  updatePlayer() {
+    LLW.__seenSimulationTrees = LLW.state.trees.map((tree) => tree.id);
+    return 0;
+  },
   gridKey(x, y) { return `${x},${y}`; },
   camera: {
     isOverview() { return false; },
@@ -107,6 +110,7 @@ global.LLW = {
     }
   },
   drawScene() {
+    LLW.updatePlayer(1000);
     LLW.__seenTrees = LLW.state.trees.map((tree) => tree.id);
   },
   createWorld() { return true; }
@@ -161,6 +165,7 @@ assert(restored.playerTrailAmount > 0);
 assert.equal(LLW.state.routeMemory.stepsRecorded, 17);
 
 LLW.drawScene(1000);
+assert.deepEqual(LLW.__seenSimulationTrees, ["near", "far"]);
 assert.deepEqual(LLW.__seenTrees, ["near"]);
 assert.equal(LLW.state.trees.length, 2);
 assert.equal(LLW.renderScope.active, false);
