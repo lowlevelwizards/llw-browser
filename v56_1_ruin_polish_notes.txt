@@ -1,0 +1,76 @@
+Low Level Wizards Browser — v56.1 Ruin Traversal + Visual Cohesion Pass
+
+PURPOSE
+Make the first procedural ruins trustworthy to both the eye and the feet before adding loot containers.
+
+PLAYER-REPORTED ISSUES
+- Ruin walls visibly popped lighter/darker as the player changed position around them.
+- Some visually plausible gaps hard-blocked movement instead of allowing the existing squeeze behavior.
+- The old floor read as a translucent 3x3 tile overlay rather than buried architectural remains.
+
+IMPLEMENTED
+
+1. SINGLE-PASS WALL APPEARANCE
+- v56 drew all walls in the terrain pass, then drew walls in front of the player a second time after the scene.
+- v56.1 splits walls into back/front groups so every wall is painted exactly once per frame.
+- Back walls render with the buried ground layer.
+- Front walls render after the player and receive the current time-of-day tint so they do not jump bright when they move in front.
+- Weather atmosphere still applies afterward through the existing v55 wrapper.
+
+2. RUIN-AWARE SQUEEZE MOVEMENT
+- A visible ruin gap is no longer treated as a simple post-hoc veto.
+- If the ordinary traversal result is allowed but a ruin wall blocks the normal body radius, the landmark layer now tests the same style of micro-path offsets using playerSqueezeRadius.
+- Candidate squeeze paths also reject water, trees, boulders, fallen logs, and ruin masonry.
+- Successful ruin squeezes use the existing two-turn squeeze timing/animation contract.
+- Solid masonry still returns: “The old stone wall blocks the way.”
+- Wall collision radius was reduced slightly relative to the painted stone so invisible collision does not extend beyond what the player sees.
+
+3. ACCESSIBILITY VALIDATION
+- Every authored ruin candidate is checked for an outside -> entrance -> interior path at squeeze clearance.
+- If a template/rotation fails validation, another deterministic template/rotation is tried.
+- Existing stable entrance/container/light/interior anchors remain.
+
+4. BROKEN FLAGSTONE FLOOR
+- Removed the generic 3x3 rounded translucent floor cells.
+- Each ruin template now owns 6–7 sparse floor fragments that rotate with the building.
+- Fragments are irregular polygons with chipped silhouettes, small cracks, mossy edges, and stronger material opacity.
+- Large portions of the original floor are deliberately missing.
+- Floor remains under ordinary groundcover so grass/moss can interrupt the surviving stones.
+
+5. WALL MATERIAL POLISH
+- Wall ends are no longer perfectly rounded strokes.
+- Small broken end stones help surviving masonry read as physical stonework.
+- Moss/highlight treatment remains restrained and uses the existing ruin palette.
+
+UNCHANGED / SCOPE PROTECTED
+- same seed-derived landmark placement
+- 1 primary ruin, optional second ruin
+- historical trail relationship
+- crossing/trail generation blockers
+- stable future container/light sockets
+- no baskets or cloth scraps yet
+- no loot tables
+- no darkness or torches
+- no discovery/map UI
+- no dungeon system
+
+VALIDATION
+- node --check landmarks.js passes.
+- Focused harness verifies:
+  - same seed -> identical ruin data
+  - different seed -> different landmark result
+  - every generated test ruin passes access validation
+  - floor fragments exist instead of floor tiles
+  - solid wall moves still block
+  - at least one plausible ruin opening resolves as squeeze movement
+  - future container/light anchors remain present
+
+PLAYTEST ACCEPTANCE
+1. Walk around a ruin and watch the same wall while crossing in front of/behind it: it should no longer visibly double-darken or double-lighten.
+2. Try every obvious gap. Wide gaps should feel ordinary; narrow person-sized gaps should use the squeeze movement; intact masonry should block.
+3. Confirm the broken-foundation/crooked variants can actually be entered.
+4. Look at the ruin in overview and close-up: the floor should read as scattered buried flagstones, not a 3x3 game grid.
+5. Confirm grass and moss still grow across/around surviving floor fragments.
+
+NEXT BUILD BOUNDARY
+If this pass feels physically honest in-browser, proceed to v57: physical world containers + cloth scraps, using the existing landmark container anchors and physical item-location model.
