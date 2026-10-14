@@ -68,6 +68,27 @@
     return result;
   }
 
+  function installSimulationEscape() {
+    if (typeof LLW.updatePlayer !== "function") return;
+    const updatePlayer = LLW.updatePlayer;
+
+    LLW.updatePlayer = function (...args) {
+      if (!activeView) {
+        return updatePlayer.apply(this, args);
+      }
+
+      // drawScene advances movement before it paints. Simulation must always
+      // see the authoritative world, never the render-only culled view.
+      const renderView = activeView;
+      activeView = null;
+      try {
+        return updatePlayer.apply(this, args);
+      } finally {
+        activeView = renderView;
+      }
+    };
+  }
+
   function installRenderCullingAndPerf() {
     if (!LLW.drawScene) return;
     const drawScene = LLW.drawScene;
@@ -162,6 +183,7 @@
   };
 
   installReadOnlyRenderLists();
+  installSimulationEscape();
   installWaterFrameCache();
   installRenderCullingAndPerf();
 })();
