@@ -253,15 +253,30 @@
           continue;
         }
 
-        return {
+        const squeezeResult = {
           allowed: true,
           mode: "squeeze",
-          turnCost: Math.max(LLW.CONFIG.squeezeMoveTurns, profile.turnCost || 1),
-          duration: Math.max(LLW.CONFIG.squeezeMoveDuration, profile.duration || 0),
+          turnCost: LLW.CONFIG.squeezeMoveTurns,
+          duration: LLW.CONFIG.squeezeMoveDuration,
           reason: normalCollision.kind,
           obstacleReason: normalCollision.kind,
           movementPath: movementPathFromFeet(candidate)
         };
+
+        // Match the pre-v58 weather wrapper: ordinary bush/bramble terrain
+        // does not replace a physical squeeze, while wet mud / rain-soaked
+        // crossings may turn the whole move into a slow move.
+        if (profile.reason === "mud" || profile.reason === "rain_crossing") {
+          return {
+            ...squeezeResult,
+            mode: "slow",
+            turnCost: profile.turnCost,
+            duration: profile.duration,
+            reason: profile.reason
+          };
+        }
+
+        return squeezeResult;
       }
 
       return {
