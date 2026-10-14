@@ -1,0 +1,94 @@
+LOW LEVEL WIZARDS BROWSER — v57 OLD BASKETS + CLOTH SCRAPS v0
+
+Purpose
+-------
+Turn procedural ruins into places that can physically contain persistent possessions.
+
+The build proves one relationship:
+place -> container -> item -> carrying choice -> changed place.
+
+Core rule
+---------
+There is no `looted` flag.
+
+An old basket is empty only when no physical item instance has a location pointing at that basket. If the player takes the cloth home, the ruin stays empty because the cloth item now exists in the player's hand, pocket, camp basket, or elsewhere in the world.
+
+Implemented
+-----------
+- One Old Basket is generated from the stable container/interior anchors of each wayside ruin.
+- World containers are seed truth and are not serialized into the main world save.
+- Basket placement prefers authored anchors that are dry, wall-clear, and have nearby interaction space.
+- New item kind: Cloth Scrap. It is pocketable and participates in the existing held/pocket/drop/camp-storage item grammar.
+- New item location kind:
+    { kind: "container", containerId, slotIndex }
+- Each ruin basket starts with one cloth scrap.
+- The primary ruin has a deterministic 35% chance of a second scrap.
+- Contents are derived by filtering physical item locations; no count/loot-state mirror is maintained.
+- Use beside an occupied basket searches/takes the first item if carry space exists.
+- If the player is completely full but the basket has an open slot, Use stores the held item first, freeing the hand for a later take.
+- Empty baskets can accept the held item.
+- Successful take/store interactions cost one turn.
+- Basket interaction uses the existing carry-destination rules: empty hand first, then a free pocket for pocketable items.
+- Baskets expose small physical blockers through the existing traversal solver by temporarily presenting themselves as native boulder footprints. This gives them normal squeeze behavior without a second movement system.
+- Wicker basket presentation includes visible contents for cloth, sticks, berries, and mushrooms.
+- Dropped cloth, held cloth, pocket cloth, and cloth stored at camp receive explicit presentation.
+- Basket rendering is split around the player depth so it does not always draw on top of the wizard.
+
+Persistence / migration
+-----------------------
+The main v54 save already persists arbitrary item location objects, so items living in world containers require no new main-save schema.
+
+v57 adds a very small local initialization marker keyed by seed. On the first load of a pre-v57 lived world:
+1. persistence restores the old item history,
+2. ruin baskets regenerate from the seed,
+3. if no prior container/cloth history exists, initial cloth is seeded once,
+4. the upgraded item history is immediately saved.
+
+On later reloads, initial contents are not generated again.
+
+Starting/regenerating a new world intentionally clears/replaces this initialization state and gives the new history its own initial basket contents.
+
+Protected scope
+---------------
+- no generic loot tables
+- no rarity/value system
+- no crafting recipes
+- no container inventory window
+- no chest-opening animation
+- no searchable-object framework
+- no respawning loot
+- no darkness or torch behavior yet
+- no cloth consumption yet
+
+Validation performed
+--------------------
+- `node --check containers.js`
+- focused runtime harness verifies:
+  - deterministic ruin basket creation,
+  - initial cloth instances living in container locations,
+  - basket -> held transfer,
+  - held -> basket transfer,
+  - one-turn cost for successful interactions,
+  - item identity/location changes rather than abstract loot counts,
+  - deliberate new histories receive initial contents.
+
+Browser playtest checklist
+--------------------------
+1. Find a ruin and confirm an old wicker basket appears inside it.
+2. Walk around it and verify it behaves like a small physical obstacle, not a full-tile wall.
+3. Stand beside it and use Search Basket.
+4. Confirm the cloth enters the hand, or a pocket if the hand is already occupied.
+5. Confirm the basket visibly loses that item.
+6. Drop the cloth in the world; pick it up again.
+7. Take it home and store it in the Provision Basket.
+8. Reload/close/reopen the browser and confirm the cloth remains at camp and the ruin basket remains empty.
+9. Put berries or another ordinary item into the empty ruin basket.
+10. Reload and confirm that same item is still there.
+11. Test while completely full: verify the basket can accept the held item when it has room, then allow the player to retrieve its previous contents.
+12. Regenerate a new world and confirm its ruin basket receives fresh initial contents.
+
+Acceptance story
+----------------
+"I followed an old trail to a ruin and found a battered wicker basket inside. I pulled out a cloth scrap, which took my last carrying space. I brought it home and left it in the provision basket. The next day I returned to the ruin: the old basket was still there, but it was empty. Later I left berries in it, closed the browser, returned, and the berries were still waiting where I left them."
+
+If that story works, v57 is done.
