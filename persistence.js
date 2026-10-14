@@ -3,11 +3,13 @@
   const state = LLW.state;
 
   const SAVE_KEY = "llw-browser-world-v1";
-  const SAVE_VERSION = 1;
+  const SAVE_VERSION = 2;
+  const LEGACY_SAVE_VERSION = 1;
   const AUTOSAVE_MS = 1500;
 
   let startupCreateComplete = false;
   let restoring = false;
+  let dirty = true;
   let lastSerialized = null;
   let runtimeItemSerial = 1;
 
@@ -30,6 +32,21 @@
 
   const canPersist = storageAvailable();
 
+  function migrateSave(data) {
+    if (!data || !data.seed) return null;
+    if (data.version === SAVE_VERSION) return data;
+    if (data.version !== LEGACY_SAVE_VERSION) return null;
+
+    return {
+      ...data,
+      version: SAVE_VERSION,
+      weather: data.weather || null,
+      featureFlags: {
+        ...(data.featureFlags || {})
+      }
+    };
+  }
+
   function readSave() {
     if (!canPersist) {
       return null;
@@ -37,22 +54,8 @@
 
     try {
       const raw = window.localStorage.getItem(SAVE_KEY);
-
-      if (!raw) {
-        return null;
-      }
-
-      const data = JSON.parse(raw);
-
-      if (
-        !data ||
-        data.version !== SAVE_VERSION ||
-        !data.seed
-      ) {
-        return null;
-      }
-
-      return data;
+      if (!raw) return null;
+      return migrateSave(JSON.parse(raw));
     } catch (error) {
       console.warn("LLW save could not be read.", error);
       return null;
@@ -61,10 +64,9 @@
 
   function clearSave() {
     lastSerialized = null;
+    dirty = true;
 
-    if (!canPersist) {
-      return;
-    }
+    if (!canPersist) return;
 
     try {
       window.localStorage.removeItem(SAVE_KEY);
@@ -73,24 +75,22 @@
     }
   }
 
+  function markDirty() {
+    if (!restoring) dirty = true;
+  }
+
   function stableGuildSnapshot() {
     const guild = clone(state.guild || {});
-
     if (guild.currentSlip?.status === "resolved") {
       guild.currentSlip = null;
     }
-
     return guild;
   }
 
   function routeSnapshot() {
     const cells = [];
-
     for (const cell of state.landscape.cells || []) {
-      if (!(cell.playerTrailUse > 0)) {
-        continue;
-      }
-
+      if (!(cell.playerTrailUse > 0)) continue;
       cells.push({
         x: cell.x,
         y: cell.y,
@@ -138,7 +138,17 @@
         hasBerries: Boolean(bush.hasBerries)
       })),
 
-      routeMemory: routeSnapshot()
+      routeMemory: routeSnapshot(),
+      weather: clone(LLW.weather?.getPersistentState?.() || state.weather || null),
+      featureFlags: {
+        worldContainersInitialized: Boolean(
+          (state.items || []).some(
+            (item) =>
+              item.kind === "cloth_scrap" ||
+              item.location?.kind === "container"
+          )
+        )
+      }
     };
   }
 
@@ -152,15 +162,20 @@
       return false;
     }
 
+    if (!force && !dirty) {
+      return false;
+    }
+
     try {
       const serialized = JSON.stringify(makeSnapshot());
-
       if (!force && serialized === lastSerialized) {
+        dirty = false;
         return false;
       }
 
       window.localStorage.setItem(SAVE_KEY, serialized);
       lastSerialized = serialized;
+      dirty = false;
       return true;
     } catch (error) {
       console.warn("LLW world could not be saved.", error);
@@ -175,11 +190,7 @@
 
     for (const tree of state.trees || []) {
       const saved = byId.get(tree.id);
-
-      if (!saved) {
-        continue;
-      }
-
+      if (!saved) continue;
       if (Number.isFinite(saved.lastForageTurn)) {
         tree.lastForageTurn = saved.lastForageTurn;
       }
@@ -193,43 +204,38 @@
 
     for (const bush of state.bushes || []) {
       const saved = byId.get(bush.id);
-
-      if (!saved) {
-        continue;
-      }
-
+      if (!saved) continue;
       bush.hasBerries = Boolean(saved.hasBerries);
     }
   }
 
   function applyRouteHistory(savedRoute) {
-    if (!savedRoute || !LLW.routeMemory?.recordStep) {
+    if (!savedRoute) return;
+
+    if (LLW.routeMemory?.restoreSnapshot) {
+      LLW.routeMemory.restoreSnapshot(savedRoute);
       return;
     }
+
+    // Compatibility fallback for older script order. This is intentionally
+    // slower, but keeps old standalone harnesses working.
+    if (!LLW.routeMemory?.recordStep) return;
 
     for (const savedCell of savedRoute.cells || []) {
       const count = Math.max(
         0,
         Math.min(48, Math.floor(savedCell.use || 0))
       );
-
       for (let i = 0; i < count; i++) {
         LLW.routeMemory.recordStep(savedCell.x, savedCell.y);
       }
-
-      const cell = LLW.pcg?.getCell?.(
-        savedCell.x,
-        savedCell.y
-      );
-
+      const cell = LLW.pcg?.getCell?.(savedCell.x, savedCell.y);
       if (cell) {
-        cell.playerTrailLastUsedDay =
-          savedCell.lastUsedDay || 1;
+        cell.playerTrailLastUsedDay = savedCell.lastUsedDay || 1;
       }
     }
 
     const memory = LLW.routeMemory.getState?.() || state.routeMemory;
-
     if (memory) {
       memory.edges = clone(savedRoute.edges || {});
       memory.stepsRecorded = savedRoute.stepsRecorded || 0;
@@ -266,12 +272,9 @@
   }
 
   function applySnapshot(saved) {
-    if (!saved) {
-      return false;
-    }
+    if (!saved) return false;
 
     restoring = true;
-
     try {
       state.game.turn = Math.max(0, saved.game?.turn || 0);
       state.game.vitality = LLW.clamp(
@@ -290,15 +293,12 @@
       if (saved.firepit) {
         Object.assign(state.firepit, clone(saved.firepit));
       }
-
       if (saved.guild) {
         state.guild = clone(saved.guild);
       }
-
       if (saved.campStorage) {
         state.campStorage = clone(saved.campStorage);
       }
-
       if (Array.isArray(saved.items)) {
         state.items = clone(saved.items);
       }
@@ -307,9 +307,18 @@
       applyBushHistory(saved.bushes);
       applyRouteHistory(saved.routeMemory);
 
+      if (saved.weather) {
+        if (LLW.weather?.restorePersistentState) {
+          LLW.weather.restorePersistentState(saved.weather);
+        } else {
+          state.weather = clone(saved.weather);
+        }
+      }
+
       return true;
     } finally {
       restoring = false;
+      dirty = false;
     }
   }
 
@@ -331,12 +340,7 @@
       const shouldOfferContinue = firstCreate && Boolean(saved);
 
       let requestedSeed = seed;
-
-      if (
-        shouldOfferContinue &&
-        seed == null &&
-        !urlSeed
-      ) {
+      if (shouldOfferContinue && seed == null && !urlSeed) {
         requestedSeed = saved.seed;
       }
 
@@ -346,17 +350,14 @@
       );
 
       let continued = false;
-
-      if (
-        shouldOfferContinue &&
-        String(saved.seed) === generatedSeed
-      ) {
+      if (shouldOfferContinue && String(saved.seed) === generatedSeed) {
         continued = applySnapshot(saved);
       } else if (!firstCreate) {
         clearSave();
       }
 
       startupCreateComplete = true;
+      dirty = true;
       saveNow(true);
 
       if (continued) {
@@ -378,24 +379,41 @@
       );
       const item = originalSpawnItem.apply(this, args);
 
-      if (!idsBefore.has(item.id)) {
-        return item;
+      if (idsBefore.has(item.id)) {
+        let candidate = null;
+        do {
+          candidate = `runtime_item_${runtimeItemSerial++}`;
+        } while (
+          (state.items || []).some(
+            (other) => other !== item && other.id === candidate
+          )
+        );
+        item.id = candidate;
       }
 
-      let candidate = null;
-
-      do {
-        candidate =
-          `runtime_item_${runtimeItemSerial++}`;
-      } while (
-        (state.items || []).some(
-          (other) => other !== item && other.id === candidate
-        )
-      );
-
-      item.id = candidate;
+      markDirty();
       return item;
     };
+  }
+
+  function wrapDirtyFunction(owner, name) {
+    const original = owner?.[name];
+    if (typeof original !== "function") return;
+    owner[name] = function (...args) {
+      const result = original.apply(this, args);
+      markDirty();
+      return result;
+    };
+  }
+
+  function installDirtyTracking() {
+    wrapDirtyFunction(LLW.time, "advanceTurns");
+    wrapDirtyFunction(LLW, "performPickupAction");
+    wrapDirtyFunction(LLW, "performDropAction");
+    wrapDirtyFunction(LLW, "performUseAction");
+    wrapDirtyFunction(LLW, "handlePocketTap");
+    wrapDirtyFunction(LLW.fire, "rest");
+    wrapDirtyFunction(LLW.guild, "perform");
   }
 
   function installAutosave() {
@@ -414,18 +432,27 @@
 
   LLW.persistence = {
     saveNow,
+    markDirty,
     readSave,
     clearSave,
     makeSnapshot,
+    applySnapshot,
+    get dirty() {
+      return dirty;
+    },
     get available() {
       return canPersist;
     },
     get key() {
       return SAVE_KEY;
+    },
+    get version() {
+      return SAVE_VERSION;
     }
   };
 
   installSpawnCollisionGuard();
+  installDirtyTracking();
   installWorldContinuation();
   installAutosave();
 })();
