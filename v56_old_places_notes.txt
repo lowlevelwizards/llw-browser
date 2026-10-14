@@ -1,0 +1,108 @@
+Low Level Wizards Browser — v56 Old Places / Procedural Ruins v0
+
+PURPOSE
+Give the generated woodland persistent destinations that existed before the wizard arrived. This build proves place-generation and stable spatial identity before loot containers, cloth scraps, darkness, or torches.
+
+CORE RULE
+Landmarks are seed truth, not save payload. The seed answers “what was here.” Future mutable contents answer “what happened here.”
+
+IMPLEMENTED
+
+1. Wayside ruin family
+- One deterministic procedural landmark family: mossy old wayside ruins.
+- Four authored macro variants: broken corner, three-wall shelter, broken foundation, crooked remnant.
+- Macro shapes stay readable; rotation, mossiness, site, and wall variation differ by seed.
+
+2. Sparse placement
+- One primary ruin is sought far enough from camp to require an outing.
+- ~36% chance to seek a second ruin.
+- Ruins keep distance from camp and from one another.
+- Placement scores existing baseline terrain: flatness, dryness, openness, clearing influence, surrounding woodland.
+- Standing water is forbidden.
+- Major existing trees/boulders/logs are avoided; the relaxed fallback still refuses heavily obstructed sites.
+- Weather does not affect ruin generation.
+
+3. Stable spatial identity / future sockets
+Each ruin has a stable seed-derived id and exposes:
+- entrance anchor
+- container anchor
+- light anchor
+- several interior anchors
+
+Public API:
+- LLW.landmarks.getAll()
+- LLW.landmarks.getById(id)
+- LLW.landmarks.getAnchor(landmarkId, kind)
+- LLW.landmarks.getBlockingFootprints()
+- LLW.landmarks.getBlockingCellKeys()
+
+The container/light anchors are intentionally empty in v56. They are staging points for later baskets/cloth and torches/sconces rather than content spawned prematurely.
+
+4. Physical walls
+- Surviving stone-wall segments are true blockers.
+- Movement can pass through actual gaps/openings but not through visible intact wall segments.
+- Collision uses low capsule footprints around each wall, not a giant invisible square around the whole ruin.
+
+5. World-generation relationships
+- Landmarks generate immediately before natural crossings are resolved.
+- During crossing generation, ruin wall cells are temporarily exposed as blockers so bridges/stepping-stone placement does not run through masonry.
+- During historical trail generation, ruin walls are likewise blockers.
+- ~72% of worlds with a ruin offer the primary ruin as an additional old-path destination candidate. The existing trail generator still decides whether that ruin is actually the selected clearing destination.
+- Ordinary generated sticks/mushrooms that would land in the reserved ruin footprint are displaced to nearby safe ground.
+
+6. Presentation
+- Old floor remnants render low in the scene so vegetation/props can interrupt them.
+- Mossy low walls render with chipped-block segmentation and warm/cool stone variation.
+- Walls are rendered once with the ground and then only wall segments physically in front of the wizard are re-drawn above the scene. This gives practical front/back occlusion without replacing the renderer’s existing depth queue.
+- Existing groundcover remains free to grow through the ruin, helping it read as old rather than freshly stamped onto the map.
+
+PERSISTENCE
+- No landmark geometry is serialized by v54.
+- Reload regenerates the same ruins from the same seed before lived history is applied.
+- A new seed generates different landmark placement/variant/rotation.
+- Future basket/container state should persist through physical item/container history rather than a generic “ruin looted” flag.
+
+VALIDATION
+- landmarks.js passes Node syntax checking.
+- Focused harness verifies:
+  - at least one landmark in a viable world
+  - same seed reproduces identical landmark geometry/anchors
+  - different seed changes landmark result
+  - entrance/container/light anchors exist
+  - crossing generation sees temporary ruin blockers
+  - trail generation sees temporary ruin blockers
+  - temporary blockers do not leak into the real boulder list
+  - cardinal player movement is blocked by ruin walls
+  - ordinary forage is displaced out of reserved ruin space
+  - landmark may be exposed as a historical-trail destination candidate
+
+ACCEPTANCE PLAYTEST
+1. Generate/continue a world and locate the ruin naturally.
+2. Confirm it is well away from camp and reads as a destination rather than camp clutter.
+3. Walk completely around it.
+4. Enter through a genuine opening.
+5. Attempt to walk through intact visible wall segments; movement must stop.
+6. Verify vegetation/groundcover partially interrupts and overgrows the ruin.
+7. Check whether an old trail sometimes appears to lead toward the place, without requiring one every seed.
+8. Reload the same world; the ruin must return in exactly the same place/form.
+9. Generate a different seed; placement/orientation/variant should differ.
+
+SUCCESS STORY
+“I followed an old path away from camp and came into a clearing with broken mossy walls. I could circle the place, slip through a collapsed side, and stand inside it. There was nothing to loot yet, but it clearly had places where something could have been left. When I came back later, it was still the same ruin.”
+
+OUT OF SCOPE
+- baskets/containers
+- cloth scraps or loot tables
+- searchable-object UI
+- map markers/discovery XP
+- dungeon interiors/scenes
+- doors
+- rebuilding
+- darkness mechanics
+- carried torches
+- NPC occupation
+- procedural lore text
+
+NEXT NATURAL BUILD
+v57 — Physical World Containers + Cloth Scraps v0
+Place a real container at a landmark container anchor, let it own real physical item instances, and reproduce the main LLW “find cloth scraps in baskets” interaction without abstract loot flags.
