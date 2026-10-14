@@ -1,0 +1,85 @@
+LOW LEVEL WIZARDS BROWSER — v54 PERSISTENT WORLD / CONTINUE v0
+
+Purpose
+Make the lived world survive closing or reloading the browser without turning the prototype into a conventional save-slot system.
+
+Design rule
+The procedural seed remains the source of truth for what originally existed. The save stores only mutable history layered on top of that generated baseline.
+
+Startup flow
+1. Read the single local save, if one exists.
+2. Resolve the world seed.
+3. Regenerate the deterministic world from that seed.
+4. Reapply lived history.
+5. Resume from the saved player position and turn.
+
+Persisted history
+- seed
+- turn, normal Vitality, prepared Vitality
+- settled player position and mud exposure
+- fire state / fuel / embers
+- physical item instances and their locations (world, held, pocket, camp storage)
+- Provision Basket placement/state
+- Guild current active slip, archive, requester and relationships
+- berry bush harvested/regrown state
+- tree forage cooldown state
+- player-made route cell use, last-used day and actual traversed edges
+
+Route restoration
+Route pressure is replayed through the existing route-memory system after the seed baseline is generated. This intentionally avoids duplicating trail fade/wear/bush-opening formulas in the persistence layer. Saved edge history is then restored exactly.
+
+Transient state deliberately not persisted
+- animation progress
+- item flights
+- active held movement
+- a half-completed movement interpolation
+- the 2.2 second resolved Guild-slip presentation beat
+- debug/camera UI state
+
+A player who closes the browser during movement returns to the last settled tile. A resolved Guild slip is represented by its archive entry rather than becoming a permanently stamped HUD card.
+
+Autosave
+- checks every 1.5 seconds
+- only writes when the serialized lived state actually changed
+- pagehide and beforeunload force a final write when available
+
+Fresh-world behavior
+The first createWorld call on page launch may continue the saved world. Any later createWorld call comes from the existing seed tools and is treated as an intentional fresh world, even if the same seed is chosen. The fresh world immediately becomes the new autosave.
+
+Shared/debug seed behavior
+An explicit ?seed= URL wins over an unrelated stored save. If the URL seed matches the stored world, that world can continue normally.
+
+Item ID safety
+The original item counter is private to game-data.js and resets during deterministic regeneration. A collision guard renames newly spawned runtime items if an old saved item already owns the ID the generator would have reused.
+
+Storage failure
+If localStorage is unavailable or blocked, gameplay continues normally without persistence.
+
+Scope deliberately excluded
+- save slots
+- save/load menu
+- cloud accounts
+- real-world offline time simulation
+- migration across arbitrary future schema changes
+- serializing the whole procedural landscape
+
+Acceptance test
+1. Start one seed.
+2. Take/advance a Guild request.
+3. Put an item in the Provision Basket and carry another item.
+4. Build visible route wear and, ideally, wear a bush passage.
+5. Change fire/time state and forage at least one bush/tree.
+6. Close or reload the page.
+7. Reopen it.
+8. Confirm the same seed, turn, position, possessions, basket contents, fire, Marn state, forage state and personal trail history return.
+9. Use Again/Use Seed/Random and confirm that intentionally creates a fresh world and replaces the old save.
+
+Validation performed
+- persistence.js passes Node syntax checking
+- focused reload harness passes seed continuation, turn/Vitality, player position, fire, Guild relationship, item/storage custody, tree forage state, berry state, route cell use and route edge restoration
+- fresh-world regeneration replaces the previous save
+- post-reload item ID collision guard passes
+
+Core proof
+The seed says what was here.
+The save says what happened here.
