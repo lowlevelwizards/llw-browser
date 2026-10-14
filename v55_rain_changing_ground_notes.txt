@@ -1,0 +1,108 @@
+Low Level Wizards Browser — v55 Rain / Changing Ground v0
+
+PURPOSE
+Make a familiar journey behave differently because the weather changed.
+Rain is not a generic debuff or a cosmetic overlay. It temporarily changes existing physical truths: vulnerable ground becomes wetter, muddy places spread/intensify, crossings become awkward, and an exposed fire consumes fuel faster.
+
+CORE RULE
+Rain does not invent terrain. It amplifies wetness where the generated landscape already says wetness makes sense.
+
+IMPLEMENTED
+
+1. Deterministic daily weather
+- One weather type: rain.
+- Each in-game day gets a deterministic 0-or-1 rain front derived from world seed + day number.
+- Approx. 45% daily rain-front chance.
+- Fronts last roughly 2–5 in-game hours.
+- Rain intensity fades in/out continuously rather than toggling.
+- Cloud cover gathers shortly before rain and lingers briefly afterward.
+- Reloading the same seed/day produces the same forecast.
+
+2. Persistent environmental history
+- state.weather.soilSaturation tracks accumulated ground wetness.
+- state.weather.recentRain is a future ecology/farming hook.
+- Rain raises saturation.
+- Clear daytime dries faster than clear nighttime.
+- Soil wetness survives reload separately from the deterministic forecast.
+- Starting a deliberate fresh world clears the old weather-history save.
+
+3. Shared environment interface
+- LLW.environment.getEffectiveMoisture(cell)
+- LLW.environment.getSoilSaturation()
+- LLW.environment.getRecentRain()
+- LLW.environment.getEffectiveMud(cell)
+
+These are intentionally generic so future gardening, natural propagation, fungi, irrigation, drying, etc. can ask about environmental conditions without depending directly on the rain implementation.
+
+4. Dynamic mud
+- Existing generated cell.mudAmount remains the dry baseline.
+- Existing cell.mudPotential determines how strongly a place can respond to wet weather.
+- High-potential low/wet ground can cross the existing mud movement threshold after enough rain.
+- Dry/low-potential ground changes very little.
+- Traversal and mud exposure read the same effective-mud truth.
+
+5. Crossing consequence
+- During sufficiently strong rain, natural crossings cost +1 movement turn.
+- Crossings remain usable in v55; no washed-out bridges or dynamic water geometry yet.
+
+6. Fire consequence
+- Lit fires consume fuel up to about 1.35x faster at maximum rain intensity.
+- Rain does not randomly extinguish fires.
+- Ignition, wet sticks, tinder, waterproofing, etc. remain out of scope.
+
+7. Visual response
+- Clouds reduce projected sunlight/shadow strength.
+- Rain adds a restrained cool atmospheric wash and painterly streaks.
+- Weather-created wet ground darkens only where effective mud increases.
+- Wetter cores can show faint reflective slicks.
+- Rain renders over the full scene; wet ground remains under vegetation/props.
+
+8. Small diegetic feedback
+- Rain onset can announce: “Rain begins to patter through the leaves.”
+- Rain ending can announce: “The rain eases off.”
+- No weather HUD or numeric wetness meter.
+
+TUNING START POINTS
+- Daily rain-front chance: 0.45
+- Duration: 2–5 hours
+- Peak intensity: 0.55–1.0
+- Fade: ~0.75 hour
+- Saturation gain at full rain: +0.006 / turn
+- Day drying: -0.0015 / turn
+- Night drying: -0.0007 / turn
+- Heavy-rain crossing threshold: 0.55
+- Crossing penalty: +1 turn
+- Max fire burn multiplier: 1.35x
+
+ACCEPTANCE PLAYTEST
+1. Continue or create a world and play through several in-game hours/days until a rain front arrives.
+2. Verify cloud/shadow change precedes or accompanies rain rather than an instant hard toggle.
+3. Walk through a low wet/mud-prone area during/after rain.
+4. Confirm that vulnerable ground visibly gets wetter and can become slow mud.
+5. Confirm dry/high ground does not become uniformly muddy.
+6. Cross a natural crossing in strong rain and verify it costs one extra turn.
+7. Maintain a lit fire during rain and confirm fuel declines modestly faster, not catastrophically.
+8. Let the rain stop. Confirm soil remains wet and then dries gradually over subsequent clear turns.
+9. Close/reload while the soil is still wet. Confirm wetness history survives while the same seed/day retains its deterministic weather schedule.
+10. Start a deliberate fresh world and confirm old saturation does not leak into it.
+
+SUCCESS STORY
+“It started raining while I was out. The low route I usually take home got worse as the afternoon went on, so the next trip I used the longer ridge. The creek crossing was slick and slow, and the fire ate more of my stored wood while the weather held. The next morning the hollow was still muddy even though the rain had stopped, then gradually dried through the day.”
+
+OUT OF SCOPE
+- storms/lightning
+- wind mechanics
+- temperature/cold
+- player wetness meter
+- wet clothing
+- umbrellas/cloaks/boots
+- wet-stick/tinder simulation
+- washed-out crossings
+- dynamic stream geometry
+- forecasts UI
+- seasons
+- farming/gardening
+- mushroom fruiting
+- natural plant propagation
+
+Those later systems should consume LLW.environment conditions rather than special-case rain.
