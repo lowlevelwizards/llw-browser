@@ -2,7 +2,7 @@
   const LLW = window.LLW;
   const state = LLW.state;
 
-  // v53.1: trails should feel like grass slowly remembering feet, not a UI unlock.
+  // Trails should feel like grass slowly remembering feet, not a UI unlock.
   const FADE_START_USE = 4;
   const DESIRE_LINE_THRESHOLD = 16;
   const FOOTPATH_THRESHOLD = 32;
@@ -199,6 +199,33 @@
     recomputeStats();
   }
 
+  function restoreSnapshot(snapshot) {
+    state.routeMemory = {
+      stepsRecorded: snapshot?.stepsRecorded || 0,
+      visibleCells: 0,
+      establishedCells: 0,
+      wornBushes: 0,
+      edges: JSON.parse(JSON.stringify(snapshot?.edges || {}))
+    };
+
+    for (const savedCell of snapshot?.cells || []) {
+      const cell = cellAt(savedCell.x, savedCell.y);
+      if (!cell) continue;
+      ensureCellBaselines(cell);
+      cell.playerTrailUse = clamp(
+        Math.floor(savedCell.use || 0),
+        0,
+        MAX_PLAYER_TRAIL_USE
+      );
+      cell.playerTrailLastUsedDay = savedCell.lastUsedDay || 1;
+      syncCellGroundTruth(cell);
+      syncBushForCell(cell);
+    }
+
+    recomputeStats();
+    return ensureState();
+  }
+
   function decayForDay(day) {
     for (const cell of state.landscape.cells || []) {
       if (!(cell.playerTrailUse > 0)) continue;
@@ -237,38 +264,10 @@
     };
   }
 
-  function softenEstablishedBushMove(result) {
-    if (!result?.allowed || result.reason !== "bush") return result;
-    const bush = getBush(result.destX, result.destY);
-    if (!bush?.playerRouteWorn) return result;
-    return {
-      ...result,
-      mode: "normal",
-      turnCost: LLW.CONFIG.normalMoveTurns,
-      duration: LLW.CONFIG.normalMoveDuration,
-      reason: "worn_bush_path"
-    };
-  }
-
   function installTraversalPayoff() {
     if (!LLW.traversal) return;
-    const originalEvaluateIntentMove =
-      LLW.traversal.evaluateIntentMove.bind(LLW.traversal);
-    const originalEvaluateMove =
-      LLW.traversal.evaluateMove.bind(LLW.traversal);
     const originalGetTerrainMoveProfile =
       LLW.traversal.getTerrainMoveProfile.bind(LLW.traversal);
-
-    LLW.traversal.evaluateIntentMove = function (...args) {
-      return softenEstablishedBushMove(originalEvaluateIntentMove(...args));
-    };
-
-    LLW.traversal.evaluateMove = function (...args) {
-      const result = originalEvaluateMove(...args);
-      if (!result?.allowed || result.reason !== "bush") return result;
-      const [, , toX, toY] = args;
-      return softenEstablishedBushMove({ ...result, destX: toX, destY: toY });
-    };
 
     LLW.traversal.getTerrainMoveProfile = function (x, y) {
       const result = originalGetTerrainMoveProfile(x, y);
@@ -414,6 +413,7 @@
 
   LLW.routeMemory = {
     recordStep,
+    restoreSnapshot,
     decayForDay,
     getState: ensureState,
     drawPlayerRoutes,
