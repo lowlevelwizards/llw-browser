@@ -70,48 +70,19 @@
         </div>
 
         <div class="debug-layer-buttons">
-          <button
-            id="moistureToggleButton"
-            class="debug-layer-button"
-            type="button"
-            aria-pressed="false"
-          >
+          <button id="moistureToggleButton" class="debug-layer-button" type="button" aria-pressed="false">
             Moisture: Off
           </button>
-
-          <button
-            id="woodlandToggleButton"
-            class="debug-layer-button"
-            type="button"
-            aria-pressed="false"
-          >
+          <button id="woodlandToggleButton" class="debug-layer-button" type="button" aria-pressed="false">
             Woodland: Off
           </button>
-
-          <button
-            id="treeSuitabilityToggleButton"
-            class="debug-layer-button"
-            type="button"
-            aria-pressed="false"
-          >
+          <button id="treeSuitabilityToggleButton" class="debug-layer-button" type="button" aria-pressed="false">
             Trees: Off
           </button>
-
-          <button
-            id="canopyToggleButton"
-            class="debug-layer-button"
-            type="button"
-            aria-pressed="false"
-          >
+          <button id="canopyToggleButton" class="debug-layer-button" type="button" aria-pressed="false">
             Canopy: Off
           </button>
-
-          <button
-            id="understoryToggleButton"
-            class="debug-layer-button"
-            type="button"
-            aria-pressed="false"
-          >
+          <button id="understoryToggleButton" class="debug-layer-button" type="button" aria-pressed="false">
             Understory: Off
           </button>
         </div>
@@ -121,19 +92,9 @@
         <span id="turnStatus">Turn 0</span>
       </div>
 
-      <div
-        id="momentStatus"
-        class="moment-status"
-        aria-live="polite"
-        hidden
-      ></div>
+      <div id="momentStatus" class="moment-status" aria-live="polite" hidden></div>
 
-      <aside
-        id="guildSlip"
-        class="guild-slip"
-        aria-live="polite"
-        hidden
-      >
+      <aside id="guildSlip" class="guild-slip" aria-live="polite" hidden>
         <div class="guild-slip-topline">
           <span>Guild Slip</span>
           <span id="guildSlipRequester">Marn</span>
@@ -156,43 +117,16 @@
 
       <div class="carry-hud">
         <div class="context-actions">
-          <button
-            id="pickupButton"
-            class="context-action pickup-action"
-            type="button"
-            aria-label="Pick up item"
-            hidden
-          >
+          <button id="pickupButton" class="context-action pickup-action" type="button" aria-label="Pick up item" hidden>
             Pick Up
           </button>
-
-          <button
-            id="dropButton"
-            class="context-action drop-action"
-            type="button"
-            aria-label="Drop held item"
-            hidden
-          >
+          <button id="dropButton" class="context-action drop-action" type="button" aria-label="Drop held item" hidden>
             Drop
           </button>
-
-          <button
-            id="useButton"
-            class="context-action use-action"
-            type="button"
-            aria-label="Use held item or nearby thing"
-            hidden
-          >
+          <button id="useButton" class="context-action use-action" type="button" aria-label="Use held item or nearby thing" hidden>
             Use
           </button>
-
-          <button
-            id="restButton"
-            class="context-action rest-action"
-            type="button"
-            aria-label="Rest by the fire"
-            hidden
-          >
+          <button id="restButton" class="context-action rest-action" type="button" aria-label="Rest by the fire" hidden>
             Rest
           </button>
         </div>
@@ -215,27 +149,30 @@
   <script src="ecology.js"></script>
   <script src="landscape-geometry.js"></script>
   <script src="camera.js?v=58"></script>
+  <script src="perf.js?v=58.1"></script>
   <script src="juice.js"></script>
   <script src="time.js?v=49"></script>
   <script src="vitality.js"></script>
   <script src="terrain.js"></script>
   <script src="spatial.js?v=58"></script>
   <script src="crossings.js"></script>
-  <script src="traversal.js"></script>
+  <script src="traversal.js?v=58.1"></script>
   <script src="trails.js"></script>
   <script src="guild.js"></script>
   <script src="systems.js"></script>
   <script src="fire.js"></script>
   <script src="foraging.js"></script>
   <script src="landscape-render.js"></script>
-  <script src="route-memory.js?v=53.1"></script>
+  <script src="route-memory.js?v=58.1"></script>
   <script src="render.js?v=49"></script>
-  <script src="return-loop.js?v=52"></script>
+  <script src="item-views.js?v=58.1"></script>
+  <script src="return-loop.js?v=58.1"></script>
   <script src="landmarks.js?v=56.1"></script>
   <script src="persistence.js?v=58"></script>
-  <script src="containers.js?v=57"></script>
+  <script src="containers.js?v=58.1"></script>
   <script src="weather.js?v=55"></script>
-  <script src="health.js?v=58"></script>
-  <script src="main.js"></script>
+  <script src="runtime-finalize.js?v=58.1"></script>
+  <script src="render-runtime.js?v=58.1"></script>
+  <script src="main.js?v=58.1"></script>
 </body>
 </html>
