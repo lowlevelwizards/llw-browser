@@ -1,0 +1,89 @@
+Low Level Wizards Browser — v58 Performance + Code Health Pass
+
+Purpose
+-------
+Create headroom before meaningful darkness / carried lights without changing the
+world's rules or visual direction.
+
+This pass intentionally focuses on the highest-impact, lowest-regression pieces
+from the audit. It does NOT split the giant renderer/ecology files yet and does
+not visually redesign or rebalance the game.
+
+Implemented
+-----------
+1. spatial.js
+   - One read-only physical-footprint query surface for native trunks, boulders,
+     fallen logs, ruin walls, world baskets, and camp storage.
+   - Caches static native footprints per generated world.
+   - Path queries only test footprints whose bounds overlap the attempted move.
+
+2. health.js final traversal solver
+   - Installed after feature wrappers so runtime traversal uses one physical
+     solver instead of re-running native + ruin + basket traversal layers.
+   - Preserves the final weather/route-aware terrain move profile.
+   - Keeps normal/squeeze/intent-gap semantics and feature-specific blocking
+     messages.
+   - Times move evaluation through LLW.perf.
+
+3. Render visibility culling
+   - In local camera mode, temporarily presents the renderer only visible trees,
+     bushes, major props, groundcover patches and bramble patches (with margins).
+   - Restores canonical world arrays immediately after the frame.
+   - Overview mode still renders the whole world.
+   - This also bounds the existing projected-shadow sampler because its caster
+     arrays are now local during the frame.
+
+4. Water frame cache
+   - Expensive vector water rebuilds are cached in an offscreen canvas.
+   - Cache invalidates on seed/layout/camera change and refreshes animation at
+     roughly 8 fps (120 ms), while the rest of the scene remains full frame rate.
+   - Camera settle epsilon prevents endless subpixel drift from invalidating a
+     stable screen-space cache.
+
+5. LLW.perf
+   - Rolling average / p95 / max timing buckets exposed as LLW.perf.snapshot().
+   - Frame, water rebuild, and traversal timing are recorded without UI clutter.
+
+6. Direct route-memory restore
+   - health.js exposes LLW.routeMemory.restoreSnapshot().
+   - Persistent paths are restored by assigning saved use/edge history once,
+     then deriving trail amount/disturbance/bush wear once.
+   - Avoids replaying every remembered footstep during load.
+
+7. Persistence v2 dirty save path
+   - Reads/migrates existing v1 saves.
+   - Autosave exits before snapshot/JSON work when nothing meaningful changed.
+   - Dirty tracking is attached to turns and common inventory/action mutations.
+   - Weather state is now included in the primary world snapshot when available.
+   - Direct route restore is preferred, with the old replay path retained only as
+     a compatibility fallback.
+
+8. Camera settle
+   - Local camera now snaps to its exact target once within a tiny epsilon.
+   - Removes endless fractional drift and improves cache stability.
+
+9. Regression smoke harness
+   - tests/v58_health_smoke.js exercises unified blocker collection, basket
+     collision, direct route restore, local render culling, state restoration,
+     and perf recording using dependency-free Node assertions.
+
+Deliberately deferred
+---------------------
+- Full conversion of all historical monkey-patched feature files to registries.
+- Full removal of dormant duplicated landmark/container traversal helper code.
+- Full HUD dirty-region rewrite (main.js is still the next cheap DOM target).
+- Item presentation registry / removal of all legacy cloth render workarounds.
+- Splitting render.js, landscape-render.js, and ecology.js purely for file size.
+- Removing the legacy weather localStorage key/interval; primary v2 now also owns
+  weather truth, but deleting the compatibility save path is safer as a separate
+  migration after browser playtesting.
+
+Acceptance
+----------
+- Existing saves continue.
+- Same seed still generates the same world.
+- Ruin walls and baskets remain physical and squeeze-aware.
+- Weather still changes traversal/fire/light as before.
+- Route wear survives reload without replaying dozens of synthetic steps.
+- Local rendering uses bounded visible collections and restores state after draw.
+- No visual/gameplay rebalance is intentional in this pass.

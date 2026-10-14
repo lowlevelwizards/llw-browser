@@ -14,6 +14,8 @@
   }
 
   let renderMetrics = null;
+  const CAMERA_LERP = 0.18;
+  const CAMERA_SETTLE_EPSILON = 0.0025;
 
   function localCameraBounds() {
     // Local play deliberately lets the landscape continue through any spare
@@ -126,15 +128,18 @@
       const target =
         localTarget();
 
-      state.camera.x +=
-        (target.x -
-          state.camera.x) *
-        0.18;
+      const dx = target.x - state.camera.x;
+      const dy = target.y - state.camera.y;
 
-      state.camera.y +=
-        (target.y -
-          state.camera.y) *
-        0.18;
+      state.camera.x =
+        Math.abs(dx) <= CAMERA_SETTLE_EPSILON
+          ? target.x
+          : state.camera.x + dx * CAMERA_LERP;
+
+      state.camera.y =
+        Math.abs(dy) <= CAMERA_SETTLE_EPSILON
+          ? target.y
+          : state.camera.y + dy * CAMERA_LERP;
     },
 
     snapToPlayer() {
