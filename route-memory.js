@@ -2,14 +2,28 @@
   const LLW = window.LLW;
   const state = LLW.state;
 
-  const VISIBLE_USE_THRESHOLD = 2;
-  const DESIRE_LINE_THRESHOLD = 4;
-  const FOOTPATH_THRESHOLD = 7;
-  const BUSH_WORN_THRESHOLD = 4;
-  const MAX_PLAYER_TRAIL_USE = 16;
+  // v53.1: trails should feel like grass slowly remembering feet, not a UI unlock.
+  const FADE_START_USE = 4;
+  const DESIRE_LINE_THRESHOLD = 16;
+  const FOOTPATH_THRESHOLD = 32;
+  const BUSH_WORN_THRESHOLD = 24;
+  const BUSH_RECOVER_THRESHOLD = 14;
+  const MAX_PLAYER_TRAIL_USE = 48;
+  const DECAY_GRACE_DAYS = 2;
+  const DECAY_PER_IDLE_DAY = 1;
+  const MAX_PLAYER_TRAIL_AMOUNT = 0.72;
 
   function clamp(value, min = 0, max = 1) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function smoothstep(value) {
+    const t = clamp(value);
+    return t * t * (3 - 2 * t);
+  }
+
+  function currentDay() {
+    return LLW.time?.getDayNumber?.() || 1;
   }
 
   function ensureState() {
@@ -22,7 +36,7 @@
         edges: {}
       };
     }
-
+    state.routeMemory.edges = state.routeMemory.edges || {};
     return state.routeMemory;
   }
 
@@ -31,21 +45,52 @@
   }
 
   function playerTrailAmount(use) {
-    if (use < VISIBLE_USE_THRESHOLD) {
-      return 0;
-    }
+    if (use <= FADE_START_USE) return 0;
+    const t =
+      (use - FADE_START_USE) /
+      Math.max(1, MAX_PLAYER_TRAIL_USE - FADE_START_USE);
+    return smoothstep(t) * MAX_PLAYER_TRAIL_AMOUNT;
+  }
 
-    if (use < DESIRE_LINE_THRESHOLD) {
-      return 0.08 + (use - VISIBLE_USE_THRESHOLD) * 0.05;
-    }
+  function routeStrength(use) {
+    if (use <= FADE_START_USE) return 0;
+    return smoothstep(
+      (use - FADE_START_USE) /
+      Math.max(1, MAX_PLAYER_TRAIL_USE - FADE_START_USE)
+    );
+  }
 
-    if (use < FOOTPATH_THRESHOLD) {
-      return 0.24 + (use - DESIRE_LINE_THRESHOLD) * 0.10;
+  function ensureCellBaselines(cell) {
+    if (cell.playerTrailBaseTrailAmount == null) {
+      cell.playerTrailBaseTrailAmount = cell.trailAmount || 0;
     }
+    if (cell.playerTrailBaseTrailUse == null) {
+      cell.playerTrailBaseTrailUse = cell.trailUse || 0;
+    }
+    if (cell.playerTrailBaseDisturbance == null) {
+      cell.playerTrailBaseDisturbance = cell.disturbance || 0;
+    }
+  }
 
-    return Math.min(
-      0.88,
-      0.58 + (use - FOOTPATH_THRESHOLD) * 0.05
+  function syncCellGroundTruth(cell) {
+    if (!cell) return;
+    ensureCellBaselines(cell);
+    cell.playerTrailUse = clamp(
+      cell.playerTrailUse || 0,
+      0,
+      MAX_PLAYER_TRAIL_USE
+    );
+    cell.playerTrailAmount = playerTrailAmount(cell.playerTrailUse);
+    cell.trailUse =
+      cell.playerTrailBaseTrailUse +
+      cell.playerTrailUse * 0.045;
+    cell.trailAmount = Math.max(
+      cell.playerTrailBaseTrailAmount,
+      cell.playerTrailAmount
+    );
+    cell.disturbance = Math.max(
+      cell.playerTrailBaseDisturbance,
+      Math.min(0.72, cell.playerTrailAmount * 0.78)
     );
   }
 
@@ -54,40 +99,44 @@
       LLW.terrain?.getBushAt?.(x, y) ||
       (state.bushes || []).find(
         (bush) => bush.x === x && bush.y === y
-      ) ||
-      null
+      ) || null
     );
   }
 
-  function wearBushIfNeeded(cell) {
-    if (!cell || (cell.playerTrailUse || 0) < BUSH_WORN_THRESHOLD) {
-      return false;
-    }
-
-    const bush = getBush(cell.x, cell.y);
-
-    if (!bush || bush.playerRouteWorn) {
-      return false;
-    }
-
+  function wearBush(bush, use) {
+    if (!bush || bush.playerRouteWorn) return false;
     bush.playerRouteWorn = true;
-    bush.routeWear = clamp(
-      (cell.playerTrailUse || 0) / FOOTPATH_THRESHOLD,
-      0.55,
-      1
-    );
-
-    // The plant is still there and can still carry berries; repeated passage
-    // has simply pushed its mass outward and down into a scruffier opening.
+    bush.routeWear = clamp(use / FOOTPATH_THRESHOLD, 0.60, 1);
     bush.baseRouteScale = bush.scale || 1;
     bush.baseRouteFoliageScaleX = bush.foliageScaleX || 1;
     bush.baseRouteFoliageScaleY = bush.foliageScaleY || 1;
-    bush.scale = bush.baseRouteScale * 0.84;
-    bush.foliageScaleX = bush.baseRouteFoliageScaleX * 1.16;
-    bush.foliageScaleY = bush.baseRouteFoliageScaleY * 0.62;
-
-    ensureState().wornBushes += 1;
+    bush.scale = bush.baseRouteScale * 0.86;
+    bush.foliageScaleX = bush.baseRouteFoliageScaleX * 1.14;
+    bush.foliageScaleY = bush.baseRouteFoliageScaleY * 0.66;
     return true;
+  }
+
+  function recoverBush(bush) {
+    if (!bush?.playerRouteWorn) return false;
+    bush.scale = bush.baseRouteScale || bush.scale || 1;
+    bush.foliageScaleX =
+      bush.baseRouteFoliageScaleX || bush.foliageScaleX || 1;
+    bush.foliageScaleY =
+      bush.baseRouteFoliageScaleY || bush.foliageScaleY || 1;
+    bush.playerRouteWorn = false;
+    bush.routeWear = 0;
+    return true;
+  }
+
+  function syncBushForCell(cell) {
+    const bush = getBush(cell.x, cell.y);
+    if (!bush) return;
+    const use = cell.playerTrailUse || 0;
+    if (use >= BUSH_WORN_THRESHOLD) {
+      wearBush(bush, use);
+    } else if (use <= BUSH_RECOVER_THRESHOLD) {
+      recoverBush(bush);
+    }
   }
 
   function edgeKey(ax, ay, bx, by) {
@@ -96,128 +145,102 @@
     return a < b ? `${a}|${b}` : `${b}|${a}`;
   }
 
-  function recordEdge(fromX, fromY, toX, toY) {
+  function recordEdge(fromX, fromY, toX, toY, day) {
     if (
-      fromX == null ||
-      fromY == null ||
+      fromX == null || fromY == null ||
       (fromX === toX && fromY === toY)
-    ) {
-      return;
-    }
+    ) return;
 
     const memory = ensureState();
-    memory.edges = memory.edges || {};
     const key = edgeKey(fromX, fromY, toX, toY);
-    const existing = memory.edges[key];
-
-    memory.edges[key] = {
+    const edge = memory.edges[key] || {
       fromX,
       fromY,
       toX,
       toY,
-      uses: Math.min(
-        MAX_PLAYER_TRAIL_USE,
-        (existing?.uses || 0) + 1
-      )
+      uses: 0,
+      lastUsedDay: day
     };
+    edge.uses = Math.min(MAX_PLAYER_TRAIL_USE, (edge.uses || 0) + 1);
+    edge.lastUsedDay = day;
+    memory.edges[key] = edge;
+  }
+
+  function recomputeStats() {
+    const memory = ensureState();
+    const cells = state.landscape.cells || [];
+    memory.visibleCells = cells.filter(
+      (cell) => (cell.playerTrailAmount || 0) > 0.004
+    ).length;
+    memory.establishedCells = cells.filter(
+      (cell) => (cell.playerTrailUse || 0) >= FOOTPATH_THRESHOLD
+    ).length;
+    memory.wornBushes = (state.bushes || []).filter(
+      (bush) => bush.playerRouteWorn
+    ).length;
   }
 
   function recordStep(x, y, fromX = null, fromY = null) {
     const cell = cellAt(x, y);
+    if (!cell) return;
 
-    if (!cell) {
-      return;
-    }
-
-    const memory = ensureState();
-    recordEdge(fromX, fromY, x, y);
-    const wasVisible =
-      (cell.playerTrailUse || 0) >= VISIBLE_USE_THRESHOLD;
-    const wasEstablished =
-      (cell.playerTrailUse || 0) >= FOOTPATH_THRESHOLD;
-
+    const day = currentDay();
+    ensureCellBaselines(cell);
+    recordEdge(fromX, fromY, x, y, day);
     cell.playerTrailUse = Math.min(
       MAX_PLAYER_TRAIL_USE,
       (cell.playerTrailUse || 0) + 1
     );
+    cell.playerTrailLastUsedDay = day;
+    syncCellGroundTruth(cell);
+    syncBushForCell(cell);
 
-    cell.playerTrailAmount = playerTrailAmount(
-      cell.playerTrailUse
-    );
+    ensureState().stepsRecorded += 1;
+    recomputeStats();
+  }
 
-    // Feed player history into the same ground-truth fields generated desire
-    // lines already use. Keep the player contribution separately legible so
-    // later systems can still distinguish inherited paths from lived ones.
-    cell.trailUse =
-      (cell.trailUse || 0) + 0.08;
-    cell.trailAmount = Math.max(
-      cell.trailAmount || 0,
-      cell.playerTrailAmount
-    );
-    cell.disturbance = Math.max(
-      cell.disturbance || 0,
-      Math.min(
-        0.82,
-        0.08 + cell.playerTrailAmount * 0.86
-      )
-    );
+  function decayForDay(day) {
+    for (const cell of state.landscape.cells || []) {
+      if (!(cell.playerTrailUse > 0)) continue;
+      const lastUsed = cell.playerTrailLastUsedDay || 1;
+      if (day - lastUsed <= DECAY_GRACE_DAYS) continue;
 
-    memory.stepsRecorded += 1;
-
-    if (!wasVisible && cell.playerTrailUse >= VISIBLE_USE_THRESHOLD) {
-      memory.visibleCells += 1;
+      cell.playerTrailUse = Math.max(
+        0,
+        cell.playerTrailUse - DECAY_PER_IDLE_DAY
+      );
+      syncCellGroundTruth(cell);
+      syncBushForCell(cell);
     }
 
-    if (!wasEstablished && cell.playerTrailUse >= FOOTPATH_THRESHOLD) {
-      memory.establishedCells += 1;
+    const memory = ensureState();
+    for (const [key, edge] of Object.entries(memory.edges)) {
+      const lastUsed = edge.lastUsedDay || 1;
+      if (day - lastUsed <= DECAY_GRACE_DAYS) continue;
+      edge.uses = Math.max(0, (edge.uses || 0) - DECAY_PER_IDLE_DAY);
+      if (edge.uses <= 0) delete memory.edges[key];
     }
 
-    wearBushIfNeeded(cell);
+    recomputeStats();
   }
 
   function installMovementMemory() {
     const originalUpdatePlayer = LLW.updatePlayer;
-
     LLW.updatePlayer = function (now) {
       const beforeX = state.player.x;
       const beforeY = state.player.y;
       const result = originalUpdatePlayer(now);
-
-      if (
-        state.player.x !== beforeX ||
-        state.player.y !== beforeY
-      ) {
-        recordStep(
-          state.player.x,
-          state.player.y,
-          beforeX,
-          beforeY
-        );
+      if (state.player.x !== beforeX || state.player.y !== beforeY) {
+        recordStep(state.player.x, state.player.y, beforeX, beforeY);
       }
-
       return result;
     };
   }
 
   function softenEstablishedBushMove(result) {
-    if (
-      !result?.allowed ||
-      result.reason !== "bush"
-    ) {
-      return result;
-    }
-
-    const x = result.destX;
-    const y = result.destY;
-    const cell = cellAt(x, y);
-
-    if (
-      !cell ||
-      (cell.playerTrailUse || 0) < BUSH_WORN_THRESHOLD
-    ) {
-      return result;
-    }
-
+    if (!result?.allowed || result.reason !== "bush") return result;
+    const bush = getBush(result.destX, result.destY);
+    if (!bush?.playerRouteWorn) return result;
     return {
       ...result,
       mode: "normal",
@@ -228,10 +251,7 @@
   }
 
   function installTraversalPayoff() {
-    if (!LLW.traversal) {
-      return;
-    }
-
+    if (!LLW.traversal) return;
     const originalEvaluateIntentMove =
       LLW.traversal.evaluateIntentMove.bind(LLW.traversal);
     const originalEvaluateMove =
@@ -240,207 +260,124 @@
       LLW.traversal.getTerrainMoveProfile.bind(LLW.traversal);
 
     LLW.traversal.evaluateIntentMove = function (...args) {
-      return softenEstablishedBushMove(
-        originalEvaluateIntentMove(...args)
-      );
+      return softenEstablishedBushMove(originalEvaluateIntentMove(...args));
     };
 
     LLW.traversal.evaluateMove = function (...args) {
       const result = originalEvaluateMove(...args);
-
-      if (!result?.allowed || result.reason !== "bush") {
-        return result;
-      }
-
+      if (!result?.allowed || result.reason !== "bush") return result;
       const [, , toX, toY] = args;
-      return softenEstablishedBushMove({
-        ...result,
-        destX: toX,
-        destY: toY
-      });
+      return softenEstablishedBushMove({ ...result, destX: toX, destY: toY });
     };
 
     LLW.traversal.getTerrainMoveProfile = function (x, y) {
       const result = originalGetTerrainMoveProfile(x, y);
-      const cell = cellAt(x, y);
-
-      if (
-        result.reason === "bush" &&
-        (cell?.playerTrailUse || 0) >= BUSH_WORN_THRESHOLD
-      ) {
+      if (result.reason === "bush" && getBush(x, y)?.playerRouteWorn) {
         return {
           turnCost: LLW.CONFIG.normalMoveTurns,
           duration: LLW.CONFIG.normalMoveDuration,
           reason: "worn_bush_path"
         };
       }
-
       return result;
     };
   }
 
-  function visiblePlayerCells() {
-    return (state.landscape.cells || []).filter(
-      (cell) =>
-        (cell.playerTrailUse || 0) >= VISIBLE_USE_THRESHOLD
-    );
-  }
-
   function centerForCell(cell, view) {
     const p = view.gridToPixel(
-      cell.x,
-      cell.y,
-      view.tileSize,
-      view.offsetX,
-      view.offsetY
+      cell.x, cell.y, view.tileSize, view.offsetX, view.offsetY
     );
-
     return {
       x: p.x + view.tileSize * 0.5,
       y: p.y + view.tileSize * 0.73
     };
   }
 
-  function routeStrength(cell) {
-    return clamp(
-      ((cell.playerTrailUse || 0) - VISIBLE_USE_THRESHOLD + 1) /
-        (FOOTPATH_THRESHOLD - VISIBLE_USE_THRESHOLD + 2),
-      0.08,
-      1
-    );
-  }
-
   function drawScuff(ctx, cell, view) {
+    const strength = routeStrength(cell.playerTrailUse || 0);
+    if (strength <= 0) return;
     const center = centerForCell(cell, view);
-    const strength = routeStrength(cell);
     const size = view.tileSize;
-    const seed =
-      (cell.x * 73856093) ^
-      (cell.y * 19349663);
-    const angle =
-      ((seed % 17) / 17 - 0.5) * 0.9;
+    const seed = (cell.x * 73856093) ^ (cell.y * 19349663);
+    const angle = ((seed % 17) / 17 - 0.5) * 0.9;
 
     ctx.save();
     ctx.translate(center.x, center.y);
     ctx.rotate(angle);
-    ctx.fillStyle =
-      `rgba(139, 111, 69, ${0.07 + strength * 0.10})`;
-
+    ctx.fillStyle = `rgba(132, 105, 69, ${0.006 + strength * 0.060})`;
     ctx.beginPath();
-    ctx.ellipse(
-      -size * 0.08,
-      0,
-      size * 0.11,
-      size * 0.035,
-      -0.18,
-      0,
-      Math.PI * 2
-    );
-    ctx.ellipse(
-      size * 0.09,
-      size * 0.025,
-      size * 0.10,
-      size * 0.032,
-      0.16,
-      0,
-      Math.PI * 2
-    );
+    ctx.ellipse(-size * 0.08, 0, size * 0.10, size * 0.030, -0.18, 0, Math.PI * 2);
+    ctx.ellipse(size * 0.09, size * 0.025, size * 0.09, size * 0.028, 0.16, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
   function drawConnection(ctx, a, b, edge, view) {
+    const cellStrength = Math.min(
+      routeStrength(a.playerTrailUse || 0),
+      routeStrength(b.playerTrailUse || 0)
+    );
+    const edgeStrength = routeStrength(edge.uses || 0);
+    const strength = Math.min(cellStrength, edgeStrength);
+    if (strength <= 0) return;
+
     const start = centerForCell(a, view);
     const end = centerForCell(b, view);
-    const strength = Math.min(
-      routeStrength(a),
-      routeStrength(b),
-      clamp((edge?.uses || 0) / FOOTPATH_THRESHOLD, 0.08, 1)
-    );
     const size = view.tileSize;
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const length = Math.hypot(dx, dy);
-
-    if (length <= 0.1) {
-      return;
-    }
+    if (length <= 0.1) return;
 
     const nx = -dy / length;
     const ny = dx / length;
     const bend =
-      Math.sin(
-        (a.x + b.x) * 2.31 +
-        (a.y + b.y) * 1.73
-      ) *
-      size * 0.07;
+      Math.sin((a.x + b.x) * 2.31 + (a.y + b.y) * 1.73) *
+      size * 0.055;
     const midX = (start.x + end.x) * 0.5 + nx * bend;
     const midY = (start.y + end.y) * 0.5 + ny * bend;
 
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-
-    ctx.strokeStyle =
-      `rgba(116, 91, 59, ${0.08 + strength * 0.13})`;
-    ctx.lineWidth =
-      size * (0.12 + strength * 0.11);
+    ctx.strokeStyle = `rgba(108, 85, 57, ${0.010 + strength * 0.125})`;
+    ctx.lineWidth = size * (0.075 + strength * 0.090);
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     ctx.quadraticCurveTo(midX, midY, end.x, end.y);
     ctx.stroke();
 
-    if (
-      (a.playerTrailUse || 0) >= DESIRE_LINE_THRESHOLD &&
-      (b.playerTrailUse || 0) >= DESIRE_LINE_THRESHOLD
-    ) {
-      ctx.strokeStyle =
-        `rgba(190, 158, 99, ${0.045 + strength * 0.08})`;
-      ctx.lineWidth =
-        size * (0.045 + strength * 0.05);
+    if ((edge.uses || 0) >= DESIRE_LINE_THRESHOLD) {
+      ctx.strokeStyle = `rgba(190, 160, 104, ${0.006 + strength * 0.040})`;
+      ctx.lineWidth = size * (0.026 + strength * 0.038);
       ctx.beginPath();
       ctx.moveTo(start.x, start.y);
       ctx.quadraticCurveTo(midX, midY, end.x, end.y);
       ctx.stroke();
     }
-
     ctx.restore();
   }
 
   function drawPlayerRoutes(ctx, view) {
-    const cells = visiblePlayerCells();
-
-    if (!cells.length) {
-      return;
-    }
+    const cells = (state.landscape.cells || []).filter(
+      (cell) => routeStrength(cell.playerTrailUse || 0) > 0
+    );
+    if (!cells.length) return;
 
     const byKey = new Map(
-      cells.map(
-        (cell) => [LLW.gridKey(cell.x, cell.y), cell]
-      )
+      cells.map((cell) => [LLW.gridKey(cell.x, cell.y), cell])
     );
-    const edges = Object.values(ensureState().edges || {});
 
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
 
-    for (const cell of cells) {
-      drawScuff(ctx, cell, view);
-    }
+    for (const cell of cells) drawScuff(ctx, cell, view);
 
-    for (const edge of edges) {
-      if ((edge.uses || 0) < VISIBLE_USE_THRESHOLD) {
-        continue;
-      }
-
+    for (const edge of Object.values(ensureState().edges || {})) {
+      if (routeStrength(edge.uses || 0) <= 0) continue;
       const a = byKey.get(LLW.gridKey(edge.fromX, edge.fromY));
       const b = byKey.get(LLW.gridKey(edge.toX, edge.toY));
-
-      if (!a || !b) {
-        continue;
-      }
-
-      drawConnection(ctx, a, b, edge, view);
+      if (a && b) drawConnection(ctx, a, b, edge, view);
     }
 
     ctx.restore();
@@ -448,14 +385,8 @@
 
   function installTerrainRendering() {
     const renderer = LLW.landscapeRenderer;
-
-    if (!renderer?.drawTerrain) {
-      return;
-    }
-
-    const originalDrawTerrain =
-      renderer.drawTerrain.bind(renderer);
-
+    if (!renderer?.drawTerrain) return;
+    const originalDrawTerrain = renderer.drawTerrain.bind(renderer);
     renderer.drawTerrain = function (ctx, view) {
       originalDrawTerrain(ctx, view);
       drawPlayerRoutes(ctx, view);
@@ -464,10 +395,8 @@
 
   function installWorldReset() {
     const originalCreateWorld = LLW.createWorld;
-
     LLW.createWorld = function (...args) {
       const result = originalCreateWorld.apply(this, args);
-
       state.routeMemory = {
         stepsRecorded: 0,
         visibleCells: 0,
@@ -475,20 +404,29 @@
         wornBushes: 0,
         edges: {}
       };
-
       return result;
     };
   }
 
+  function installDecay() {
+    LLW.time?.onNewDay?.(({ dayNumber }) => decayForDay(dayNumber));
+  }
+
   LLW.routeMemory = {
     recordStep,
+    decayForDay,
     getState: ensureState,
     drawPlayerRoutes,
     thresholds: {
-      visible: VISIBLE_USE_THRESHOLD,
+      fadeStart: FADE_START_USE,
       desireLine: DESIRE_LINE_THRESHOLD,
       footpath: FOOTPATH_THRESHOLD,
-      wornBush: BUSH_WORN_THRESHOLD
+      wornBush: BUSH_WORN_THRESHOLD,
+      bushRecover: BUSH_RECOVER_THRESHOLD
+    },
+    decay: {
+      graceDays: DECAY_GRACE_DAYS,
+      usePerIdleDay: DECAY_PER_IDLE_DAY
     }
   };
 
@@ -496,5 +434,6 @@
   installTraversalPayoff();
   installTerrainRendering();
   installWorldReset();
+  installDecay();
   ensureState();
 })();
