@@ -1,0 +1,29 @@
+Low Level Wizards browser — v53.1 trail tuning
+
+Purpose
+Make player-made paths feel accumulated and ecological instead of unlocking after a few passes.
+
+Tuning
+- First 4 crossings: no visible trail contribution.
+- 5+ crossings: extremely faint scuffing begins through a smooth fade curve rather than a binary reveal.
+- ~16 crossings: route begins to read as a deliberate desire line.
+- ~32 crossings: route reads as an established footpath.
+- 24 crossings through an ordinary bush: vegetation is sufficiently beaten aside to become normal-speed traversal.
+- Bushes recover once remembered use falls to 14 or less.
+- Player trail strength caps at 48 remembered uses.
+
+Presentation
+- Initial route opacity is intentionally tiny (roughly 1–3% depending on exact accumulated use), well below the previous v53 values.
+- Continued use slowly darkens and modestly broadens the route.
+- Trail rendering remains beneath groundcover so the landscape continues to visually interrupt it.
+
+Decay
+- A route gets 2 full unused in-game days with no decay.
+- After that grace period, it loses 1 remembered use per unused day.
+- Cell wear and actual traversed-edge wear both decay.
+- Generated/pre-existing trail truth is preserved as a baseline; only the player's added wear fades.
+- A repeatedly used path can therefore persist for many in-game days, while a tentative shortcut quietly disappears.
+- Bush wear uses hysteresis: it takes 24 uses to beat a passage open but does not regrow until remembered use falls to 14, avoiding flicker around one threshold.
+
+Acceptance test
+Walk the same short route repeatedly. Nothing should pop into existence after one or two trips. Around repeated use, the ground should slowly become legible as a route. Leave that route alone for several in-game days and watch it fade rather than vanish instantly; resume using it and it should strengthen again.
