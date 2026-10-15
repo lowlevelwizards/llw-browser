@@ -435,38 +435,120 @@
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(lamp.state?.tilt || 0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
-    ctx.fillStyle = "rgba(43, 44, 38, 0.16)";
+    ctx.fillStyle = "rgba(43, 44, 38, 0.18)";
     ctx.beginPath();
-    ctx.ellipse(0, size * 0.10, size * 0.16, size * 0.055, 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      size * 0.04,
+      size * 0.11,
+      size * 0.22,
+      size * 0.065,
+      -0.10,
+      0,
+      Math.PI * 2
+    );
     ctx.fill();
 
-    ctx.strokeStyle = "#544638";
-    ctx.lineWidth = Math.max(2, size * 0.055);
-    ctx.lineCap = "round";
+    // Chunky, weathered L-shaped roadside timber.
+    ctx.strokeStyle = "#4d392b";
+    ctx.lineWidth = Math.max(3, size * 0.085);
     ctx.beginPath();
-    ctx.moveTo(0, size * 0.08);
-    ctx.lineTo(0, -size * 0.62);
-    ctx.quadraticCurveTo(0, -size * 0.75, size * 0.15, -size * 0.75);
+    ctx.moveTo(-size * 0.015, size * 0.09);
+    ctx.lineTo(size * 0.005, -size * 0.82);
+    ctx.lineTo(size * 0.34, -size * 0.80);
     ctx.stroke();
 
-    ctx.fillStyle = "#3f3a34";
-    ctx.fillRect(size * 0.08, -size * 0.78, size * 0.18, size * 0.24);
-    ctx.strokeStyle = "#77634e";
-    ctx.lineWidth = Math.max(1, size * 0.018);
-    ctx.strokeRect(size * 0.08, -size * 0.78, size * 0.18, size * 0.24);
-
-    ctx.fillStyle = lit ? "#f2ad4d" : "#61594d";
+    ctx.strokeStyle = "#765640";
+    ctx.lineWidth = Math.max(1.5, size * 0.042);
     ctx.beginPath();
-    ctx.moveTo(size * 0.17, -size * 0.73);
-    ctx.quadraticCurveTo(size * 0.12, -size * 0.65, size * 0.17, -size * 0.59);
-    ctx.quadraticCurveTo(size * 0.22, -size * 0.65, size * 0.17, -size * 0.73);
+    ctx.moveTo(size * 0.01, size * 0.055);
+    ctx.lineTo(size * 0.025, -size * 0.78);
+    ctx.lineTo(size * 0.31, -size * 0.775);
+    ctx.stroke();
+
+    // A rough triangular brace makes it feel hand-built rather than machined.
+    ctx.strokeStyle = "#5e4433";
+    ctx.lineWidth = Math.max(1.5, size * 0.038);
+    ctx.beginPath();
+    ctx.moveTo(size * 0.03, -size * 0.61);
+    ctx.lineTo(size * 0.18, -size * 0.78);
+    ctx.stroke();
+
+    // Small chips / brushy wood grain.
+    ctx.strokeStyle = "rgba(176, 139, 103, 0.44)";
+    ctx.lineWidth = Math.max(1, size * 0.014);
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.012, -size * 0.18);
+    ctx.lineTo(size * 0.022, -size * 0.29);
+    ctx.moveTo(size * 0.005, -size * 0.43);
+    ctx.lineTo(size * 0.034, -size * 0.52);
+    ctx.moveTo(size * 0.13, -size * 0.79);
+    ctx.lineTo(size * 0.21, -size * 0.77);
+    ctx.stroke();
+
+    // Hemp rope droops from the end of the hanging arm.
+    ctx.strokeStyle = "#a68b66";
+    ctx.lineWidth = Math.max(1, size * 0.018);
+    ctx.beginPath();
+    ctx.moveTo(size * 0.31, -size * 0.77);
+    ctx.quadraticCurveTo(
+      size * 0.335,
+      -size * 0.62,
+      size * 0.30,
+      -size * 0.49
+    );
+    ctx.stroke();
+
+    // Dark little iron cap and frame around the dangling lamp.
+    ctx.fillStyle = "#403730";
+    ctx.beginPath();
+    ctx.moveTo(size * 0.245, -size * 0.50);
+    ctx.lineTo(size * 0.355, -size * 0.50);
+    ctx.lineTo(size * 0.325, -size * 0.455);
+    ctx.lineTo(size * 0.275, -size * 0.455);
+    ctx.closePath();
     ctx.fill();
 
+    ctx.fillStyle = lit ? "#f0b657" : "#6b6053";
+    ctx.strokeStyle = "#4b4036";
+    ctx.lineWidth = Math.max(1, size * 0.018);
+    ctx.beginPath();
+    ctx.moveTo(size * 0.265, -size * 0.455);
+    ctx.lineTo(size * 0.335, -size * 0.455);
+    ctx.lineTo(size * 0.355, -size * 0.305);
+    ctx.lineTo(size * 0.245, -size * 0.305);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(58, 48, 39, 0.82)";
+    ctx.lineWidth = Math.max(1, size * 0.012);
+    ctx.beginPath();
+    ctx.moveTo(size * 0.282, -size * 0.45);
+    ctx.lineTo(size * 0.27, -size * 0.31);
+    ctx.moveTo(size * 0.318, -size * 0.45);
+    ctx.lineTo(size * 0.33, -size * 0.31);
+    ctx.stroke();
+
     if (lit) {
+      ctx.fillStyle = "rgba(249, 216, 113, 0.42)";
+      ctx.beginPath();
+      ctx.ellipse(
+        size * 0.30,
+        -size * 0.38,
+        size * 0.085,
+        size * 0.105,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+
       ctx.fillStyle = "#f7d56d";
       ctx.beginPath();
-      ctx.arc(size * 0.17, -size * 0.65, size * 0.035, 0, Math.PI * 2);
+      ctx.arc(size * 0.30, -size * 0.375, size * 0.032, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -480,19 +562,37 @@
     const variation = bramble.state?.variation || 1;
 
     ctx.save();
-    ctx.translate(p.x, p.y - size * 0.02);
+    ctx.translate(p.x, p.y - size * 0.045);
     ctx.rotate(angle);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    ctx.strokeStyle = "#493741";
-    ctx.lineWidth = Math.max(2, size * 0.065);
-    const stems = [
-      [-0.38, 0.12, -0.14, -0.12, 0.08, 0.10, 0.38, -0.08],
-      [-0.34, -0.10, -0.10, 0.08, 0.15, -0.10, 0.34, 0.12],
-      [-0.28, 0.02, -0.05, -0.17, 0.18, 0.06, 0.30, -0.02]
+    // Wider shadow and a bruised-purple body make this read as a true choke.
+    ctx.fillStyle = "rgba(40, 24, 45, 0.20)";
+    ctx.beginPath();
+    ctx.ellipse(0, size * 0.13, size * 0.52, size * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(69, 38, 80, 0.82)";
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.52, size * 0.12);
+    ctx.quadraticCurveTo(-size * 0.43, -size * 0.20, -size * 0.20, -size * 0.17);
+    ctx.quadraticCurveTo(-size * 0.06, -size * 0.34, size * 0.10, -size * 0.19);
+    ctx.quadraticCurveTo(size * 0.31, -size * 0.30, size * 0.50, size * 0.04);
+    ctx.quadraticCurveTo(size * 0.34, size * 0.24, size * 0.04, size * 0.19);
+    ctx.quadraticCurveTo(-size * 0.29, size * 0.26, -size * 0.52, size * 0.12);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#2b1b2f";
+    ctx.lineWidth = Math.max(3, size * 0.095);
+    const heavyStems = [
+      [-0.50, 0.15, -0.28, -0.18, 0.02, 0.12, 0.49, -0.13],
+      [-0.47, -0.08, -0.20, 0.13, 0.13, -0.20, 0.48, 0.12],
+      [-0.40, 0.05, -0.15, -0.29, 0.16, 0.04, 0.40, -0.22],
+      [-0.43, 0.19, -0.06, -0.08, 0.25, 0.22, 0.46, -0.04]
     ];
-    for (const stem of stems) {
+    for (const stem of heavyStems) {
       ctx.beginPath();
       ctx.moveTo(stem[0] * size, stem[1] * size);
       ctx.lineTo(stem[2] * size, stem[3] * size * variation);
@@ -501,17 +601,60 @@
       ctx.stroke();
     }
 
-    ctx.strokeStyle = "#765361";
-    ctx.lineWidth = Math.max(1, size * 0.025);
-    for (const x of [-0.24, -0.08, 0.10, 0.25]) {
+    ctx.strokeStyle = "#5a3567";
+    ctx.lineWidth = Math.max(2, size * 0.052);
+    const middleStems = [
+      [-0.48, -0.16, -0.17, 0.00, 0.09, -0.27, 0.46, 0.05],
+      [-0.38, 0.20, -0.18, -0.06, 0.09, 0.20, 0.38, -0.09],
+      [-0.31, -0.21, -0.03, 0.08, 0.24, -0.18, 0.45, 0.16]
+    ];
+    for (const stem of middleStems) {
       ctx.beginPath();
-      ctx.moveTo(x * size, -size * 0.08);
-      ctx.lineTo((x + 0.04 * variation) * size, -size * 0.18);
+      ctx.moveTo(stem[0] * size, stem[1] * size);
+      ctx.lineTo(stem[2] * size, stem[3] * size * variation);
+      ctx.lineTo(stem[4] * size, stem[5] * size);
+      ctx.lineTo(stem[6] * size, stem[7] * size * variation);
       ctx.stroke();
     }
 
-    ctx.fillStyle = "#c9bda0";
-    for (const [x, y, r] of [[-0.20, -0.03, 0.025], [0.04, 0.08, 0.032], [0.23, -0.07, 0.022]]) {
+    // Long hooked thorns stick out beyond the main body.
+    ctx.strokeStyle = "#765084";
+    ctx.lineWidth = Math.max(1, size * 0.026);
+    const thorns = [
+      [-0.39, -0.10, -0.48, -0.27],
+      [-0.24, 0.03, -0.29, 0.27],
+      [-0.10, -0.16, -0.04, -0.34],
+      [0.06, 0.06, 0.12, 0.30],
+      [0.19, -0.11, 0.28, -0.31],
+      [0.34, 0.02, 0.46, 0.23]
+    ];
+    for (const thorn of thorns) {
+      ctx.beginPath();
+      ctx.moveTo(thorn[0] * size, thorn[1] * size * variation);
+      ctx.lineTo(thorn[2] * size, thorn[3] * size * variation);
+      ctx.stroke();
+    }
+
+    // Pale fungal rot breaks up the purple mass without making it friendly.
+    ctx.fillStyle = "#98849e";
+    for (const [x, y, r] of [
+      [-0.31, -0.08, 0.035],
+      [-0.12, 0.12, 0.026],
+      [0.05, -0.12, 0.042],
+      [0.22, 0.09, 0.032],
+      [0.35, -0.07, 0.024]
+    ]) {
+      ctx.beginPath();
+      ctx.arc(x * size, y * size, r * size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "rgba(199, 185, 205, 0.55)";
+    for (const [x, y, r] of [
+      [-0.05, -0.15, 0.018],
+      [0.27, -0.01, 0.016],
+      [-0.24, 0.07, 0.015]
+    ]) {
       ctx.beginPath();
       ctx.arc(x * size, y * size, r * size, 0, Math.PI * 2);
       ctx.fill();
