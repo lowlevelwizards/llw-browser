@@ -41,3 +41,6 @@ jobs:
 
       - name: Run Old Wayhouse smoke test
         run: node tests/v61_old_wayhouse_smoke.js
+
+      - name: Run Wayhouse readability smoke test
+        run: node tests/v61_1_wayhouse_readability_smoke.js
