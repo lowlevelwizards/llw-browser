@@ -249,8 +249,8 @@
           radius: LIGHT_RADIUS,
           visualRadius: 4.1,
           intensity: 0.96,
-          color: "247, 170, 79",
-          glowAlpha: 0.18,
+          color: "255, 137, 47",
+          glowAlpha: 0.19,
           flicker: true,
           itemId: item.id
         };
@@ -329,7 +329,7 @@
     ctx.lineTo(0, -size * 0.20);
     ctx.stroke();
 
-    ctx.fillStyle = item.kind === "spent_torch" ? "#38302d" : "#9b6758";
+    ctx.fillStyle = item.kind === "spent_torch" ? "#38302d" : "#c9b58f";
     ctx.beginPath();
     ctx.moveTo(-size * 0.09, -size * 0.24);
     ctx.lineTo(size * 0.10, -size * 0.25);

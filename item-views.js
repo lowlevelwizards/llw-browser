@@ -11,38 +11,51 @@
     return views.get(kind) || null;
   }
 
-  function drawCloth(ctx, x, y, s, rotation = -0.12, alpha = 1) {
+  function drawCloth(ctx, x, y, s, rotation = -0.18, alpha = 1) {
     ctx.save();
     ctx.globalAlpha *= alpha;
     ctx.translate(x, y);
     ctx.rotate(rotation);
-    ctx.fillStyle = "#9b6758";
-    ctx.strokeStyle = "rgba(84, 57, 51, 0.58)";
-    ctx.lineWidth = Math.max(1, s * 0.035);
+
+    ctx.fillStyle = "#e6ddc4";
+    ctx.strokeStyle = "rgba(112, 99, 77, 0.52)";
+    ctx.lineWidth = Math.max(1, s * 0.028);
+
     ctx.beginPath();
-    ctx.moveTo(-s * 0.23, -s * 0.14);
-    ctx.lineTo(s * 0.18, -s * 0.18);
-    ctx.lineTo(s * 0.25, s * 0.12);
-    ctx.lineTo(s * 0.04, s * 0.20);
-    ctx.lineTo(-s * 0.22, s * 0.12);
+    ctx.moveTo(-s * 0.25, -s * 0.12);
+    ctx.quadraticCurveTo(-s * 0.08, -s * 0.20, s * 0.12, -s * 0.17);
+    ctx.lineTo(s * 0.25, -s * 0.08);
+    ctx.lineTo(s * 0.19, s * 0.13);
+    ctx.quadraticCurveTo(s * 0.02, s * 0.22, -s * 0.18, s * 0.14);
+    ctx.lineTo(-s * 0.27, s * 0.04);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(223, 188, 151, 0.34)";
-    ctx.lineWidth = Math.max(1, s * 0.018);
+    ctx.fillStyle = "rgba(164, 149, 116, 0.18)";
     ctx.beginPath();
-    ctx.moveTo(-s * 0.13, -s * 0.05);
-    ctx.lineTo(s * 0.13, s * 0.03);
+    ctx.moveTo(-s * 0.04, -s * 0.17);
+    ctx.quadraticCurveTo(s * 0.02, -s * 0.02, s * 0.16, s * 0.11);
+    ctx.lineTo(s * 0.03, s * 0.17);
+    ctx.quadraticCurveTo(-s * 0.01, 0, -s * 0.04, -s * 0.17);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(250, 244, 224, 0.54)";
+    ctx.lineWidth = Math.max(1, s * 0.014);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.15, -s * 0.035);
+    ctx.quadraticCurveTo(0, s * 0.015, s * 0.14, s * 0.055);
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(75, 51, 45, 0.45)";
-    for (const dy of [-0.10, -0.02, 0.07]) {
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.21, s * dy);
-      ctx.lineTo(-s * 0.27, s * (dy + 0.03));
-      ctx.stroke();
-    }
+    ctx.strokeStyle = "rgba(213, 202, 174, 0.82)";
+    ctx.lineWidth = Math.max(0.8, s * 0.012);
+    ctx.beginPath();
+    ctx.moveTo(s * 0.19, s * 0.10);
+    ctx.quadraticCurveTo(s * 0.30, s * 0.12, s * 0.31, s * 0.20);
+    ctx.moveTo(s * 0.21, s * 0.06);
+    ctx.quadraticCurveTo(s * 0.28, s * 0.04, s * 0.30, s * 0.10);
+    ctx.stroke();
+
     ctx.restore();
   }
 
@@ -95,15 +108,15 @@
         x,
         y,
         s * 0.72,
-        ((String(item.id).length % 7) - 3) * 0.055
+        -0.10 + ((String(item.id).length % 7) - 3) * 0.045
       );
     },
     drawWorld(ctx, item, render) {
       const { x, y, size } = render;
       ctx.save();
-      ctx.fillStyle = "rgba(57, 72, 59, 0.12)";
+      ctx.fillStyle = "rgba(57, 62, 49, 0.09)";
       ctx.beginPath();
-      ctx.ellipse(x, y + size * 0.09, size * 0.22, size * 0.07, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y + size * 0.09, size * 0.19, size * 0.06, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
       drawCloth(
@@ -111,7 +124,7 @@
         x,
         y,
         size * 0.70,
-        ((String(item.id).length % 5) - 2) * 0.08
+        -0.14 + ((String(item.id).length % 5) - 2) * 0.07
       );
     },
     drawHeld(ctx, item, render) {
@@ -120,7 +133,7 @@
         render.x + render.size * 0.28,
         render.y - render.size * 0.18,
         render.size * 0.50,
-        -0.22
+        -0.30
       );
     }
   });
@@ -254,11 +267,11 @@
         top: 31%;
         width: 44%;
         height: 34%;
-        background: #9b6758;
-        border: 1px solid rgba(84,57,51,.65);
-        border-radius: 18% 30% 16% 28%;
-        transform: rotate(-8deg);
-        box-shadow: inset 0 1px 0 rgba(235,201,166,.28);
+        background: #e6ddc4;
+        border: 1px solid rgba(112,99,77,.58);
+        clip-path: polygon(4% 14%, 82% 2%, 100% 29%, 88% 91%, 18% 100%, 0% 72%);
+        transform: rotate(-13deg);
+        box-shadow: inset 0 1px 0 rgba(255,249,230,.46);
         pointer-events: none;
       }
       .pocket-slot.item-cloth_scrap[aria-label*="Cloth Scrap"]::before {
@@ -267,7 +280,7 @@
         left: 37%;
         top: 44%;
         width: 27%;
-        border-top: 1px solid rgba(225,190,154,.42);
+        border-top: 1px solid rgba(161,145,111,.42);
         transform: rotate(6deg);
         z-index: 2;
         pointer-events: none;
