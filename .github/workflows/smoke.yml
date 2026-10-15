@@ -65,3 +65,6 @@ jobs:
 
       - name: Run head-attached pot smoke test
         run: node tests/v63_4_head_attached_pot_smoke.js
+
+      - name: Run first life smoke test
+        run: node tests/v64_first_life_smoke.js
