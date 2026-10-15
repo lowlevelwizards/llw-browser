@@ -33,7 +33,7 @@ const ctx = {
   closePath() {},
   fill() {},
   stroke() {},
-  ellipse() {},
+  ellipse(...args) { ops.push(["ellipse", ...args]); },
   createLinearGradient() { return gradient; },
   set lineCap(value) {},
   set lineJoin(value) {},
@@ -52,12 +52,20 @@ const translation = ops.find((op) => op[0] === "translate");
 assert(translation, "hat renderer should position itself relative to the player");
 assert.equal(translation[1], 100);
 assert(
-  translation[2] <= 181,
-  "pot should sit high enough above the player center to avoid face clipping"
-);
-assert(
-  !ops.some((op) => op[0] === "rotate"),
-  "pot hat should remain straight across instead of rotating upside down"
+  translation[2] <= 191,
+  "pot should remain raised enough to reduce head clipping during movement"
 );
 
-console.log("v63.2 pot hat visual smoke: ok");
+const rotation = ops.find((op) => op[0] === "rotate");
+assert(rotation, "worn pot should be rotated into an upside-down bucket-helmet orientation");
+assert(
+  Math.abs(rotation[1] - (Math.PI - 0.03)) < 0.001,
+  "worn pot should use the intended near-180-degree inversion"
+);
+
+assert(
+  !ops.some((op) => op[0] === "ellipse"),
+  "worn pot should not draw the interior opening ellipse; the head should read as inside it"
+);
+
+console.log("v63.3 upside-down pot hat smoke: ok");

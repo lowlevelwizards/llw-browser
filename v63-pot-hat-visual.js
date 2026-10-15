@@ -4,92 +4,80 @@
   function drawPotHat(ctx, item, render) {
     const s = render.size;
     const x = render.x;
-    const y = render.y - s * 0.48;
-    const size = s * 0.54;
+    const y = render.y - s * 0.24;
+    const size = s * 0.60;
 
     ctx.save();
     ctx.translate(x, y);
+    ctx.rotate(Math.PI - 0.03);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    // Keep the handles mostly horizontal so this reads as a pot worn as a
-    // hat, rather than an upside-down object swallowing the wizard's face.
+    // Keep the pot inverted like a bucket helmet. The wizard's head should
+    // read as being inside it rather than beneath an upright cooking pot.
     ctx.strokeStyle = "#343633";
-    ctx.lineWidth = Math.max(1.5, size * 0.05);
+    ctx.lineWidth = Math.max(2, size * 0.05);
     ctx.beginPath();
     ctx.arc(
-      -size * 0.34,
-      size * 0.02,
-      size * 0.11,
-      Math.PI * 0.58,
-      Math.PI * 1.42
+      -size * 0.30,
+      -size * 0.01,
+      size * 0.12,
+      Math.PI * 0.55,
+      Math.PI * 1.45
     );
-    ctx.moveTo(size * 0.34, -size * 0.09);
+    ctx.moveTo(size * 0.30, -size * 0.12);
     ctx.arc(
-      size * 0.34,
-      size * 0.02,
-      size * 0.11,
-      -Math.PI * 0.42,
-      Math.PI * 0.42
+      size * 0.30,
+      -size * 0.01,
+      size * 0.12,
+      -Math.PI * 0.45,
+      Math.PI * 0.45
     );
     ctx.stroke();
 
     const iron = ctx.createLinearGradient(
-      -size * 0.34,
+      -size * 0.30,
       0,
-      size * 0.34,
+      size * 0.30,
       0
     );
-    iron.addColorStop(0, "#444a47");
-    iron.addColorStop(0.45, "#72786f");
-    iron.addColorStop(1, "#3a403d");
+    iron.addColorStop(0, "#3f4441");
+    iron.addColorStop(0.45, "#676b64");
+    iron.addColorStop(1, "#363b39");
 
     ctx.fillStyle = iron;
-    ctx.strokeStyle = "#2e3331";
-    ctx.lineWidth = Math.max(1.5, size * 0.03);
+    ctx.strokeStyle = "#2c302e";
+    ctx.lineWidth = Math.max(1.5, size * 0.028);
     ctx.beginPath();
-    ctx.moveTo(-size * 0.28, -size * 0.05);
+    ctx.moveTo(-size * 0.28, -size * 0.10);
     ctx.quadraticCurveTo(
-      -size * 0.31,
-      size * 0.14,
-      -size * 0.21,
-      size * 0.23
+      -size * 0.27,
+      size * 0.22,
+      -size * 0.16,
+      size * 0.28
     );
-    ctx.quadraticCurveTo(0, size * 0.31, size * 0.21, size * 0.23);
+    ctx.quadraticCurveTo(0, size * 0.34, size * 0.16, size * 0.28);
     ctx.quadraticCurveTo(
-      size * 0.31,
-      size * 0.14,
+      size * 0.27,
+      size * 0.22,
       size * 0.28,
-      -size * 0.05
+      -size * 0.10
     );
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = "#7d8379";
-    ctx.strokeStyle = "#303431";
+    // No interior/opening ellipse while worn: the head is visually inside the
+    // overturned pot, so only the outer iron silhouette should be visible.
+    ctx.strokeStyle = "rgba(177, 184, 173, 0.26)";
+    ctx.lineWidth = Math.max(1, size * 0.013);
     ctx.beginPath();
-    ctx.ellipse(
-      0,
-      -size * 0.07,
-      size * 0.31,
-      size * 0.09,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(188, 194, 184, 0.36)";
-    ctx.lineWidth = Math.max(1, size * 0.014);
-    ctx.beginPath();
-    ctx.moveTo(-size * 0.17, size * 0.01);
+    ctx.moveTo(-size * 0.16, size * 0.00);
     ctx.quadraticCurveTo(
-      -size * 0.07,
-      size * 0.10,
-      size * 0.05,
-      size * 0.12
+      -size * 0.08,
+      size * 0.12,
+      size * 0.03,
+      size * 0.16
     );
     ctx.stroke();
 
