@@ -190,21 +190,6 @@
     dark.fillRect(0, 0, view.width, view.height);
 
     dark.globalCompositeOperation = "destination-out";
-    const player = worldToScreen(
-      (state.player.renderX ?? state.player.x) + 0.5,
-      (state.player.renderY ?? state.player.y) + 0.58,
-      view
-    );
-    const radiusPixels = ambientRadius() * view.tileSize;
-    revealCircle(
-      dark,
-      player.x,
-      player.y,
-      view.tileSize * 0.85,
-      radiusPixels,
-      0.58 + darkness * 0.22
-    );
-
     for (const source of LLW.lighting?.getSources?.() || []) {
       const p = worldToScreen(source.x, source.y, view);
       revealCircle(
