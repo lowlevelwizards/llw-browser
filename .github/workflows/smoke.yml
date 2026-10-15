@@ -62,3 +62,6 @@ jobs:
 
       - name: Run upside-down pot hat visual smoke test
         run: node tests/v63_3_upside_down_pot_hat_smoke.js
+
+      - name: Run head-attached pot smoke test
+        run: node tests/v63_4_head_attached_pot_smoke.js
