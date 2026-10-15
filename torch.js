@@ -34,10 +34,52 @@
     );
   }
 
-  function carriedCloth() {
-    return (state.items || []).find(
-      (item) => item.kind === "cloth_scrap" && isCarriedByPlayer(item)
-    ) || null;
+  function isOnPlayerTile(item) {
+    const location = item?.location;
+    return Boolean(
+      location?.kind === "world" &&
+      location.x === state.player.x &&
+      location.y === state.player.y
+    );
+  }
+
+  function isCraftAccessible(item) {
+    return isCarriedByPlayer(item) || isOnPlayerTile(item);
+  }
+
+  function ingredientRank(item) {
+    const kind = item?.location?.kind;
+    if (kind === "held") return 0;
+    if (kind === "pocket") return 1;
+    if (kind === "world") return 2;
+    return 9;
+  }
+
+  function findIngredient(kind) {
+    return (state.items || [])
+      .filter((item) => item.kind === kind && isCraftAccessible(item))
+      .sort((a, b) => ingredientRank(a) - ingredientRank(b))[0] || null;
+  }
+
+  function findWrapRecipe() {
+    const held = LLW.getHeldItem?.() || null;
+
+    // Crafting needs a free hand or one of the ingredients already in hand.
+    // This keeps "craft from the ground" physical instead of silently using
+    // materials while the hand is occupied by some unrelated object.
+    if (held && held.kind !== "stick" && held.kind !== "cloth_scrap") {
+      return null;
+    }
+
+    const stick = held?.kind === "stick"
+      ? held
+      : findIngredient("stick");
+    const cloth = held?.kind === "cloth_scrap"
+      ? held
+      : findIngredient("cloth_scrap");
+
+    if (!stick || !cloth || stick.id === cloth.id) return null;
+    return { stick, cloth };
   }
 
   function isBesideFire() {
@@ -47,20 +89,15 @@
   function getAction() {
     if (state.player.moving) return null;
     const held = LLW.getHeldItem?.();
-    if (!held || !isBesideFire()) return null;
 
-    if (held.kind === "stick" && carriedCloth()) {
-      return {
-        type: "wrap_torch",
-        label: "Wrap Torch",
-        stick: held,
-        cloth: carriedCloth()
-      };
-    }
-
-    if (held.kind === "torch") {
+    if (held?.kind === "torch") {
       const torch = torchState(held);
-      if (!torch.lit && torch.fuelTurns > 0 && state.firepit.isLit) {
+      if (
+        isBesideFire() &&
+        !torch.lit &&
+        torch.fuelTurns > 0 &&
+        state.firepit.isLit
+      ) {
         return {
           type: "light_torch",
           label: "Light Torch",
@@ -69,7 +106,48 @@
       }
     }
 
+    const recipe = findWrapRecipe();
+    if (recipe) {
+      return {
+        type: "wrap_torch",
+        label: "Wrap Torch",
+        ...recipe
+      };
+    }
+
     return null;
+  }
+
+  function actionPriority(action) {
+    if (action?.type === "light_torch") {
+      return 95;
+    }
+
+    if (action?.type !== "wrap_torch") {
+      return 0;
+    }
+
+    const held = LLW.getHeldItem?.() || null;
+
+    // The held object is intent when two valid relationships compete.
+    // Held Stick beside a fire that can accept it means "feed the fire";
+    // the legacy Add Stick action (priority 80) is allowed to win. Holding
+    // Cloth instead says "I am assembling something" and wrapping wins.
+    if (held?.kind === "stick") {
+      const fireAction = LLW.fire?.getHeldAction?.(held);
+      if (fireAction?.type === "add_stick") {
+        return 60;
+      }
+      return 85;
+    }
+
+    if (held?.kind === "cloth_scrap") {
+      return 90;
+    }
+
+    // Empty-hand crafting from pockets/ground is useful, but should not beat
+    // explicit Guild conversation/delivery priorities.
+    return 65;
   }
 
   function spendOneTurn() {
@@ -83,7 +161,12 @@
     if (!stick || !cloth || stick.kind !== "stick" || cloth.kind !== "cloth_scrap") {
       return false;
     }
-    if (!isCarriedByPlayer(stick) || !isCarriedByPlayer(cloth) || !isBesideFire()) {
+    if (!isCraftAccessible(stick) || !isCraftAccessible(cloth)) {
+      return false;
+    }
+
+    const held = LLW.getHeldItem?.() || null;
+    if (held && held.id !== stick.id && held.id !== cloth.id) {
       return false;
     }
 
@@ -304,7 +387,8 @@
 
   LLW.useActions?.register?.({
     id: "torch",
-    priority: 90,
+    priority: 0,
+    getPriority: actionPriority,
     getAction,
     perform
   });
@@ -319,7 +403,8 @@
     perform,
     lightSources,
     burnForTurns,
-    getState: torchState
+    getState: torchState,
+    findWrapRecipe
   };
 
   installTurnBurn();
