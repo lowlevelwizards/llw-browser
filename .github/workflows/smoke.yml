@@ -47,3 +47,6 @@ jobs:
 
       - name: Run Wayhouse hearth and pot smoke test
         run: node tests/v62_wayhouse_pot_smoke.js
+
+      - name: Run pot interaction fix smoke test
+        run: node tests/v62_1_pot_interaction_fix_smoke.js
