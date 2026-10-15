@@ -38,3 +38,6 @@ jobs:
 
       - name: Run old road prop polish smoke test
         run: node tests/v60_3_old_road_prop_polish_smoke.js
+
+      - name: Run Old Wayhouse smoke test
+        run: node tests/v61_old_wayhouse_smoke.js
