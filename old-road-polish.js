@@ -472,11 +472,15 @@
         (item) => item.kind !== LAMP_KIND && item.kind !== ROT_KIND
       );
 
+      let result;
       try {
-        return previousDrawTerrain(ctx, view);
+        result = previousDrawTerrain(ctx, view);
       } finally {
         state.items = originalItems;
       }
+
+      drawFixtures(ctx, view);
+      return result;
     };
   }
 
