@@ -56,3 +56,6 @@ jobs:
 
       - name: Run contextual equipment smoke test
         run: node tests/v63_contextual_equipment_smoke.js
+
+      - name: Run dump pot smoke test
+        run: node tests/v63_1_dump_pot_smoke.js
