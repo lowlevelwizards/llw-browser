@@ -7,6 +7,10 @@ global.document = undefined;
 let nextId = 1;
 const registeredViews = new Map();
 
+const held = () => ({ kind: "held", actorId: "player" });
+const pocket = (pocketIndex) => ({ kind: "pocket", actorId: "player", pocketIndex });
+const worldAt = (x, y) => ({ kind: "world", x, y });
+
 global.LLW = {
   CONFIG: {
     worldCols: 24,
@@ -22,10 +26,7 @@ global.LLW = {
     game: { turn: 0 },
     player: { id: "player", x: 5, y: 5, renderX: 5, renderY: 5, moving: false },
     firepit: { x: 5, y: 6, isLit: true },
-    items: [
-      { id: "stick_1", kind: "stick", location: { kind: "held", actorId: "player" } },
-      { id: "cloth_1", kind: "cloth_scrap", location: { kind: "pocket", actorId: "player", pocketIndex: 0 } }
-    ],
+    items: [],
     landscape: { cells: [] },
     camera: { mode: "local" },
     campStorage: { placed: false }
@@ -36,7 +37,7 @@ global.LLW = {
     ) || null;
   },
   heldLocation() {
-    return { kind: "held", actorId: "player" };
+    return held();
   },
   removeItem(id) {
     this.state.items = this.state.items.filter((item) => item.id !== id);
@@ -47,14 +48,22 @@ global.LLW = {
     return item;
   },
   fire: {
-    isPlayerBesideFire() { return true; },
+    isPlayerBesideFire() {
+      const dx = Math.abs(LLW.state.player.x - LLW.state.firepit.x);
+      const dy = Math.abs(LLW.state.player.y - LLW.state.firepit.y);
+      return Math.max(dx, dy) === 1;
+    },
+    getHeldAction(item) {
+      if (item?.kind === "stick" && this.isPlayerBesideFire()) {
+        return { type: "add_stick", label: "Add", item };
+      }
+      return null;
+    },
     getVisualIntensity() { return 1; }
   },
   getUseAction() {
-    const held = LLW.getHeldItem();
-    return held?.kind === "stick"
-      ? { type: "add_stick", label: "Add", item: held }
-      : null;
+    const heldItem = LLW.getHeldItem();
+    return LLW.fire.getHeldAction(heldItem);
   },
   performUseAction() {
     LLW.__legacyPerformed = true;
@@ -109,8 +118,52 @@ require(path.join(__dirname, "..", "lighting.js"));
 require(path.join(__dirname, "..", "torch.js"));
 require(path.join(__dirname, "..", "visibility.js"));
 
+function setItems(items) {
+  LLW.state.items = items;
+  LLW.__legacyPerformed = false;
+}
+
 assert(LLW.useActions.getProviders().includes("legacy"));
 assert(LLW.useActions.getProviders().includes("torch"));
+
+// At the campfire, a Stick in hand means "feed the fire" even if Cloth is
+// carried. v59 used to hide this action behind Wrap Torch.
+setItems([
+  { id: "stick_fire", kind: "stick", location: held() },
+  { id: "cloth_fire", kind: "cloth_scrap", location: pocket(0) }
+]);
+assert.equal(LLW.getUseAction().type, "add_stick");
+
+// Swapping the held object to Cloth expresses crafting intent at the same
+// physical location; the carried Stick can be used without visiting a menu.
+setItems([
+  { id: "cloth_hand", kind: "cloth_scrap", location: held() },
+  { id: "stick_pocket", kind: "stick", location: pocket(0) }
+]);
+assert.equal(LLW.getUseAction().type, "wrap_torch");
+
+// Away from the fire, Stick + Cloth can be wrapped directly in hand.
+LLW.state.player.x = 2;
+LLW.state.player.y = 2;
+LLW.state.player.renderX = 2;
+LLW.state.player.renderY = 2;
+setItems([
+  { id: "stick_away", kind: "stick", location: held() },
+  { id: "cloth_away", kind: "cloth_scrap", location: pocket(0) }
+]);
+assert.equal(LLW.getUseAction().type, "wrap_torch");
+
+// Both physical ingredients on the ground at the player's feet can be
+// assembled without first shuffling them through inventory slots.
+LLW.state.player.x = 5;
+LLW.state.player.y = 5;
+LLW.state.player.renderX = 5;
+LLW.state.player.renderY = 5;
+LLW.state.game.turn = 0;
+setItems([
+  { id: "stick_ground", kind: "stick", location: worldAt(5, 5) },
+  { id: "cloth_ground", kind: "cloth_scrap", location: worldAt(5, 5) }
+]);
 assert.equal(LLW.getUseAction().type, "wrap_torch");
 LLW.performUseAction();
 
@@ -119,8 +172,10 @@ assert.equal(torch.kind, "torch");
 assert.equal(torch.state.lit, false);
 assert.equal(torch.state.fuelTurns, 60);
 assert.equal(LLW.state.items.some((item) => item.kind === "cloth_scrap"), false);
+assert.equal(LLW.state.items.some((item) => item.kind === "stick"), false);
 assert.equal(LLW.state.game.turn, 1);
 
+// Ignition is still a distinct relationship with the lit campfire.
 assert.equal(LLW.getUseAction().type, "light_torch");
 LLW.performUseAction();
 torch = LLW.getHeldItem();
@@ -148,4 +203,4 @@ assert.equal(torch.kind, "spent_torch");
 assert.equal(torch.state.lit, false);
 assert.equal(torch.state.fuelTurns, 0);
 
-console.log("v59 darkness + torch smoke: ok");
+console.log("v59.1 torch interactions + darkness smoke: ok");
