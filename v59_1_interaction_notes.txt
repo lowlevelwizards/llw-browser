@@ -1,0 +1,37 @@
+v59.1 — Hand + Ground Crafting / Interaction Intent
+
+Purpose
+-------
+Loosen the v59 torch recipe so it follows physical possessions instead of the campfire, while preserving an intuitive way to feed the fire when Stick + Cloth are both available.
+
+Interaction grammar
+-------------------
+- Wrapping a torch does NOT require the firepit.
+- Recipe ingredients may come from the player's carried items (held/pockets) or world items on the player's current tile.
+- If the hand is empty, a valid Stick + Cloth recipe can be assembled from pockets/ground and the resulting Torch is placed in hand.
+- If one recipe ingredient is held, the other may be in a pocket or on the ground at the player's feet.
+- If a non-recipe item occupies the hand, ground/pocket crafting is not offered; the player must free the hand.
+- Beside a fire that can accept fuel, a held Stick expresses "feed the fire" intent. Add Stick therefore beats Wrap Torch even if Cloth is carried or on the ground.
+- Holding Cloth beside the same fire expresses crafting intent, so Cloth + accessible Stick yields Wrap Torch.
+- Away from a usable fire, held Stick + accessible Cloth yields Wrap Torch normally.
+
+Lighting
+--------
+Lighting an already-wrapped Torch still requires a lit campfire in v59.1. This pass changes assembly, not ignition.
+
+Scope exclusions
+----------------
+- no general recipe/crafting framework
+- no crafting UI/menu
+- no adjacent-tile ingredient vacuuming
+- no automatic crafting while holding an unrelated item
+- no alternate-action carousel yet
+
+Acceptance checks
+-----------------
+1. Held Stick + carried Cloth beside fire => Add Stick remains available.
+2. Held Cloth + carried/ground Stick beside fire => Wrap Torch.
+3. Held Stick + carried/ground Cloth away from fire => Wrap Torch.
+4. Empty hand + Stick + Cloth on current ground tile => Wrap Torch into hand.
+5. Empty hand + pocket/ground mix => Wrap Torch into hand.
+6. Ingredient instances are consumed physically; one Torch instance is created.
