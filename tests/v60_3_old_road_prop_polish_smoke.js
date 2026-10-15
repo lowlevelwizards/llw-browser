@@ -32,7 +32,7 @@ const grassOnLamp = {
   x: 5,
   y: 5,
   offsetX: -0.40,
-  offsetY: 0
+  offsetY: -0.06
 };
 
 const grassOnRot = {
