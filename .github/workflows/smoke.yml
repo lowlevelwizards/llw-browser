@@ -53,3 +53,6 @@ jobs:
 
       - name: Run mounted pot fire visual smoke test
         run: node tests/v62_2_pot_fire_visual_smoke.js
+
+      - name: Run contextual equipment smoke test
+        run: node tests/v63_contextual_equipment_smoke.js
