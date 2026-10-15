@@ -26,3 +26,6 @@ jobs:
 
       - name: Run persistence smoke test
         run: node tests/v58_persistence_smoke.js
+
+      - name: Run darkness and torch smoke test
+        run: node tests/v59_darkness_torch_smoke.js

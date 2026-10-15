@@ -1,0 +1,91 @@
+Low Level Wizards Browser — v59 The Dark Between Fires v0
+
+MISSION
+Make night a real spatial condition and turn the existing cloth + stick + campfire relationship into a portable-light preparation loop.
+
+CORE STORY
+ruin basket -> cloth scrap -> bring home -> combine with stick -> light at campfire -> sacrifice held hand -> travel after dark
+
+IMPLEMENTED
+
+1. Explicit Use-action seam
+- use-actions.js captures the current legacy interaction chain as one provider.
+- New providers can register with explicit priorities instead of wrapping getUseAction again.
+- Legacy priority preserves important existing behavior:
+  guild settlement > torch work > fire work > casual Guild talk > storage > forage > eating.
+- Torch actions use priority 90.
+
+2. Shared lighting truth
+- lighting.js owns light-source providers.
+- Campfire is the first built-in source.
+- Sources expose world position, full radius, falloff radius, intensity and visual glow data.
+- LLW.lighting.sampleAt(x, y) and visual glow rendering use the same source definitions.
+
+3. Physical torches
+- New Torch item, pocketable=false.
+- New Spent Torch item, pocketable=false.
+- Beside the firepit, holding a Stick while carrying a Cloth Scrap offers Wrap Torch.
+- The exact stick and cloth instances are consumed and replaced by one physical Torch item in hand.
+- Wrapping costs one turn.
+- Holding an unlit Torch beside a lit campfire offers Light Torch.
+- Lighting costs one turn.
+- Torch state lives directly on the saved item:
+  state.lit
+  state.fuelTurns
+  state.maxFuelTurns
+- Lit state and remaining fuel therefore persist automatically through the existing item snapshot.
+
+4. Torch fuel
+- Maximum fuel: 60 turns (~3 in-world hours at 20 turns/hour).
+- Rain increases fuel consumption continuously up to 1.40x at full rain intensity.
+- No random extinguishing.
+- On burnout the physical item becomes a Spent Torch instead of disappearing.
+- Lit torches remain light sources wherever the item physically exists: held, dropped, camp basket, or ruin basket.
+
+5. Darkness / visibility
+- visibility.js exposes LLW.visibility.getVisibilityAt(worldX, worldY).
+- Day remains fully visible.
+- Twilight/night progressively reduce useful visual range around the player.
+- Clear deep-night local awareness is about 4.2 tiles.
+- Cloud and rain reduce that radius; the minimum is about 2.35 tiles.
+- Deep darkness retains a low silhouette floor rather than deleting the world.
+- Campfire and torch light raise visibility through LLW.lighting.
+- Familiar player-made trails receive a subtle readability bonus after repeated use.
+- Overview/debug world view deliberately bypasses the darkness mask.
+
+6. Presentation
+- Darkness is a screen-space overlay with soft revealed regions around the wizard and real light sources.
+- Mechanical light radii are stable; visual glows may flicker slightly.
+- Torch appearance is registered through item-views.js rather than special-cased into render.js.
+- Torch can render held, dropped, or peeking from physical storage.
+
+TUNING
+visibility.js:
+- clearNightRadius 4.2
+- minimumNightRadius 2.35
+- cloudRadiusPenalty 0.80
+- rainRadiusPenalty 0.55
+- silhouetteFloor 0.18
+- trailBonusMax 0.12
+- trailBonusStartUse 12
+- trailBonusFullUse 36
+
+torch.js:
+- MAX_FUEL_TURNS 60
+- RAIN_BURN_MULTIPLIER 1.40
+- LIGHT_RADIUS 3.8
+- FULL_LIGHT_RADIUS 1.35
+
+EXPLICITLY OUT OF SCOPE
+- enemies / stealth
+- fear or darkness damage
+- fog-of-war / explored map
+- lanterns / lamp oil
+- general crafting menus or recipe systems
+- wet clothing / tinder / ignition failure
+- throwing torches
+- fire propagation
+- rebuilding ruins
+
+ACCEPTANCE STORY
+I find cloth in an old ruin and bring it home. Beside the campfire I use a stick and the cloth to wrap a torch, light it, and leave after dark. The torch occupies my hand and lets me read the nearby country. Rain shortens how long it lasts. On the way back I can make out an established route more easily, and the campfire becomes a real beacon through the dark.
