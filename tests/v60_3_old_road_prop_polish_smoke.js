@@ -29,9 +29,9 @@ const bramble = {
 
 const grassOnLamp = {
   id: "grass_lamp",
-  x: 4,
+  x: 5,
   y: 5,
-  offsetX: 0.10,
+  offsetX: -0.40,
   offsetY: 0
 };
 
@@ -116,6 +116,7 @@ assert(source.x > lamp.location.x + 0.5, "lantern light should sit inward from t
 assert.equal(source.radius, 4.6);
 assert.equal(source.fullRadius, 1.55);
 
+assert.equal(LLW.oldRoadPolish.overlapsRoadFixture(grassOnLamp), true);
 assert.equal(LLW.oldRoadPolish.overlapsRoadFixture(grassOnRot), true);
 assert.equal(LLW.oldRoadPolish.overlapsRoadFixture(grassFar), false);
 
