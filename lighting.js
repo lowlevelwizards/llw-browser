@@ -112,8 +112,8 @@
       radius: 5.2,
       visualRadius: 5.6,
       intensity: clamp(0.84 + visualIntensity * 0.08),
-      color: "240, 157, 76",
-      glowAlpha: 0.11,
+      color: "255, 145, 58",
+      glowAlpha: 0.12,
       flicker: true
     }];
   });
