@@ -35,3 +35,6 @@ jobs:
 
       - name: Run old road scale smoke test
         run: node tests/v60_2_old_road_scale_smoke.js
+
+      - name: Run old road prop polish smoke test
+        run: node tests/v60_3_old_road_prop_polish_smoke.js
