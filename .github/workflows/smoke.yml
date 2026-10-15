@@ -50,3 +50,6 @@ jobs:
 
       - name: Run pot interaction fix smoke test
         run: node tests/v62_1_pot_interaction_fix_smoke.js
+
+      - name: Run mounted pot fire visual smoke test
+        run: node tests/v62_2_pot_fire_visual_smoke.js
