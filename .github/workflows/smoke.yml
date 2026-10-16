@@ -71,3 +71,6 @@ jobs:
 
       - name: Run frog emergence smoke test
         run: node tests/v64_2_frog_emergence_smoke.js
+
+      - name: Run scrap crow smoke test
+        run: node tests/v65_scrap_crow_smoke.js
