@@ -130,9 +130,11 @@ global.LLW = {
 };
 
 require(path.join(__dirname, "..", "v66-rotlings.js"));
+require(path.join(__dirname, "..", "v66-rotling-retreat.js"));
 
 LLW.createWorld("rotling-test");
 assert(LLW.rotlings, "v66 should expose the rotling seam");
+assert(LLW.rotlingRetreat, "v66 should expose the post-hit retreat guard");
 assert.equal(LLW.rotlings.deriveHabitats().length, 2, "intact Old Road Rot Brambles should be the first Rotling habitat");
 assert(LLW.rotlings.all.length >= 1 && LLW.rotlings.all.length <= 2, "Rotling population should remain sparse");
 for (const rotling of LLW.rotlings.all) {
@@ -239,19 +241,30 @@ assert(rotling.nextAttackTurn >= state.game.turn + LLW.rotlings.constants.cooldo
 assert(notifications.some((message) => message.includes("-1 Vitality")), "damage should be clearly communicated without combat UI");
 assert(dirtyMarks > 0, "Vitality consequence should mark persistence dirty");
 
+// Contact creates a multi-turn obligation to get back toward cover, not one
+// cosmetic backwards hop followed by immediate re-aggro.
+LLW.rotlingRetreat.arm(rotling);
+assert.equal(rotling.forcedRetreatUntilTurn, rotling.lastHitTurn + LLW.rotlingRetreat.turns, "a hit should arm a sustained retreat window");
+LLW.rotlings.settleMotions(5100);
+rotling.motion = null;
+rotling.mode = "creeping";
+assert(LLW.rotlingRetreat.enforce(rotling, 5200), "retreat guard should override an opportunistic creep during the post-hit window");
+assert(rotling.motion && rotling.motion.kind === "retreat", "post-hit guard should keep the Rotling moving toward cover");
+
 // The same Rotling cannot machine-gun Vitality while its cooldown is active.
 rotling.motion = null;
 rotling.x = 7.95;
 rotling.y = 7.5;
 rotling.mode = "creeping";
-assert.equal(LLW.rotlings.startLunge(rotling, 4800), false, "attack cooldown should prevent repeated contact drain");
+assert.equal(LLW.rotlings.startLunge(rotling, 5300), false, "attack cooldown should prevent repeated contact drain");
 assert.equal(state.game.vitality, 2, "cooldown check must not spend additional Vitality");
 
 // Zero Vitality does not introduce a half-built death state.
 state.game.vitality = 0;
 rotling.nextAttackTurn = 0;
-assert.equal(LLW.rotlings.startLunge(rotling, 4900), false, "Rotlings should not push Vitality below zero before failure/death exists");
+assert.equal(LLW.rotlings.startLunge(rotling, 5400), false, "Rotlings should not push Vitality below zero before failure/death exists");
 state.game.vitality = 3;
+rotling.forcedRetreatUntilTurn = 0;
 
 // Far-away actors return to habitat abstraction rather than running global AI.
 state.player.x = 0;
