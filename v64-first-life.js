@@ -6,7 +6,11 @@
   const FROG_STARTLE_RADIUS = 2.2;
   const FROG_IDLE_HOP_CHANCE = 0.11;
   const FROG_HOP_MS = 320;
-  const MOTH_KINDS = new Set(["campfire", "wayhouse_hearth", "old_road_lamp"]);
+  const FROG_DIVE_MS = 430;
+  const FROG_NOTICE_FULL_RADIUS = 6.25;
+  const FROG_NOTICE_FADE_RADIUS = 9.25;
+  const MOTH_KINDS = new Set(["old_road_lamp"]);
+  const MOTH_SLOT_COUNT = 2;
 
   const FROG_PALETTES = [
     ["#617846", "#70894d", "#a7a56a"],
@@ -17,6 +21,11 @@
 
   const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
   const distance = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+  const smoothstep = (value) => {
+    const t = clamp(value);
+    return t * t * (3 - 2 * t);
+  };
+  const nowMs = () => globalThis.performance?.now?.() ?? Date.now();
 
   function cellAt(x, y) {
     if (x < 0 || y < 0 || x >= LLW.CONFIG.worldCols || y >= LLW.CONFIG.worldRows) return null;
@@ -114,7 +123,8 @@
         palette: Math.floor(seededUnit(`frog-palette:${candidate.x}:${candidate.y}`) * FROG_PALETTES.length),
         facing: seededUnit(`frog-facing:${index}`) < 0.5 ? -1 : 1,
         hopStartedAt: -Infinity,
-        hiddenUntilTurn: 0
+        hiddenUntilTurn: 0,
+        diving: null
       });
     }
     return frogs;
@@ -138,17 +148,47 @@
     frog.x = x;
     frog.y = y;
     frog.hopStartedAt = now;
+    frog.diving = null;
   }
 
-  function hideFrog(frog, water, turn, now) {
+  function beginDive(frog, water, turn, now) {
+    const fromX = frog.x;
+    const fromY = frog.y;
+    if (water.x !== fromX) frog.facing = water.x > fromX ? 1 : -1;
+    frog.fromX = fromX;
+    frog.fromY = fromY;
     frog.x = water.x;
     frog.y = water.y;
-    frog.fromX = water.x;
-    frog.fromY = water.y;
     frog.homeWater = { x: water.x, y: water.y };
-    frog.hiddenUntilTurn = turn + 5 + Math.floor(seededUnit(`hide:${frog.id}:${turn}`) * 6);
+    frog.hopStartedAt = now;
+    frog.diving = {
+      waterX: water.x,
+      waterY: water.y,
+      startedAt: now,
+      hideUntilTurn: turn + 5 + Math.floor(seededUnit(`hide:${frog.id}:${turn}`) * 6)
+    };
+  }
+
+  function finishDive(frog, now) {
+    const dive = frog.diving;
+    if (!dive) return false;
+    frog.x = dive.waterX;
+    frog.y = dive.waterY;
+    frog.fromX = dive.waterX;
+    frog.fromY = dive.waterY;
+    frog.homeWater = { x: dive.waterX, y: dive.waterY };
+    frog.hiddenUntilTurn = Math.max(state.game.turn + 1, dive.hideUntilTurn);
     frog.hopStartedAt = -Infinity;
-    addRipple(water.x, water.y, now);
+    frog.diving = null;
+    addRipple(frog.x, frog.y, now);
+    return true;
+  }
+
+  function settleDives(now = nowMs()) {
+    for (const frog of state.wildlife?.frogs || []) {
+      if (!frog.diving) continue;
+      if (now - frog.diving.startedAt >= FROG_DIVE_MS) finishDive(frog, now);
+    }
   }
 
   function reappearFrog(frog, turn) {
@@ -168,6 +208,7 @@
     frog.x = frog.fromX = spot.x;
     frog.y = frog.fromY = spot.y;
     frog.hiddenUntilTurn = 0;
+    frog.diving = null;
   }
 
   function neighboringChoices(frog) {
@@ -183,6 +224,8 @@
   }
 
   function stepFrog(frog, turn, now) {
+    if (frog.diving) return;
+
     if (frog.hiddenUntilTurn > 0) {
       if (turn >= frog.hiddenUntilTurn) reappearFrog(frog, turn);
       return;
@@ -199,7 +242,7 @@
           distance(a.x, a.y, state.player.x, state.player.y)
         )[0];
       if (water) {
-        hideFrog(frog, water, turn, now);
+        beginDive(frog, water, turn, now);
         return;
       }
 
@@ -220,7 +263,8 @@
     moveFrog(frog, choice.x, choice.y, now);
   }
 
-  function advanceFrogs(amount = 1, now = performance.now()) {
+  function advanceFrogs(amount = 1, now = nowMs()) {
+    settleDives(now);
     const frogs = state.wildlife?.frogs || [];
     const turns = Math.max(0, Math.floor(amount));
     const firstTurn = state.game.turn - turns + 1;
@@ -250,27 +294,48 @@
     return { x: view.offsetX + point.x * view.tileSize, y: view.offsetY + point.y * view.tileSize };
   }
 
-  function frogPose(frog, now) {
-    const t = clamp((now - frog.hopStartedAt) / FROG_HOP_MS);
+  function frogPose(frog, now = nowMs()) {
+    const duration = frog.diving ? FROG_DIVE_MS : FROG_HOP_MS;
+    const t = clamp((now - frog.hopStartedAt) / duration);
     const eased = t * t * (3 - 2 * t);
+    const submerge = frog.diving ? smoothstep((t - 0.72) / 0.28) : 0;
     return {
       x: frog.fromX + (frog.x - frog.fromX) * eased + 0.5,
       y: frog.fromY + (frog.y - frog.fromY) * eased + 0.5,
-      hop: t < 1 ? Math.sin(t * Math.PI) : 0
+      hop: t < 1 ? Math.sin(t * Math.PI) : 0,
+      t,
+      submerge
     };
+  }
+
+  function frogNoticeAt(x, y) {
+    const d = distance(x, y, state.player.x + 0.5, state.player.y + 0.5);
+    if (d <= FROG_NOTICE_FULL_RADIUS) return 1;
+    if (d >= FROG_NOTICE_FADE_RADIUS) return 0;
+    const t = (d - FROG_NOTICE_FULL_RADIUS) / (FROG_NOTICE_FADE_RADIUS - FROG_NOTICE_FULL_RADIUS);
+    return 1 - smoothstep(t);
   }
 
   function drawFrog(ctx, frog, view, now) {
     if (frog.hiddenUntilTurn > 0) return;
-    const pose = frogPose(frog, now);
+    const animatedPose = frogPose(frog, now);
+    const notice = frogNoticeAt(animatedPose.x, animatedPose.y);
+    if (notice <= 0.015) return;
+
+    const animateHop = notice >= 0.98 || Boolean(frog.diving);
+    const pose = animateHop
+      ? animatedPose
+      : { x: frog.x + 0.5, y: frog.y + 0.5, hop: 0, submerge: 0 };
     const p = worldToScreen(pose.x, pose.y, view);
     const s = view.tileSize;
     const [body, head, belly] = FROG_PALETTES[frog.palette % FROG_PALETTES.length];
     const hopY = pose.hop * s * 0.22;
+    const submergeAlpha = 1 - (pose.submerge || 0);
 
     ctx.save();
-    ctx.translate(p.x, p.y + s * 0.11 - hopY);
-    ctx.scale(frog.facing || 1, 1);
+    ctx.globalAlpha = notice * submergeAlpha;
+    ctx.translate(p.x, p.y + s * 0.11 - hopY + (pose.submerge || 0) * s * 0.08);
+    ctx.scale(frog.facing || 1, 1 - (pose.submerge || 0) * 0.18);
 
     ctx.fillStyle = "rgba(45, 65, 52, 0.18)";
     ctx.beginPath();
@@ -291,11 +356,11 @@
     ctx.fill();
 
     ctx.fillStyle = belly;
-    ctx.globalAlpha = 0.45;
+    ctx.globalAlpha = notice * submergeAlpha * 0.45;
     ctx.beginPath();
     ctx.ellipse(0, s * 0.09, s * 0.10, s * 0.05, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = notice * submergeAlpha;
 
     ctx.fillStyle = head;
     ctx.beginPath();
@@ -346,25 +411,45 @@
     );
   }
 
-  function getMoths(now = performance.now()) {
+  function windowEnvelope(sourceId, key, now, minMs, spanMs, activeMin, activeSpan) {
+    const cycleMs = minMs + seededUnit(`${key}:cycle:${sourceId}`) * spanMs;
+    const offsetMs = seededUnit(`${key}:offset:${sourceId}`) * cycleMs;
+    const activeFraction = activeMin + seededUnit(`${key}:active:${sourceId}`) * activeSpan;
+    const phase = ((now + offsetMs) % cycleMs + cycleMs) % cycleMs / cycleMs;
+    if (phase >= activeFraction) return 0;
+    const local = phase / Math.max(0.001, activeFraction);
+    const edge = 0.20;
+    return smoothstep(local / edge) * smoothstep((1 - local) / edge);
+  }
+
+  function mothPresence(source, slot, now) {
+    const sourceEnvelope = windowEnvelope(source.id, "moth-lamp", now, 24000, 22000, 0.34, 0.28);
+    if (sourceEnvelope <= 0) return 0;
+    const slotEnvelope = windowEnvelope(`${source.id}:${slot}`, "moth-slot", now, 10500, 9500, 0.38, 0.34);
+    return sourceEnvelope * slotEnvelope * mothActivity();
+  }
+
+  function getMoths(now = nowMs()) {
     const activity = mothActivity();
     const moths = [];
     if (activity <= 0.02) return moths;
 
     for (const source of mothSources()) {
-      const maxCount = 2 + Math.floor(seededUnit(`moth-count:${source.id}`) * 3);
-      const count = Math.max(1, Math.min(maxCount, Math.round(maxCount * activity)));
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < MOTH_SLOT_COUNT; i++) {
+        const presence = mothPresence(source, i, now);
+        if (presence <= 0.015) continue;
         const a = seededUnit(`moth-a:${source.id}:${i}`);
         const b = seededUnit(`moth-b:${source.id}:${i}`);
-        const angle = a * Math.PI * 2 + now * (0.0011 + a * 0.0009) + Math.sin(now * 0.0032 + b * 8) * 0.42;
-        const radius = 0.34 + b * 0.50 + Math.sin(now * 0.0017 + i) * 0.08;
+        const angle = a * Math.PI * 2 + now * (0.0010 + a * 0.0008) + Math.sin(now * 0.0027 + b * 9) * 0.46;
+        const radius = 0.35 + b * 0.43 + Math.sin(now * 0.0015 + i * 1.7) * 0.08;
         moths.push({
+          sourceId: source.id,
+          slot: i,
           x: source.x + Math.cos(angle) * radius,
           y: source.y + Math.sin(angle) * radius * 0.58,
-          wing: Math.sin(now * (0.019 + a * 0.008) + i * 2.2),
-          scale: 0.80 + a * 0.30,
-          alpha: 0.50 + activity * 0.42
+          wing: Math.sin(now * (0.018 + a * 0.008) + i * 2.2),
+          scale: 0.80 + a * 0.28,
+          alpha: presence * (0.52 + activity * 0.38)
         });
       }
     }
@@ -418,8 +503,9 @@
     if (LLW.landscapeRenderer?.drawTerrain) {
       const previousTerrain = LLW.landscapeRenderer.drawTerrain.bind(LLW.landscapeRenderer);
       LLW.landscapeRenderer.drawTerrain = function (ctx, view, ...args) {
+        const now = nowMs();
+        settleDives(now);
         const result = previousTerrain(ctx, view, ...args);
-        const now = performance.now();
         drawRipples(ctx, view, now);
         for (const frog of state.wildlife?.frogs || []) drawFrog(ctx, frog, view, now);
         return result;
@@ -429,8 +515,9 @@
     if (typeof LLW.drawScene === "function") {
       const previousDrawScene = LLW.drawScene;
       LLW.drawScene = function (now) {
-        const result = previousDrawScene.call(this, now);
-        drawMoths(now || performance.now());
+        const frameNow = now || nowMs();
+        const result = previousDrawScene.call(this, frameNow);
+        drawMoths(frameNow);
         return result;
       };
     }
@@ -443,8 +530,14 @@
     nearestWater,
     advanceFrogs,
     frogPose,
+    frogNoticeAt,
+    settleDives,
+    diveDuration: FROG_DIVE_MS,
+    noticeFullRadius: FROG_NOTICE_FULL_RADIUS,
+    noticeFadeRadius: FROG_NOTICE_FADE_RADIUS,
     mothActivity,
     mothSources,
+    mothPresence,
     getMoths
   };
 
