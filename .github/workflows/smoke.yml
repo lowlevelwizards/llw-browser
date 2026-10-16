@@ -78,5 +78,5 @@ jobs:
       - name: Run crow flight and local presence smoke test
         run: node tests/v65_1_crow_flight_smoke.js
 
-      - name: Run Rotling ecological threat smoke test
-        run: node tests/v66_rotling_smoke.js
+      - name: Run Rot Reaches smoke test
+        run: node tests/v66_1_rot_reaches_smoke.js
