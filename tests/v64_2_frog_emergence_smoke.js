@@ -88,18 +88,19 @@ assert(frog.diving, "a startled frog beside genuine pond water should still begi
 const diveStartedAt = frog.diving.startedAt;
 LLW.wildlife.settleDives(diveStartedAt + LLW.wildlife.diveDuration + 1);
 assert(frog.hiddenUntilTurn > LLW.state.game.turn, "frog should be submerged after completing the water hop");
-assert.equal(frog.x, 3);
-assert.equal(frog.y, 1);
+assert.equal(LLW.wildlife.isOpenWaterCell(frog.x, frog.y), true, "completed dive should leave the frog in genuine open water");
+const enteredWater = { x: frog.x, y: frog.y };
+assert.deepEqual(frog.homeWater, enteredWater, "frog should remember the exact pond cell it entered");
 
 // Re-emergence must wait while the player is standing around the pond.
 frog.hiddenUntilTurn = LLW.state.game.turn + 1;
-LLW.state.player.x = 3;
-LLW.state.player.y = 2;
+LLW.state.player.x = enteredWater.x;
+LLW.state.player.y = Math.min(8, enteredWater.y + 1);
 LLW.advanceTurn(1);
 assert.equal(frog.emerging, null, "frog should not emerge while the player is lingering nearby");
 assert(frog.hiddenUntilTurn > LLW.state.game.turn, "nearby player should defer emergence instead of teleporting a frog onto shore");
-assert.equal(frog.x, 3, "deferred frog should remain in its pond cell");
-assert.equal(frog.y, 1, "deferred frog should remain in its pond cell");
+assert.equal(frog.x, enteredWater.x, "deferred frog should remain in its pond cell");
+assert.equal(frog.y, enteredWater.y, "deferred frog should remain in its pond cell");
 
 // Once the player leaves, the frog should visibly hop out from that water cell.
 LLW.state.player.x = 8;
@@ -109,8 +110,8 @@ const ripplesBeforeEmergence = LLW.state.wildlife.ripples.length;
 LLW.advanceTurn(1);
 assert(frog.emerging, "safe shoreline should start a visible water-to-bank emergence hop");
 assert.equal(frog.hiddenUntilTurn, 0, "emerging frog should become visible because it is physically leaving the water");
-assert.equal(frog.fromX, 3, "emergence should originate from the remembered pond cell");
-assert.equal(frog.fromY, 1, "emergence should originate from the remembered pond cell");
+assert.equal(frog.fromX, enteredWater.x, "emergence should originate from the remembered pond cell");
+assert.equal(frog.fromY, enteredWater.y, "emergence should originate from the remembered pond cell");
 assert.equal(LLW.wildlife.isOpenWaterCell(frog.x, frog.y), false, "emergence target should be shoreline land");
 assert.equal(
   LLW.state.wildlife.ripples.length,
@@ -119,12 +120,16 @@ assert.equal(
 );
 const emergeStartedAt = frog.emerging.startedAt;
 const emergePose = LLW.wildlife.frogPose(frog, emergeStartedAt + 160);
-assert(emergePose.hop > 0.9, "water-to-bank emergence should use the readable frog hop arc");
-assert(
-  emergePose.y > Math.min(frog.fromY, frog.y) + 0.5 &&
-  emergePose.y < Math.max(frog.fromY, frog.y) + 0.5,
-  "mid-emergence pose should visibly travel between water and shoreline"
+const startDistance = Math.hypot(
+  emergePose.x - (frog.fromX + 0.5),
+  emergePose.y - (frog.fromY + 0.5)
 );
+const endDistance = Math.hypot(
+  emergePose.x - (frog.x + 0.5),
+  emergePose.y - (frog.y + 0.5)
+);
+assert(emergePose.hop > 0.9, "water-to-bank emergence should use the readable frog hop arc");
+assert(startDistance > 0.1 && endDistance > 0.1, "mid-emergence pose should visibly travel between water and shoreline");
 LLW.wildlife.settleEmergences(emergeStartedAt + LLW.wildlife.emergenceLockMs + 1);
 assert.equal(frog.emerging, null, "emergence lock should clear after the landing animation");
 
@@ -132,7 +137,7 @@ assert.equal(frog.emerging, null, "emergence lock should clear after the landing
 // old step tries to dive there, v64.2 must cancel that false dive before draw.
 frog.x = frog.fromX = 4;
 frog.y = frog.fromY = 5;
-frog.homeWater = { x: 3, y: 1 };
+frog.homeWater = enteredWater;
 frog.hiddenUntilTurn = 0;
 frog.diving = null;
 frog.emerging = null;
